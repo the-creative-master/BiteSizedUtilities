@@ -61,3 +61,17 @@ Serve the main application over HTTP (Vite or the production static build). The 
 Game ZIPs are prebuilt and SHA-256 hashes are recorded in ZIP-MANIFEST.json. No runtime fetch of GitHub/CDNs is required. Optional games are not guaranteed to be service-worker-preloaded: offline launch in the hosted app requires its local files or a prior successful cache load. Downloading and extracting a ZIP is the reliable standalone offline route. Scores are session-only; refresh/close resets them.
 
 SMOKE-TEST.json records startup and basic interaction checks, not complete playthroughs or cross-browser certification.
+
+
+## First-party original games
+
+The catalog also includes 75 original, locally authored browser mini-games in `games/original/` (25 focused mechanics, each with distinct rules, level structure, and scenario). They are explicitly labeled `first-party`, licensed MIT, and use the reusable local `engine.js` plus a per-game launcher/configuration. Their titles, descriptions, puzzles, and art are original. This collection is not affiliated with commercial games such as Drive Mad or BitLife and contains no copied names, artwork, questions, wording, game code, or unofficial downloads. Broad genres (physics driving, life choices, original trivia, and tower defense) informed some themes only.
+
+Each original game has a standalone launcher, unique rules/scenario, keyboard and touch/mouse input where applicable, pause/restart, score/progress, deterministic seeded setup, and no external dependencies. Each per-game ZIP preserves `games/original/<slug>/index.html`, includes its shared-engine dependency at `games/original/engine.js`, a full MIT LICENSE, and README/attribution. `games/zips/original-games.zip` is a complete offline collection with a root `index.html` launcher and all relative paths preserved.
+
+Original game count: 75. Combined catalog: 100 games (25 GitHub-sourced games + 75 first-party originals).
+
+
+## First-party validation summary
+
+The expanded catalog and every ZIP were checked for readable manifests, preserved entrypoint paths, included MIT license, and ZIP integrity. All 75 first-party launchers were opened in headless Chromium from `file://`; each initialized its canvas, configuration, status, and reset control with zero page errors. The Vite app menu reported 100 games; search found a first-party title; its iframe used `sandbox="allow-scripts"`; a game launched; and no non-local network requests or host page errors were observed. This was a smoke test, not a full playthrough of all possible levels, accessibility certification, or cross-browser QA.

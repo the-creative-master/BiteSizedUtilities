@@ -1,0 +1,13 @@
+{
+  "version": "0.21.0",
+  "sourceRevision": "e48f1bdc20f521f88de290ac36c6a2bbe5b7e8f4",
+  "sourceDirty": false,
+  "profile": "wasm-release",
+  "features": [
+    "terminal"
+  ],
+  "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+  "wasmBindgen": "wasm-bindgen 0.2.128",
+  "wasmOpt": "wasm-opt version 125 (version_125)",
+  "wasmSha256": "063b0b44511632b28c01fc3e1030d24a2e46f7cc6e9b751bab2e3876f914e21f"
+}

@@ -1,10 +1,10 @@
 # Code tools: local runtime matrix
 
-`tools-code.js` exports `mountCode(id, root)`. Unknown IDs return `false` without modifying the root. CodeHub returns an **idempotent disposal function** (truthy for existing callers); the other 14 utilities return `true`. Call the disposer when navigating away. Remounting a root, removing it from the document, or dispatching `tool-dispose` also cancels jobs and removes listeners/iframes. An unconnected root should be attached before the next DOM mutation.
+`tools-code.js` exports `mountCode(id, root)`. Unknown IDs return `false` without modifying the root. CodeHub returns an **idempotent disposal function** (truthy for existing callers); the other 14 developer utilities return `true`. Call the disposer when navigating away. Remounting a root, removing it from the document, or dispatching `tool-dispose` also cancels jobs and removes listeners/iframes. An unconnected root should be attached before the next DOM mutation.
 
 ## Honest coverage
 
-The catalogue has **75 entries: 13 executable + 4 executable subsets + 58 editor-only**. This is **not 75 or 50 executable programming languages**. HTML/CSS/JS is one combined web entry, JSON is a parser rather than a programming language, TypeScript/CoffeeScript compile into JavaScript, and Lisp/Scheme share one educational evaluator.
+The catalogue has **75 entries: 13 executable + 5 subsets + 57 editor-only**. This is **not 75 or 50 executable programming languages**. HTML/CSS/JS is one combined web entry, JSON is a parser rather than a programming language, TypeScript/CoffeeScript compile into JavaScript, and Lisp/Scheme share one educational evaluator.
 
 | Entry | Status | Actual local implementation / constraints |
 |---|---|---|
@@ -26,11 +26,15 @@ The catalogue has **75 entries: 13 executable + 4 executable subsets + 58 editor
 | Lisp | **Subset** | Proper lists, quote, lexical lambda/closures, define/defun, if, begin, let, set!, and/or, arithmetic, basic list functions, print/display; not Common Lisp |
 | Scheme | **Subset** | Same educational evaluator as Lisp; not R5RS/R7RS, no hygienic macros, continuations, numeric tower, dotted pairs, or module system |
 
-### Editor-only entries (58)
+### Editor-only entries (57)
 
-Node.js; Java; C; C++; C#; Go; Rust; Ruby; PHP; Swift; Kotlin; Scala; R; Julia; Perl; Haskell; OCaml; F#; Elixir; Erlang; Clojure; Dart; Groovy; PowerShell; Bash; Zsh; Fish; POSIX shell; Objective-C; Pascal; Fortran; COBOL; Ada; D; Nim; Zig; V; Crystal; Smalltalk; Prolog; Racket; Elm; PureScript; Reason; Solidity; Vyper; Assembly; WebAssembly text; MATLAB/Octave; VHDL; Verilog; GraphQL; YAML; TOML; XML; Markdown; standalone CSS; standalone HTML.
+Node.js; Java; C; C++; C#; Go; Rust; Ruby; PHP; Swift; Kotlin; Scala; R; Julia; Perl; Haskell; OCaml; F#; Elixir; Erlang; Clojure; Dart; Groovy; PowerShell; Zsh; Fish; POSIX shell; Objective-C; Pascal; Fortran; COBOL; Ada; D; Nim; Zig; V; Crystal; Smalltalk; Prolog; Racket; Elm; PureScript; Reason; Solidity; Vyper; Assembly; WebAssembly text; MATLAB/Octave; VHDL; Verilog; GraphQL; YAML; TOML; XML; Markdown; standalone CSS; standalone HTML.
 
 These can be edited, copied, and downloaded. Their **Run button is disabled**. Standalone HTML/CSS authors should use the executable combined web entry. There is **no WebContainer, Node, JVM, C/C++ compiler, remote execution service, or fake transpiler**. An attempted `@chriskoch/jscpp` package lookup returned npm 404, so it was not used or claimed.
+
+### Bash
+
+A genuine **Bash-compatible shell subset, BashKit 0.21.0 WebAssembly**, is vendored under `vendor/bashkit/` (~7.5 MiB `.wasm`, ~3.0 MiB gzip). It was tested in the actual worker and runs local Bash-compatible pipelines; Bash variables/arithmetic/conditionals/loops and core builtins work. It uses a virtual in-memory filesystem—no host OS or persistence—and is not a complete native Bash distribution. Outputs are limited to 100,000 bytes. No network-providing custom builtins are registered. MIT license, exact upstream revision and features in `vendor/bashkit/README.md` / `build-info.json`; copyright license at `vendor/bashkit/LICENSE`. Worker termination bounds individual runs. The package documents it as browser-ready without COOP/COEP. Assets are loaded from the same-origin vendored bundle for offline support.
 
 ## Pyodide version verification and assets
 
@@ -80,4 +84,4 @@ CODE_TEST_ORIGIN=http://localhost:4173 node --test tests/code-runtime.test.js
 CODE_TEST_ASSETS="$PWD/dist" node --test tests/code-runtime.test.js
 ```
 
-Tests use real Chromium via the project's Playwright dependency, not mocked interpreter output. Coverage includes all 16 dispatcher modes, all 15 mounted tool IDs, sandbox execution and console forwarding, invalid programs, real SHA-256, HTML entity safety, formatter correctness, timeouts, and disposal. `tests/runtime-smoke.mjs` (integration owner's independent suite) also passed its 12 runtimes, including classic-dispatcher Python delegation.
+Tests use real Chromium via the project's Playwright dependency, not mocked interpreter output. Coverage includes all 17 dispatcher modes, all 15 mounted tool IDs, sandbox execution and console forwarding, invalid programs, real SHA-256, HTML entity safety, formatter correctness, timeouts, and disposal. `tests/runtime-smoke.mjs` (integration owner's independent suite) also passed its 12 runtimes, including classic-dispatcher Python delegation.

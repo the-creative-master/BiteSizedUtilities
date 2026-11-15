@@ -1,16 +1,9 @@
 {
-  "status": "passed",
-  "source": "Independent release integration test: tests/games-smoke.mjs",
-  "games": 25,
-  "sandbox": "allow-scripts",
-  "externalNetwork": "blocked",
-  "pageErrors": 0,
-  "missingAssets": 0,
-  "externalAttempts": 0,
-  "scope": "Startup smoke coverage only; not complete playthroughs or cross-browser certification.",
-  "integrationTests": {
-    "command": "npm test",
-    "passed": 27,
-    "failed": 0
-  }
+  "date": "2026-11-15",
+  "scope": "First-party original game launch smoke test",
+  "tested": 75,
+  "passed": 75,
+  "failed": 0,
+  "method": "Headless Chromium opened each first-party launcher from file://, checked initialized canvas/config/status/reset control, and reported browser page errors. Repeated after final shared-engine changes.",
+  "limitations": "Startup smoke tests only; not a full playthrough, exhaustive mechanic test, or cross-browser/accessibility certification. GitHub-game checks are described separately in ATTRIBUTION.md."
 }

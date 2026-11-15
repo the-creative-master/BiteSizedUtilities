@@ -1,0 +1,13 @@
+{
+  "id": "emoji-mines",
+  "title": "Emoji Minesweeper",
+  "repo": "https://github.com/muan/emoji-minesweeper",
+  "revision": "2187e371e9a0f87cf54a207031760fc33b858a9a",
+  "license": "MIT",
+  "entrypoint": "games/emoji-mines/index.html",
+  "zip": "games/zips/emoji-mines.zip",
+  "controls": "Click: reveal. Right click: flag. Double click: open neighbors.",
+  "keyboard": "Click: reveal. Right click: flag. Double click: open neighbors.",
+  "origin": "github",
+  "notes": "Native emoji only: CDN Twemoji, service worker, analytics and web font removed."
+}

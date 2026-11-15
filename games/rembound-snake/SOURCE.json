@@ -1,0 +1,13 @@
+{
+  "id": "rembound-snake",
+  "title": "Garden Snake",
+  "repo": "https://github.com/rembound/Snake-Game-HTML5",
+  "revision": "91030dd3cbec5b88fd67887ce6a51e4f108eeed0",
+  "license": "MIT",
+  "entrypoint": "games/rembound-snake/index.html",
+  "zip": "games/zips/rembound-snake.zip",
+  "controls": "Arrow keys: steer. Click canvas to start or restart.",
+  "keyboard": "Arrow keys: steer. Click canvas to start or restart.",
+  "origin": "github",
+  "notes": ""
+}

@@ -1,0 +1,13 @@
+{
+  "id": "2048",
+  "title": "2048",
+  "repo": "https://github.com/gabrielecirulli/2048",
+  "revision": "478b6ec346e3787f589e4af751378d06ded4cbbc",
+  "license": "MIT",
+  "entrypoint": "games/2048/index.html",
+  "zip": "games/zips/2048.zip",
+  "controls": "Arrow keys / WASD: move. R: restart. Touch swipe supported.",
+  "keyboard": "Arrow keys / WASD: move. R: restart. Touch swipe supported.",
+  "origin": "github",
+  "notes": ""
+}

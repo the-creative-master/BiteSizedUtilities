@@ -1,0 +1,13 @@
+{
+  "id": "pong",
+  "title": "Pong: One or Two Players",
+  "repo": "https://github.com/jakesgordon/javascript-pong",
+  "revision": "ca3240536e4f79ab7144388e56ed19de715b6662",
+  "license": "MIT",
+  "entrypoint": "games/pong/index.html",
+  "zip": "games/zips/pong.zip",
+  "controls": "1: single player; 2: two players; Q/A and P/L: paddles; Esc: quit.",
+  "keyboard": "1: single player; 2: two players; Q/A and P/L: paddles; Esc: quit.",
+  "origin": "github",
+  "notes": "Tutorial links removed. External-origin sound assets replaced by silent adapter."
+}

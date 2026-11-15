@@ -1,0 +1,13 @@
+{
+  "id": "little-render3d-racing-game",
+  "title": "3D Circuit Racer",
+  "repo": "https://github.com/KilledByAPixel/LittleJS",
+  "revision": "42619bd28010fb50e400686dcd475eccbd053256",
+  "license": "MIT",
+  "entrypoint": "games/little-render3d-racing-game/index.html",
+  "zip": "games/zips/little-render3d-racing-game.zip",
+  "controls": "Arrows: steer, accelerate, brake and reverse.",
+  "keyboard": "Arrows: steer, accelerate, brake and reverse.",
+  "origin": "github",
+  "notes": "Playable upstream mini-game, not a separate repository. First-party standalone bootstrap."
+}

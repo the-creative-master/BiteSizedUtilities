@@ -1,0 +1,16 @@
+{
+  "status": "passed",
+  "source": "Independent release integration test: tests/games-smoke.mjs",
+  "games": 25,
+  "sandbox": "allow-scripts",
+  "externalNetwork": "blocked",
+  "pageErrors": 0,
+  "missingAssets": 0,
+  "externalAttempts": 0,
+  "scope": "Startup smoke coverage only; not complete playthroughs or cross-browser certification.",
+  "integrationTests": {
+    "command": "npm test",
+    "passed": 27,
+    "failed": 0
+  }
+}

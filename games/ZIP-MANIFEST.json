@@ -1,0 +1,152 @@
+[
+  {
+    "id": "2048",
+    "zip": "games/zips/2048.zip",
+    "bytes": 17957,
+    "sha256": "4b251a754741598be35302b16b35d255ebf6b302541a20c3b2486abfc1c6d07a"
+  },
+  {
+    "id": "gordon-tetris",
+    "zip": "games/zips/gordon-tetris.zip",
+    "bytes": 53323,
+    "sha256": "cbd90eee7cd00710a25a842890cf42af74aa673dd7f073b1fa37ffa7981d650e"
+  },
+  {
+    "id": "pong",
+    "zip": "games/zips/pong.zip",
+    "bytes": 18824,
+    "sha256": "a3daf1ebcdddf4ca7af74acea87a9fccd7f017d059a4c05bd534c1edf0cc3f63"
+  },
+  {
+    "id": "classic-tetris",
+    "zip": "games/zips/classic-tetris.zip",
+    "bytes": 7731,
+    "sha256": "045389a80a86b2c36b3fdbaca065090f8259d73bd374a228c2481091af35f3c9"
+  },
+  {
+    "id": "rembound-snake",
+    "zip": "games/zips/rembound-snake.zip",
+    "bytes": 40202,
+    "sha256": "3a110e27a131768066fa4bbae2a6c47a0f48d7011cc0ea7ef60fdf8bbb6ef73c"
+  },
+  {
+    "id": "pixel-snake",
+    "zip": "games/zips/pixel-snake.zip",
+    "bytes": 8678,
+    "sha256": "4c3a3b37663b6275d752f65d4f8e967bfff6daa1db3fa7130b43836acfc9e339"
+  },
+  {
+    "id": "match-three",
+    "zip": "games/zips/match-three.zip",
+    "bytes": 10260,
+    "sha256": "0483793db28a4a7b493226b7e543e6ebcb947ce6c9bd0f41a5877aa4c9b86dcb"
+  },
+  {
+    "id": "emoji-mines",
+    "zip": "games/zips/emoji-mines.zip",
+    "bytes": 13872,
+    "sha256": "6621c2b963502e266236e671a52805dd505ed3d4548541d0e527d59ae00e1592"
+  },
+  {
+    "id": "hexsweep",
+    "zip": "games/zips/hexsweep.zip",
+    "bytes": 7893,
+    "sha256": "584eb9277a26e9358ccb9e5440140974da5611498629d9830539552b95cc6eb1"
+  },
+  {
+    "id": "peg-solitaire",
+    "zip": "games/zips/peg-solitaire.zip",
+    "bytes": 340410,
+    "sha256": "7dc475647085df8101f38c0b0b0599b6fa830416bf86cb03932ad1c21a030992"
+  },
+  {
+    "id": "solitaire",
+    "zip": "games/zips/solitaire.zip",
+    "bytes": 12474,
+    "sha256": "47b08b5991e22d5601e92108d1ba9adc052f03678b28cbead6a76d8d5fe565e2"
+  },
+  {
+    "id": "blockrain",
+    "zip": "games/zips/blockrain.zip",
+    "bytes": 103814,
+    "sha256": "3a1712e22b1b756938e8faba4a1259259e8d882358cde1b9b275dece7fff7c2b"
+  },
+  {
+    "id": "little-breakout",
+    "zip": "games/zips/little-breakout.zip",
+    "bytes": 394689,
+    "sha256": "8ae304ebff436c4b5f51112a283b96d1bf3df0b4b216e8ccd2528ef2926532ab"
+  },
+  {
+    "id": "little-puzzle",
+    "zip": "games/zips/little-puzzle.zip",
+    "bytes": 402873,
+    "sha256": "a10c4da5421ff7349e9b7e59dc4901f1758cc49b891305e63ff1bfa0186c47dc"
+  },
+  {
+    "id": "little-platformer",
+    "zip": "games/zips/little-platformer.zip",
+    "bytes": 402537,
+    "sha256": "d02fd3237a264336a4e1660d3a8cc2aec2723cce8bb89b057c5cef10b89b1463"
+  },
+  {
+    "id": "little-flappy-game",
+    "zip": "games/zips/little-flappy-game.zip",
+    "bytes": 314910,
+    "sha256": "a7f67d38ca14417184691e4a9d1a52aa075cf9db365910c2f1ff6d56885f7899"
+  },
+  {
+    "id": "little-pong-game",
+    "zip": "games/zips/little-pong-game.zip",
+    "bytes": 314865,
+    "sha256": "1855ed583469df961e653addf606ee6738ceb411abc30dc4836c2f5f470463ef"
+  },
+  {
+    "id": "little-lander-game",
+    "zip": "games/zips/little-lander-game.zip",
+    "bytes": 315031,
+    "sha256": "214fd88f16e9eaee9d95374afb51b0bc5f947511a38750c2764f09778472f3a6"
+  },
+  {
+    "id": "little-hill-glide-game",
+    "zip": "games/zips/little-hill-glide-game.zip",
+    "bytes": 315157,
+    "sha256": "b2b764b7823bdf16260650abae75f97a7b75412e9edd9c192b0f974e76711854"
+  },
+  {
+    "id": "little-grapple-game",
+    "zip": "games/zips/little-grapple-game.zip",
+    "bytes": 315415,
+    "sha256": "a3fd39118c51ef196b75d6f4814029912d0df6896867f2397a72470248f126cc"
+  },
+  {
+    "id": "little-ball-track-game",
+    "zip": "games/zips/little-ball-track-game.zip",
+    "bytes": 315693,
+    "sha256": "1143199d22849a0bc770eee5441824199bcf17ca230bbe7532df37a7fdfc67f2"
+  },
+  {
+    "id": "little-render3d-dodge-game",
+    "zip": "games/zips/little-render3d-dodge-game.zip",
+    "bytes": 316102,
+    "sha256": "2c3ee5eec8976965df7c4e9c668832dd75865395e2eeb5527288668bc32a595b"
+  },
+  {
+    "id": "little-render3d-puzzle-game",
+    "zip": "games/zips/little-render3d-puzzle-game.zip",
+    "bytes": 316752,
+    "sha256": "8133b2d082e24992861ac77997f01ffeb1341df10a2077f6e1315ab68a8dcd78"
+  },
+  {
+    "id": "little-render3d-racing-game",
+    "zip": "games/zips/little-render3d-racing-game.zip",
+    "bytes": 317261,
+    "sha256": "052c4d133b81c412d8c219839c23455bb04b2efac9f482740270255c0a5833fc"
+  },
+  {
+    "id": "little-sliding-puzzle",
+    "zip": "games/zips/little-sliding-puzzle.zip",
+    "bytes": 315388,
+    "sha256": "cd051930a848ea8abcea7cfb71d79faa7a9b1fe67c9e03c0602d19eaa563c451"
+  }
+]

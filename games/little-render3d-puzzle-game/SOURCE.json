@@ -1,0 +1,13 @@
+{
+  "id": "little-render3d-puzzle-game",
+  "title": "3D Box Puzzle",
+  "repo": "https://github.com/KilledByAPixel/LittleJS",
+  "revision": "42619bd28010fb50e400686dcd475eccbd053256",
+  "license": "MIT",
+  "entrypoint": "games/little-render3d-puzzle-game/index.html",
+  "zip": "games/zips/little-render3d-puzzle-game.zip",
+  "controls": "Arrows: move and push blocks onto pads. R: reset.",
+  "keyboard": "Arrows: move and push blocks onto pads. R: reset.",
+  "origin": "github",
+  "notes": "Playable upstream mini-game, not a separate repository. First-party standalone bootstrap."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "solitaire",
+  "title": "Klondike Solitaire",
+  "repo": "https://github.com/AashishChakravarty/solitaire",
+  "revision": "f26b5c54eb260546b3eb1eabdbc6e83f361af42f",
+  "license": "MIT",
+  "entrypoint": "games/solitaire/index.html",
+  "zip": "games/zips/solitaire.zip",
+  "controls": "Click / drag cards. Use on-screen New Game and undo controls.",
+  "keyboard": "Click / drag cards. Use on-screen New Game and undo controls.",
+  "origin": "github",
+  "notes": ""
+}

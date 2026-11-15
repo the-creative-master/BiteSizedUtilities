@@ -1,0 +1,13 @@
+{
+  "id": "little-platformer",
+  "title": "Little Platform Adventure",
+  "repo": "https://github.com/KilledByAPixel/LittleJS",
+  "revision": "42619bd28010fb50e400686dcd475eccbd053256",
+  "license": "MIT",
+  "entrypoint": "games/little-platformer/index.html",
+  "zip": "games/zips/little-platformer.zip",
+  "controls": "Arrows / WASD: move and jump. Space: shoot. Z: dodge. X: grenade.",
+  "keyboard": "Arrows / WASD: move and jump. Space: shoot. Z: dodge. X: grenade.",
+  "origin": "github",
+  "notes": "Upstream ES modules bundled as classic script; textures and level JSON inlined for opaque-origin and file:// play."
+}

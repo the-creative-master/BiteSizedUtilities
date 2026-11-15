@@ -1,0 +1,13 @@
+{
+  "id": "little-render3d-dodge-game",
+  "title": "3D Dodge Arena",
+  "repo": "https://github.com/KilledByAPixel/LittleJS",
+  "revision": "42619bd28010fb50e400686dcd475eccbd053256",
+  "license": "MIT",
+  "entrypoint": "games/little-render3d-dodge-game/index.html",
+  "zip": "games/zips/little-render3d-dodge-game.zip",
+  "controls": "Arrows / WASD: dodge incoming boxes. Click to restart.",
+  "keyboard": "Arrows / WASD: dodge incoming boxes. Click to restart.",
+  "origin": "github",
+  "notes": "Playable upstream mini-game, not a separate repository. First-party standalone bootstrap."
+}

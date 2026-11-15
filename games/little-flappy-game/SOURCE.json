@@ -1,0 +1,13 @@
+{
+  "id": "little-flappy-game",
+  "title": "Flappy Flight",
+  "repo": "https://github.com/KilledByAPixel/LittleJS",
+  "revision": "42619bd28010fb50e400686dcd475eccbd053256",
+  "license": "MIT",
+  "entrypoint": "games/little-flappy-game/index.html",
+  "zip": "games/zips/little-flappy-game.zip",
+  "controls": "Space / click: flap through gaps.",
+  "keyboard": "Space / click: flap through gaps.",
+  "origin": "github",
+  "notes": "Playable upstream mini-game, not a separate repository. First-party standalone bootstrap."
+}

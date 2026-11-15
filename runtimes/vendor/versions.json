@@ -1,0 +1,9 @@
+{
+  "prettier": "3.10.1",
+  "sql-formatter": "15.9.0",
+  "css-tree": "3.2.1",
+  "typescript": "5.9.3",
+  "coffeescript": "2.7.0",
+  "sql.js": "1.16.0",
+  "fengari": "0.1.5"
+}

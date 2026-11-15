@@ -1,0 +1,13 @@
+{
+  "id": "classic-tetris",
+  "title": "Classic Tetris",
+  "repo": "https://github.com/dionyziz/canvas-tetris",
+  "revision": "4e497d1c858914f0a1f0818698029d1c7dad090b",
+  "license": "MIT",
+  "entrypoint": "games/classic-tetris/index.html",
+  "zip": "games/zips/classic-tetris.zip",
+  "controls": "Arrows: move / rotate. Space: hard drop. Click Play to restart.",
+  "keyboard": "Arrows: move / rotate. Space: hard drop. Click Play to restart.",
+  "origin": "github",
+  "notes": "Pop sound omitted because its separate provenance is undocumented. Keyboard ignored until Play to prevent upstream uninitialized-board error."
+}

@@ -1,6 +1,6 @@
 # BiteSized Utilities
 
-**A little tool for everything.** A cozy, privacy-first browser-tool kitchen with six cupboards, 75 utilities, and a downloadable offline arcade: **25 games from 13 source repositories**.
+**A little tool for everything.** A cozy, privacy-first browser-tool kitchen with six cupboards, 75 utilities, and a downloadable offline arcade: **100 games — 25 licensed games from 13 GitHub repositories, plus 75 first-party originals across 25 mechanics**.
 
 ## Run locally
 
@@ -30,7 +30,7 @@ Each of the first five cupboards has **exactly 15 working tools**:
 - **Text & Files:** File Converter, Crazy Text Filters, Word Counter, Case Converter, JSON Formatter, Base64 Studio, URL Encoder, Markdown Preview, Text Diff, Find & Replace, Lorem Ipsum, File & Text Hash, CSV Editor, Pocket Notepad, File Inspector.
 - **Art & Coloring:** Art Studio, Color Picker, Palette Generator, Gradient Maker, Pixel Art, Image Resizer, Image Cropper, Image Filters, SVG Playground, Contrast Checker, Color Converter, Pattern Maker, Collage Maker, ASCII Art, Mandala Maker.
 - **Science & Physics:** Physics Hub, Periodic Table, Motion Calculator, Force & Momentum, Energy Calculator, Gravity Explorer, Wave Lab, Circuit Calculator, Optics Bench, Pressure Calculator, Density Calculator, Temperature Lab, Ideal Gas Law, Half-Life Calculator, Scientific Constants.
-- **Games & Fun:** vendored, licensed, self-contained games with source attribution and downloadable offline archives. See `games/ATTRIBUTION.md` and `games/catalog.json` for the exact collection.
+- **Games & Fun:** 100 playable games, including 25 licensed GitHub games and 75 clearly labeled first-party originals. All have a downloadable offline edition. See `games/ATTRIBUTION.md` and `games/catalog.json` for the exact collection.
 
 ## CodeHub: what actually runs
 

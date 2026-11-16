@@ -1,4 +1,5 @@
 /** Standalone, dependency-free math and science tools. All user text uses textContent. */
+import { MATH_NUMBER_TOOLS } from './tools-math-numbers.js';
 const PI = Math.PI;
 const G = 6.67430e-11;
 const C = 299792458;
@@ -898,21 +899,7 @@ function physicsHub(root) {
 }
 
 const TOOLS = Object.freeze({
-  'calculator': root => calculator(root, false),
-  'unit-converter': unitConverter,
-  'percentage': percentage,
-  'fractions': fractions,
-  'statistics': statistics,
-  'random-number': randomNumber,
-  'number-base': numberBase,
-  'prime-checker': primeChecker,
-  'scientific-calculator': root => calculator(root, true),
-  'equation-solver': equationSolver,
-  'geometry': geometry,
-  'loan-calculator': loanCalculator,
-  'tip-splitter': tipSplitter,
-  'date-calculator': dateCalculator,
-  'roman-numerals': romanNumerals,
+  ...MATH_NUMBER_TOOLS,
   'physics-hub': physicsHub,
   'periodic-table': periodicTable,
   'motion': motion,

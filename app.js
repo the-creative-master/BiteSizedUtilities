@@ -1,26 +1,415 @@
 import './style.css';
-import {cupboards,allTools} from './catalog.js';
-const $=s=>document.querySelector(s);
-const storage={get(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
-let favorites=new Set(storage.get('bite-favorites',[])),recent=storage.get('bite-recent',[]),active='all',query='',view=0;
-const icons={search:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/>',home:'<path d="m3 10 9-7 9 7v10H3zM9 20v-7h6v7"/>',heart:'<path d="M20.5 5.5c-2.5-3-6.5-1.5-8.5 1-2-2.5-6-4-8.5-1-4 5 1.5 10 8.5 15 7-5 12.5-10 8.5-15Z"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/>',arrow:'<path d="M4 12h15m-5-5 5 5-5 5"/>',grid:'<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',chevron:'<path d="m9 5 7 7-7 7"/>',shield:'<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/>',leaf:'<path d="M20 3C8 2 2 9 6 16s16 0 14-13ZM5 21 16 9"/>',spark:'<path d="m12 2 2.8 7.2L22 12l-7.2 2.8L12 22l-2.8-7.2L2 12l7.2-2.8Z"/>',menu:'<path d="M4 6h16M4 12h16M4 18h16"/>',close:'<path d="m6 6 12 12M18 6 6 18"/>'};
-const svg=(name,cls='')=>`<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name]||icons.grid}</svg>`;
-const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const app=$('#app');
-app.innerHTML=`<aside class="sidebar"><a class="brand" href="#"><span class="brand-mark">B<span></span></span><span>BiteSized<span class="brand-sub">UTILITIES</span></span></a><div class="sidebar-caption">YOUR LITTLE TOOL KITCHEN</div><nav aria-label="Main navigation"><button class="nav-item selected" data-nav="all">${svg('home')}<span>The kitchen</span><span class="nav-dot"></span></button><button class="nav-item" data-nav="favorites">${svg('heart')}<span>My favorites</span><span id="fav-count" class="nav-count">${favorites.size}</span></button><button class="nav-item" data-nav="recent">${svg('clock')}<span>Recently opened</span></button><div class="nav-label">THE CUPBOARDS <span>6</span></div>${cupboards.map(c=>`<button class="nav-item" data-nav="${c.id}"><span class="nav-emoji" style="--cup:${c.color}">${c.icon}</span><span>${c.name}</span><span class="nav-count">15</span></button>`).join('')}<button class="nav-item" data-nav="games"><span class="nav-emoji" style="--cup:#d7c6e3">♧</span><span>Games & Fun</span><span class="nav-count" id="games-count">+</span></button></nav><div class="sidebar-bottom"><div class="little-plant">✿<span></span></div><p>Small tools.<br>Big possibilities.</p><a href="https://github.com/the-creative-master/BiteSizedUtilities" target="_blank" rel="noopener">Made with a little love ${svg('arrow')}</a><div class="local-badge"><i></i> Your files stay on your device</div></div></aside><div class="mobile-shade"></div><div class="main-wrap"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-button" aria-label="Open navigation">${svg('menu')}</button><span class="bread-icon">⌂</span><span id="breadcrumb">The kitchen</span></div><div class="top-right"><span class="tiny-status"><i></i><span id="connection">Local-first tools</span></span><a class="github-link" href="https://github.com/the-creative-master/BiteSizedUtilities" target="_blank" rel="noopener" aria-label="View source code">Source code ↗</a><span class="avatar" aria-label="Your personal kitchen">✦</span></div></header><main id="main"></main><footer><span>Handy little things, all in one happy place.</span><span>Privacy first. Curiosity always. <span class="footer-flower">✳</span></span></footer></div><div id="toast" role="status" aria-live="polite"></div>`;
-function kitchenScene(){return `<div class="kitchen-scene" aria-hidden="true"><div class="sun-glow"></div><div class="tile-wall"></div><div class="scene-window"><div class="window-sky"><span class="hill h1"></span><span class="hill h2"></span><span class="cloud"></span></div><span class="window-v"></span><span class="window-h"></span><div class="windowsill"></div></div><div class="hanging-pot hp1"><span></span></div><div class="hanging-pot hp2"><span></span></div><div class="scene-shelf"><div class="jar jar1"><span>flour</span></div><div class="jar jar2"><span>ideas</span></div><div class="jar jar3"></div><div class="shelf-plant"><span>✽</span><i></i></div></div><div class="cupboard-wall"><div class="mini-cabinet"><span></span></div><div class="mini-cabinet"><span></span></div></div><div class="scene-counter"></div><div class="chopping-board"></div><div class="utensil-cup"><i></i><i></i><i></i></div><div class="fruit-bowl"><b></b><b></b><b></b><span></span></div><div class="mug"><span class="steam s1"></span><span class="steam s2"></span></div><div class="counter-front"></div><div class="towel"></div><div class="scene-note">a pinch of possibility.</div></div>`}
-function home(){view++;active='all';query='';updateNav();$('#breadcrumb').textContent='The kitchen';$('#main').innerHTML=`<section class="hero"><div class="hero-copy"><div class="eyebrow"><span></span> COME ON IN. MAKE SOMETHING.</div><h1>A little tool<br>for <em>everything.</em><span class="heading-spark">✳</span></h1><p>Welcome to your cozy corner of the internet.<br>Open a cupboard. Find something useful. Make your day.</p><div class="hero-pills"><span>${svg('shield')} Private by nature</span><span>${svg('leaf')} No sign-up. Just useful.</span></div></div>${kitchenScene()}</section><section class="discovery"><div class="search-wrap">${svg('search')}<input id="search" type="search" placeholder="What would you like to make easier?" aria-label="Search all utilities"><kbd>/</kbd></div><button class="surprise" id="surprise">${svg('spark')} Surprise me</button></section><section class="cupboards-section"><div class="section-heading"><div><span class="eyebrow small">A PLACE FOR EVERYTHING</span><h2>What's in the cupboards?</h2></div><span class="section-aside">A whole kitchen of possibilities <span>↙</span></span></div><div class="cupboard-grid">${cupboards.map(c=>cupboardCard(c)).join('')}${cupboardCard({id:'games',name:'Games & Fun',short:'Take a well-deserved little break',icon:'♧',color:'#d7c6e3',star:'games'})}</div></section><section class="favorites-section"><div class="section-heading"><div><span class="eyebrow small">THE GOOD STUFF, WITHIN REACH</span><h2>A few kitchen favorites</h2></div><button class="text-button" data-nav="favorites">Your saved tools ${svg('arrow')}</button></div><div class="featured-grid">${['calculator','codehub','file-converter','art-studio'].map(id=>featuredCard(allTools.find(t=>t.id===id))).join('')}</div></section><section class="privacy-strip">${svg('shield')}<div><strong>Your ideas are yours. So are your files.</strong><span>Tools process on your device. No uploads, no accounts, no peeking.</span></div><span class="privacy-flower">✿</span></section>`;$('#search').addEventListener('input',e=>{query=e.target.value;homeSearch()});$('#surprise').onclick=()=>openTool(allTools[Math.floor(Math.random()*allTools.length)].id);bindActions();}
-function cupboardCard(c){const star=c.id==='games'?{name:'The arcade',description:'Download a little happiness'}:allTools.find(t=>t.id===c.star);return `<article class="cupboard-card" style="--cup:${c.color}" data-cupboard="${c.id}"><button class="cupboard-door" data-nav="${c.id}" aria-label="Open ${c.name}"><div class="door-inset"></div><span class="door-icon">${c.icon}</span><span class="cupboard-count">${c.id==='games'?'OFFLINE ARCADE':'15 LITTLE TOOLS'}</span><span class="door-handle"></span></button><div class="cupboard-info"><button class="cupboard-title" data-nav="${c.id}">${c.name}${svg('arrow')}</button><p>${c.short}</p><button class="star-tool" ${c.id==='games'?'data-nav="games"':`data-tool="${c.star}"`}><span>✦</span> ${star.name}<span class="star-label">${c.id==='games'?'PLAY TIME':'STAR TOOL'}</span></button></div></article>`}
-function featuredCard(t){return `<article class="featured-card"><button class="favorite-toggle ${favorites.has(t.id)?'is-favorite':''}" data-fav="${t.id}" aria-label="${favorites.has(t.id)?'Unsave':'Save'} ${t.name}" aria-pressed="${favorites.has(t.id)}">${svg('heart')}</button><button class="featured-main" data-tool="${t.id}"><span class="tool-icon" style="--cup:${t.color}">${t.id==='calculator'?'⌗':t.id==='codehub'?'〈/〉':t.id==='file-converter'?'⇄':t.id==='art-studio'?'✎':t.icon}</span><strong>${t.name}</strong><p>${t.description}</p><span class="open-tool">Open tool ${svg('arrow')}</span></button></article>`}
-function homeSearch(){let box=$('#search-results');if(!query.trim()){box?.remove();$('.cupboards-section').hidden=false;$('.favorites-section').hidden=false;return}$('.cupboards-section').hidden=true;$('.favorites-section').hidden=true;if(!box){box=document.createElement('section');box.id='search-results';$('.discovery').after(box)}const matches=allTools.filter(t=>(t.name+' '+t.description).toLowerCase().includes(query.toLowerCase()));box.innerHTML=`<div class="section-heading"><h2>${matches.length} little discoveries</h2></div><div class="tools-grid">${matches.map(featuredCard).join('')}</div>${matches.length?'':'<p class="empty-state">No tools found. Try “color”, “text”, or “calculator”.</p>'}`;bindActions(box)}
-function updateNav(){document.querySelectorAll('[data-nav]').forEach(b=>b.classList.toggle('selected',b.dataset.nav===active));$('#fav-count').textContent=favorites.size;$('.sidebar').classList.remove('mobile-open');$('.mobile-shade').classList.remove('visible')}
-async function collection(id){view++;const ticket=view;active=id;query='';updateNav();if(id==='games'){$('#breadcrumb').textContent='Games & Fun';$('#main').innerHTML=`<section class="collection-hero"><span class="eyebrow">THE PLAY CUPBOARD</span><h1>A little <em>play time.</em></h1><p>Real games. Downloadable little worlds. A well-deserved break.</p></section><div id="game-root"><p class="empty-state">Opening the games cupboard…</p></div>`;try{const m=await import('./games.js');if(ticket===view)await m.mountGames($('#game-root'))}catch(e){if(ticket===view)$('#game-root').textContent='The arcade could not load. Reload to try again.';console.error(e)}return}const c=cupboards.find(c=>c.id===id);const title=c?.name||(id==='favorites'?'My favorites':'Recently opened');$('#breadcrumb').textContent=title;const tools=c?allTools.filter(t=>t.cupboard===id):id==='favorites'?allTools.filter(t=>favorites.has(t.id)):recent.map(id=>allTools.find(t=>t.id===id)).filter(Boolean);$('#main').innerHTML=`<section class="collection-hero"><span class="eyebrow">${c?'OPEN A LITTLE POSSIBILITY':'YOUR PERSONAL SHELF'}</span><h1>${esc(title)}<span class="collection-flower" style="color:${c?.color||'#b7c99e'}">${c?.icon||'✦'}</span></h1><p>${esc(c?.short||(id==='favorites'?'Your useful little things, all together.':'Pick up right where you left off.'))}</p></section><div class="collection-meta"><span>${tools.length} ${tools.length===1?'tool':'tools'} on this shelf</span>${c?'<span>15 tools · 1 happy cupboard</span>':''}</div><div class="tools-grid">${tools.map(featuredCard).join('')}</div>${tools.length?'':`<div class="empty-state"><span>♡</span><h2>${id==='favorites'?'Your shelf is waiting.':'Make yourself at home.'}</h2><p>${id==='favorites'?'Tap the heart on a tool to keep it here.':'The tools you open will appear here.'}</p><button class="action" data-nav="all">Explore the kitchen</button></div>`}`;bindActions();window.scrollTo(0,0)}
-let toolCleanup=null;
-async function openTool(id){const t=allTools.find(t=>t.id===id);if(!t)return;toolCleanup?.();toolCleanup=null;view++;const ticket=view;active=t.cupboard;recent=[id,...recent.filter(x=>x!==id)].slice(0,20);storage.set('bite-recent',recent);updateNav();$('#breadcrumb').textContent=cupboards.find(c=>c.id===t.cupboard).name+' / '+t.name;$('#main').innerHTML=`<div class="tool-top"><button class="text-button" data-nav="${t.cupboard}">← Back to cupboard</button><span class="tool-local">${svg('shield')} Runs on your device</span></div><section class="tool-heading"><div class="tool-icon" style="--cup:${t.color}">${t.icon}</div><div><h1>${t.name}</h1><p>${t.description}</p></div><button class="favorite-toggle tool-favorite ${favorites.has(id)?'is-favorite':''}" data-fav="${id}" aria-label="Save ${t.name}" aria-pressed="${favorites.has(id)}">${svg('heart')}</button></section><section class="tool-workspace" id="tool-root"><p>Taking it off the shelf…</p></section><p class="tool-footnote">A little reminder: calculations are for general use. Double-check important results.</p>`;bindActions();window.scrollTo(0,0);try{const module=t.cupboard==='math'||t.cupboard==='science'?await import('./tools-math-science.js'):t.cupboard==='code'?await import('./tools-code.js'):await import('./tools-text-art.js');if(ticket!==view)return;$('#tool-root').replaceChildren();const result=module.mountMathScience?.(id,$('#tool-root'))||module.mountCode?.(id,$('#tool-root'))||module.mountTextArt?.(id,$('#tool-root'));if(typeof result==='function')toolCleanup=result;if(!result)$('#tool-root').textContent='This tool could not be opened.'}catch(e){console.error(e);if(ticket===view)$('#tool-root').textContent='Something went wrong while opening this tool. Please reload and try again.'}}
-function bindActions(root=document){root.querySelectorAll('[data-nav]').forEach(b=>{b.onclick=()=>navigate(b.dataset.nav)});root.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>{location.hash='tool/'+b.dataset.tool});root.querySelectorAll('[data-fav]').forEach(b=>b.onclick=()=>{const id=b.dataset.fav;if(favorites.has(id))favorites.delete(id);else favorites.add(id);storage.set('bite-favorites',[...favorites]);document.querySelectorAll(`[data-fav="${id}"]`).forEach(el=>{el.classList.toggle('is-favorite',favorites.has(id));el.setAttribute('aria-pressed',String(favorites.has(id)));el.setAttribute('aria-label',(favorites.has(id)?'Unsave ':'Save ')+allTools.find(t=>t.id===id).name)});$('#fav-count').textContent=favorites.size;toast(favorites.has(id)?'A little favorite, saved.':'Removed from your favorites.');if(active==='favorites')collection('favorites')})}
-function navigate(id){location.hash=id==='all'?'kitchen':id}
-function route(){document.querySelectorAll('.tool-form').forEach(n=>n.dispatchEvent(new Event('tool-dispose')));toolCleanup?.();toolCleanup=null;const hash=decodeURIComponent(location.hash.slice(1));if(hash.startsWith('tool/'))openTool(hash.slice(5));else if(cupboards.some(c=>c.id===hash)||['favorites','recent','games'].includes(hash))collection(hash);else home()}
-function toast(msg){$('#toast').textContent=msg;$('#toast').classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').classList.remove('show'),2300)}
-$('.mobile-menu').onclick=()=>{$('.sidebar').classList.toggle('mobile-open');$('.mobile-shade').classList.toggle('visible')};$('.mobile-shade').onclick=()=>{$('.sidebar').classList.remove('mobile-open');$('.mobile-shade').classList.remove('visible')};document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&!document.activeElement.isContentEditable){e.preventDefault();if(!$('#search')){location.hash='kitchen';setTimeout(()=>$('#search')?.focus(),0)}else $('#search').focus()}if(e.key==='Escape'){$('.sidebar').classList.remove('mobile-open');$('.mobile-shade').classList.remove('visible')}});window.addEventListener('hashchange',route);bindActions();route();
-if('serviceWorker'in navigator&&import.meta.env.PROD)navigator.serviceWorker.register('./sw.js').catch(console.warn);
-fetch('./games/catalog.json').then(r=>r.ok?r.json():null).then(d=>{const n=Array.isArray(d)?d.length:d?.games?.length;if(n)$('#games-count').textContent=n}).catch(()=>{});
+import { cupboards, allTools } from './catalog.js';
+import { waffleMascotSVG, cupboardIconSVG, toolPropSVG, uiIconSVG } from './icons-25d.js';
+
+const $ = s => document.querySelector(s);
+const storage = {
+  get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+
+let favorites = new Set(storage.get('bite-favorites', []));
+let recent = storage.get('bite-recent', []);
+let active = 'all';
+let view = 0;
+let toolCleanup = null;
+
+const WAFFLE_QUIPS = [
+  'Boing! Sweet math!',
+  'Tap a cupboard!',
+  'Freshly baked numbers!',
+  'Waffle power! 🧇',
+  'Cozy kitchen vibes!',
+  'Pick a shelf toy!'
+];
+let quipIndex = 0;
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const ALL_CUPBOARDS = [
+  ...cupboards,
+  { id: 'games', name: 'Games & Fun', short: '100 little arcade worlds', icon: '♧', color: '#dfd0f5', trim: '#a68fd1', star: 'games', tools: [] }
+];
+
+const app = $('#app');
+app.innerHTML = `
+  <div class="waffle-world" id="waffle-bg" aria-hidden="false">
+    <div class="waffle-grid-layer" id="waffle-grid"></div>
+    <div class="waffle-pops" id="waffle-pops" aria-hidden="true"></div>
+  </div>
+  <div class="game-viewport">
+    <header class="game-topbar">
+      <div class="topbar-left">
+        <button type="button" class="waffle-mascot-btn" id="waffle-mascot" aria-label="Tap Sir Waffle mascot to bounce">
+          ${waffleMascotSVG()}
+          <span class="waffle-speech" id="waffle-speech">Tap a cupboard!</span>
+        </button>
+        <button type="button" class="wood-sign-brand gbtn" data-nav="all" aria-label="Go to kitchen wall">
+          <span class="sign-title">BiteSized</span>
+          <span class="sign-sub">COZY KITCHEN</span>
+        </button>
+      </div>
+      <nav class="game-nav" aria-label="Kitchen navigation">
+        <button type="button" class="gbtn gnav-btn selected" data-nav="all">
+          <span class="gnav-icon">${uiIconSVG('home')}</span>
+          <span class="gnav-label">Kitchen</span>
+        </button>
+        <button type="button" class="gbtn gnav-btn" data-nav="favorites">
+          <span class="gnav-icon">${uiIconSVG('heart')}</span>
+          <span class="gnav-label">Saved</span>
+          <span class="gnav-count" id="fav-count">${favorites.size}</span>
+        </button>
+        <button type="button" class="gbtn gnav-btn" data-nav="recent">
+          <span class="gnav-icon">${uiIconSVG('clock')}</span>
+          <span class="gnav-label">Recent</span>
+        </button>
+      </nav>
+    </header>
+    <main id="main" class="kitchen-stage"></main>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+`;
+
+function triggerWaffleBounce(clientX, clientY, fromMascot = false) {
+  const grid = $('#waffle-grid');
+  const mascot = $('#waffle-mascot');
+  const speech = $('#waffle-speech');
+
+  grid.classList.remove('is-bouncing');
+  void grid.offsetWidth;
+  grid.classList.add('is-bouncing');
+
+  mascot.classList.remove('is-bouncing');
+  void mascot.offsetWidth;
+  mascot.classList.add('is-bouncing');
+
+  if (fromMascot || Math.random() < 0.6) {
+    quipIndex = (quipIndex + 1) % WAFFLE_QUIPS.length;
+    speech.textContent = WAFFLE_QUIPS[quipIndex];
+    speech.classList.remove('pop-in');
+    void speech.offsetWidth;
+    speech.classList.add('pop-in');
+  }
+
+  if (typeof clientX === 'number' && typeof clientY === 'number') {
+    const pops = $('#waffle-pops');
+    const pop = document.createElement('span');
+    pop.className = 'waffle-ripple';
+    pop.style.left = `${clientX}px`;
+    pop.style.top = `${clientY}px`;
+    pops.append(pop);
+    setTimeout(() => pop.remove(), 650);
+  }
+}
+
+$('#waffle-mascot').addEventListener('click', e => {
+  e.stopPropagation();
+  const rect = e.currentTarget.getBoundingClientRect();
+  triggerWaffleBounce(rect.left + rect.width / 2, rect.top + rect.height / 2, true);
+});
+
+// Tapping the waffle background (or empty stage around cupboards) bounces the waffle!
+document.addEventListener('click', e => {
+  if (e.target.closest('button, a, input, textarea, select, canvas, .gslider-track, .tool-workspace, .cupboard-card, .open-cupboard')) return;
+  triggerWaffleBounce(e.clientX, e.clientY, false);
+});
+
+function updateNav() {
+  document.querySelectorAll('[data-nav]').forEach(b => {
+    b.classList.toggle('selected', b.dataset.nav === active);
+  });
+  $('#fav-count').textContent = favorites.size;
+}
+
+function cupboardCard(c) {
+  const countText = c.id === 'games' ? '100 GAMES' : `${c.tools.length} TOYS`;
+  return `
+    <article class="cupboard-card" style="--cup:${c.color};--trim:${c.trim}" data-cupboard="${c.id}">
+      <div class="cupboard-frame">
+        <div class="cupboard-recess" aria-hidden="true">
+          <div class="mini-shelf ms1"><span></span><span></span><span></span></div>
+          <div class="mini-shelf ms2"><span></span><span></span></div>
+        </div>
+        <button type="button" class="cupboard-door" data-open-cupboard="${c.id}" aria-label="Open ${esc(c.name)} cupboard">
+          <span class="hinge h-top" aria-hidden="true"></span>
+          <span class="hinge h-bot" aria-hidden="true"></span>
+          <div class="door-panel">
+            <div class="door-icon-badge">${cupboardIconSVG(c.id)}</div>
+            <span class="cupboard-label">${esc(c.name)}</span>
+            <span class="cupboard-badge">${countText}</span>
+          </div>
+          <span class="door-knob" aria-hidden="true"></span>
+        </button>
+      </div>
+    </article>
+  `;
+}
+
+function home() {
+  toolCleanup?.();
+  toolCleanup = null;
+  view++;
+  active = 'all';
+  updateNav();
+  $('#waffle-speech').textContent = 'Pick a cupboard!';
+
+  $('#main').innerHTML = `
+    <section class="kitchen-wall" aria-label="Cozy 2.5D Kitchen Wall">
+      <div class="wall-banner">
+        <h1>Welcome to the Kitchen!</h1>
+        <p>Open any cupboard to play with cozy tools — or tap Sir Waffle anytime!</p>
+      </div>
+      <div class="cupboard-grid">
+        ${ALL_CUPBOARDS.map(cupboardCard).join('')}
+      </div>
+      <div class="kitchen-counter-ledge" aria-hidden="true">
+        <div class="ledge-top"></div>
+        <div class="ledge-front"></div>
+      </div>
+    </section>
+  `;
+  bindActions();
+}
+
+function shelfItemCard(t) {
+  const isFav = favorites.has(t.id);
+  return `
+    <div class="shelf-object-slot">
+      <button type="button" class="favorite-sticker ${isFav ? 'is-favorite' : ''}" data-fav="${t.id}" aria-label="${isFav ? 'Unsave' : 'Save'} ${esc(t.name)}" aria-pressed="${isFav}">
+        ${uiIconSVG('heart')}
+      </button>
+      <button type="button" class="shelf-object" data-tool="${t.id}" style="--cup:${t.color}">
+        <span class="object-prop">${toolPropSVG(t.id)}</span>
+        <span class="object-shadow" aria-hidden="true"></span>
+        <span class="object-tag">
+          <strong>${esc(t.name)}</strong>
+          <small>${esc(t.description)}</small>
+        </span>
+      </button>
+    </div>
+  `;
+}
+
+function chunkShelves(items, perShelf) {
+  const shelves = [];
+  for (let i = 0; i < items.length; i += perShelf) {
+    shelves.push(items.slice(i, i + perShelf));
+  }
+  return shelves;
+}
+
+async function collection(id) {
+  toolCleanup?.();
+  toolCleanup = null;
+  view++;
+  const ticket = view;
+  active = id;
+  updateNav();
+
+  if (id === 'games') {
+    $('#waffle-speech').textContent = 'Play time!';
+    $('#main').innerHTML = `
+      <section class="open-cupboard" style="--cup:#dfd0f5;--trim:#a68fd1">
+        <div class="open-cupboard-head">
+          <button type="button" class="gbtn close-door-btn" data-nav="all">
+            <span class="btn-svg">${uiIconSVG('back')}</span> Close Cupboard
+          </button>
+          <div class="cupboard-head-title">
+            <span class="head-icon">${cupboardIconSVG('games')}</span>
+            <div>
+              <h1>Games & Fun</h1>
+              <p>100 playable games on the arcade shelf</p>
+            </div>
+          </div>
+        </div>
+        <div class="tool-workspace" id="game-root"><p class="empty-msg">Sliding out the arcade shelf…</p></div>
+      </section>
+    `;
+    bindActions();
+    try {
+      const m = await import('./games.js');
+      if (ticket === view) await m.mountGames($('#game-root'));
+    } catch (e) {
+      if (ticket === view) $('#game-root').textContent = 'The arcade could not load.';
+      console.error(e);
+    }
+    return;
+  }
+
+  const c = cupboards.find(x => x.id === id);
+  const title = c ? c.name : id === 'favorites' ? 'Saved Toys' : 'Recently Played';
+  const subtitle = c ? c.short : id === 'favorites' ? 'Your favorite kitchen objects' : 'Pick up where you left off';
+  const tools = c
+    ? allTools.filter(t => t.cupboard === id)
+    : id === 'favorites'
+      ? allTools.filter(t => favorites.has(t.id))
+      : recent.map(rid => allTools.find(t => t.id === rid)).filter(Boolean);
+
+  $('#waffle-speech').textContent = c ? `${c.name}!` : 'Your shelf!';
+
+  const perShelf = window.innerWidth <= 640 ? 2 : 3;
+  const shelves = chunkShelves(tools, perShelf);
+
+  $('#main').innerHTML = `
+    <section class="open-cupboard" style="--cup:${c?.color || '#ffe5a8'};--trim:${c?.trim || '#d4a65a'}">
+      <div class="swing-wing left" aria-hidden="true"></div>
+      <div class="swing-wing right" aria-hidden="true"></div>
+      <div class="open-cupboard-head">
+        <button type="button" class="gbtn close-door-btn" data-nav="all">
+          <span class="btn-svg">${uiIconSVG('back')}</span> Close Cupboard
+        </button>
+        <div class="cupboard-head-title">
+          <span class="head-icon">${cupboardIconSVG(c?.id || 'math')}</span>
+          <div>
+            <h1>${esc(title)}</h1>
+            <p>${esc(subtitle)} • ${tools.length} ${tools.length === 1 ? 'object' : 'objects'}</p>
+          </div>
+        </div>
+      </div>
+      <div class="cupboard-shelves-stage">
+        ${shelves.length ? shelves.map(row => `
+          <div class="wooden-shelf-row">
+            <div class="shelf-objects-grid">${row.map(shelfItemCard).join('')}</div>
+            <div class="wooden-plank" aria-hidden="true"></div>
+          </div>
+        `).join('') : `
+          <div class="empty-shelf">
+            <p>${id === 'favorites' ? 'Tap the heart sticker on any toy to keep it on this shelf!' : 'Open any toy in a cupboard and it will appear here!'}</p>
+            <button type="button" class="gbtn gbtn-primary" data-nav="all">Back to Kitchen Wall</button>
+          </div>
+        `}
+      </div>
+    </section>
+  `;
+  bindActions();
+  window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+async function openTool(id) {
+  const t = allTools.find(x => x.id === id);
+  if (!t) return;
+  toolCleanup?.();
+  toolCleanup = null;
+  view++;
+  const ticket = view;
+  active = t.cupboard;
+  recent = [id, ...recent.filter(x => x !== id)].slice(0, 20);
+  storage.set('bite-recent', recent);
+  updateNav();
+  $('#waffle-speech').textContent = t.name + '!';
+
+  const cup = cupboards.find(c => c.id === t.cupboard);
+  const isFav = favorites.has(id);
+
+  $('#main').innerHTML = `
+    <section class="tool-workbench" style="--cup:${t.color};--trim:${cup?.trim || '#b88456'}">
+      <div class="workbench-top">
+        <button type="button" class="gbtn close-door-btn" data-nav="${t.cupboard}">
+          <span class="btn-svg">${uiIconSVG('back')}</span> Back to ${esc(cup?.name || 'Shelf')}
+        </button>
+        <div class="workbench-title">
+          <span class="workbench-prop">${toolPropSVG(t.id)}</span>
+          <div>
+            <h1>${esc(t.name)}</h1>
+            <p>${esc(t.description)}</p>
+          </div>
+        </div>
+        <button type="button" class="gbtn favorite-btn ${isFav ? 'is-favorite' : ''}" data-fav="${id}" aria-label="${isFav ? 'Unsave' : 'Save'} ${esc(t.name)}" aria-pressed="${isFav}">
+          <span class="btn-svg">${uiIconSVG('heart')}</span>
+        </button>
+      </div>
+      <div class="tool-workspace" id="tool-root"><p class="empty-msg">Lifting off the shelf…</p></div>
+    </section>
+  `;
+  bindActions();
+  window.scrollTo({ top: 0, behavior: 'auto' });
+
+  try {
+    const module = (t.cupboard === 'math' || t.cupboard === 'science')
+      ? await import('./tools-math-science.js')
+      : t.cupboard === 'code'
+        ? await import('./tools-code.js')
+        : await import('./tools-text-art.js');
+    if (ticket !== view) return;
+    $('#tool-root').replaceChildren();
+    const result = module.mountMathScience?.(id, $('#tool-root'))
+      || module.mountCode?.(id, $('#tool-root'))
+      || module.mountTextArt?.(id, $('#tool-root'));
+    if (typeof result === 'function') toolCleanup = result;
+    if (!result) $('#tool-root').textContent = 'This toy could not be opened.';
+  } catch (e) {
+    console.error(e);
+    if (ticket === view) $('#tool-root').textContent = 'Something went wrong opening this toy.';
+  }
+}
+
+function bindActions(root = document) {
+  root.querySelectorAll('[data-nav]').forEach(b => {
+    b.onclick = () => navigate(b.dataset.nav);
+  });
+
+  root.querySelectorAll('[data-open-cupboard]').forEach(b => {
+    b.onclick = () => {
+      const id = b.dataset.openCupboard;
+      const card = b.closest('.cupboard-card');
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (!card || reduced) {
+        navigate(id);
+        return;
+      }
+      card.classList.add('is-opening');
+      setTimeout(() => navigate(id), 340);
+    };
+  });
+
+  root.querySelectorAll('[data-tool]').forEach(b => {
+    b.onclick = () => { location.hash = 'tool/' + b.dataset.tool; };
+  });
+
+  root.querySelectorAll('[data-fav]').forEach(b => {
+    b.onclick = e => {
+      e.stopPropagation();
+      const id = b.dataset.fav;
+      if (favorites.has(id)) favorites.delete(id);
+      else favorites.add(id);
+      storage.set('bite-favorites', [...favorites]);
+      document.querySelectorAll(`[data-fav="${id}"]`).forEach(el => {
+        el.classList.toggle('is-favorite', favorites.has(id));
+        el.setAttribute('aria-pressed', String(favorites.has(id)));
+      });
+      $('#fav-count').textContent = favorites.size;
+      toast(favorites.has(id) ? 'Saved to your favorites shelf!' : 'Removed from favorites.');
+      if (active === 'favorites') collection('favorites');
+    };
+  });
+}
+
+function navigate(id) {
+  location.hash = id === 'all' ? 'kitchen' : id;
+}
+
+function route() {
+  document.querySelectorAll('.tool-form').forEach(n => n.dispatchEvent(new Event('tool-dispose')));
+  toolCleanup?.();
+  toolCleanup = null;
+  const hash = decodeURIComponent(location.hash.slice(1));
+  if (hash.startsWith('tool/')) openTool(hash.slice(5));
+  else if (cupboards.some(c => c.id === hash) || ['favorites', 'recent', 'games'].includes(hash)) collection(hash);
+  else home();
+}
+
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+window.addEventListener('hashchange', route);
+bindActions();
+route();
+
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  navigator.serviceWorker.register('./sw.js').catch(console.warn);
+}

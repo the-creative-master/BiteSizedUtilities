@@ -1,7 +1,7 @@
 import {defineConfig} from 'vite';
 import fs from 'node:fs';
 import path from 'node:path';
-export default defineConfig({base:'./',build:{target:'es2022',chunkSizeWarningLimit:1200},plugins:[{name:'local-assets-and-offline',configureServer(server){
+export default defineConfig({base:'./',server:{host:'0.0.0.0',allowedHosts:true},preview:{host:'0.0.0.0',allowedHosts:true},build:{target:'es2022',chunkSizeWarningLimit:1200},plugins:[{name:'local-assets-and-offline',configureServer(server){
  // Serve runtime JS byte-for-byte: Vite's HMR import breaks classic workers/importScripts.
  const runtimeRoot=path.resolve('runtimes');
  server.middlewares.use((req,res,next)=>{

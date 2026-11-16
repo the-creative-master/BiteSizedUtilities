@@ -1,5 +1,6 @@
-// 10 bespoke 2.5D Mobile-Game Math & Numbers utilities.
+// 10 bespoke 2.5D Mobile-Game Math & Numbers utilities with tactile toys, visualizers & SFX.
 import { el, createGameSlider, createGameTabs, createGameToggle, createGameField } from './game-ui.js';
+import { playPop, playSquish, playDiceRoll, playSparkle } from './sfx.js';
 
 const PI = Math.PI;
 const INK = '#4b3121';
@@ -136,7 +137,7 @@ function evalExpression(source, { degrees = false, xValue = null } = {}) {
 }
 
 // =========================================================================
-// 1. CALCULATOR
+// 1. CALCULATOR — 2.5D Handheld Pocket Toy
 // =========================================================================
 function calculator(root) {
   let degrees = false;
@@ -146,7 +147,7 @@ function calculator(root) {
     type: 'text',
     class: 'calc-expr-input',
     value: '(12 + 8) * 3 / 2',
-    placeholder: 'Type or tap buttons…',
+    placeholder: 'Tap keys or type…',
     autocomplete: 'off',
     spellcheck: 'false',
     'aria-label': 'Calculator expression'
@@ -159,7 +160,7 @@ function calculator(root) {
     offLabel: 'RAD',
     onLabel: 'DEG',
     label: 'Angle unit',
-    onChange: v => { degrees = v; evaluate(); }
+    onChange: v => { degrees = v; playPop(540); evaluate(); }
   });
 
   function renderTape() {
@@ -167,7 +168,7 @@ function calculator(root) {
       el('button', {
         type: 'button',
         class: 'gbtn gbtn-chip',
-        onclick: () => { exprInput.value = item.expr; evaluate(); }
+        onclick: () => { playPop(480); exprInput.value = item.expr; evaluate(); }
       }, `${item.expr} = ${item.res}`)
     ));
   }
@@ -187,6 +188,7 @@ function calculator(root) {
       void resultOut.offsetWidth;
       resultOut.classList.add('pop-bounce');
       if (record) {
+        playSparkle();
         history.unshift({ expr: raw, res: ans });
         if (history.length > 6) history.pop();
         renderTape();
@@ -198,8 +200,9 @@ function calculator(root) {
   }
 
   function insertKey(val) {
-    if (val === 'C') { exprInput.value = ''; evaluate(); return; }
+    if (val === 'C') { playSquish(); exprInput.value = ''; evaluate(); return; }
     if (val === '⌫') {
+      playPop(380);
       const s = exprInput.selectionStart ?? exprInput.value.length;
       const e = exprInput.selectionEnd ?? s;
       const from = s === e ? Math.max(0, s - 1) : s;
@@ -210,6 +213,7 @@ function calculator(root) {
       return;
     }
     if (val === '=') { evaluate(true); return; }
+    playPop(460 + (val.charCodeAt(0) % 7) * 35);
     const s = exprInput.selectionStart ?? exprInput.value.length;
     const e = exprInput.selectionEnd ?? s;
     exprInput.value = exprInput.value.slice(0, s) + val + exprInput.value.slice(e);
@@ -246,8 +250,10 @@ function calculator(root) {
 
   const shell = el('div', { class: 'game-panel calc-shell' },
     el('div', { class: 'calc-top-row' },
-      el('span', { class: 'gbadge' }, 'POCKET CALC'),
-      angleToggle.el
+      el('span', { class: 'toy-screw' }),
+      el('span', { class: 'gbadge' }, 'WAFFLE-CALC 2500'),
+      angleToggle.el,
+      el('span', { class: 'toy-screw' })
     ),
     el('div', { class: 'calc-screen' },
       exprInput,
@@ -261,7 +267,7 @@ function calculator(root) {
 }
 
 // =========================================================================
-// 2. GRAPHING CALCULATOR
+// 2. GRAPHING CALCULATOR — 2.5D Wooden Tablet Plotter
 // =========================================================================
 function graphingCalculator(root) {
   const slots = [
@@ -270,11 +276,11 @@ function graphingCalculator(root) {
     { id: 'h', label: 'h(x)', color: '#8a6bb8', expr: 'cos(2*x)', visible: false }
   ];
   let activeSlot = 'f';
-  let centerX = 0, centerY = 0, scale = 42; // pixels per unit
+  let centerX = 0, centerY = 0, scale = 42;
   let hoverPt = null;
 
   const canvas = el('canvas', { class: 'graph-canvas', width: 680, height: 390, 'aria-label': '2.5D Graphing calculator grid' });
-  const readout = el('div', { class: 'graph-readout' }, 'Tap or hover the 2.5D grid to inspect (x, y)');
+  const readout = el('div', { class: 'graph-readout' }, 'Slide or tap the 2.5D grid to trace points');
   const exprField = createGameField({
     label: 'Formula y =',
     value: slots[0].expr,
@@ -290,6 +296,7 @@ function graphingCalculator(root) {
     offLabel: 'HIDDEN',
     label: 'Show curve',
     onChange: v => {
+      playPop(500);
       const s = slots.find(x => x.id === activeSlot);
       if (s) { s.visible = v; draw(); }
     }
@@ -312,6 +319,7 @@ function graphingCalculator(root) {
     ],
     value: 'f',
     onChange: val => {
+      playPop(540);
       if (val === 'table') {
         tableBox.hidden = false;
         renderTable();
@@ -352,24 +360,20 @@ function graphingCalculator(root) {
     const w = canvas.width, h = canvas.height;
     ctx.clearRect(0, 0, w, h);
 
-    // Warm parchment background
     ctx.fillStyle = '#fff8ea';
     ctx.fillRect(0, 0, w, h);
-
-    // Subtle 2.5D top inner recess strip
     ctx.fillStyle = '#efe0c2';
-    ctx.fillRect(0, 0, w, 7);
+    ctx.fillRect(0, 0, w, 9);
+    ctx.fillRect(0, 0, 7, h);
 
     const originX = w / 2 - centerX * scale;
     const originY = h / 2 + centerY * scale;
 
-    // Grid spacing adaptive
     const rawStep = 65 / scale;
     const mag = 10 ** Math.floor(Math.log10(rawStep));
     const norm = rawStep / mag;
     const step = (norm < 1.5 ? 1 : norm < 3.5 ? 2 : norm < 7.5 ? 5 : 10) * mag;
 
-    // Minor grid
     ctx.strokeStyle = '#efe2c9';
     ctx.lineWidth = 1.5;
     const minX = Math.floor((0 - originX) / (scale * step)) * step;
@@ -385,7 +389,6 @@ function graphingCalculator(root) {
       ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(w, py); ctx.stroke();
     }
 
-    // Axes
     ctx.strokeStyle = '#8b6647';
     ctx.lineWidth = 3;
     if (originX >= 0 && originX <= w) {
@@ -395,7 +398,6 @@ function graphingCalculator(root) {
       ctx.beginPath(); ctx.moveTo(0, originY); ctx.lineTo(w, originY); ctx.stroke();
     }
 
-    // Labels
     ctx.fillStyle = '#6d4b33';
     ctx.font = '700 13px Nunito, sans-serif';
     for (let x = minX; x <= maxX; x += step) {
@@ -411,12 +413,10 @@ function graphingCalculator(root) {
       ctx.fillText(Number(y.toPrecision(4)).toString(), px, py - 5);
     }
 
-    // Plot smooth curves
     const errors = [];
     for (const s of slots) {
       if (!s.visible || !s.expr.trim()) continue;
       try {
-        // Test expression once
         evalExpression(s.expr, { xValue: 0 });
       } catch (err) {
         if (err.message !== 'Undefined math result.' && err.message !== 'Cannot divide by zero.') {
@@ -431,32 +431,25 @@ function graphingCalculator(root) {
       ctx.beginPath();
       let drawing = false;
       let prevPy = null;
-      const pxStep = 2;
-      for (let px = 0; px <= w; px += pxStep) {
+      for (let px = 0; px <= w; px += 2) {
         const xv = (px - originX) / scale;
         try {
           const yv = evalExpression(s.expr, { xValue: xv });
           const py = originY - yv * scale;
           if (!Number.isFinite(py) || Math.abs(py) > h * 4 || (prevPy !== null && Math.abs(py - prevPy) > h * 0.9)) {
-            drawing = false;
-            prevPy = null;
+            drawing = false; prevPy = null;
           } else if (!drawing) {
-            ctx.moveTo(px, py);
-            drawing = true;
-            prevPy = py;
+            ctx.moveTo(px, py); drawing = true; prevPy = py;
           } else {
-            ctx.lineTo(px, py);
-            prevPy = py;
+            ctx.lineTo(px, py); prevPy = py;
           }
         } catch {
-          drawing = false;
-          prevPy = null;
+          drawing = false; prevPy = null;
         }
       }
       ctx.stroke();
     }
 
-    // Hover crosshair
     if (hoverPt) {
       const xv = (hoverPt.x - originX) / scale;
       ctx.strokeStyle = '#c49d78';
@@ -475,7 +468,7 @@ function graphingCalculator(root) {
             ctx.fillStyle = s.color;
             ctx.strokeStyle = INK;
             ctx.lineWidth = 2.5;
-            ctx.beginPath(); ctx.arc(hoverPt.x, py, 6, 0, PI * 2); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.arc(hoverPt.x, py, 6.5, 0, PI * 2); ctx.fill(); ctx.stroke();
           }
           parts.push(`${s.label} = ${Number(yv.toFixed(3))}`);
         } catch {}
@@ -501,6 +494,7 @@ function graphingCalculator(root) {
       type: 'button',
       class: 'gbtn gbtn-chip',
       onclick: () => {
+        playPop(580);
         const s = slots.find(x => x.id === activeSlot);
         if (s) { s.expr = p; s.visible = true; exprField.input.value = p; syncVisibility(); draw(); }
       }
@@ -508,13 +502,13 @@ function graphingCalculator(root) {
   );
 
   const zoomPad = el('div', { class: 'graph-controls' },
-    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { scale = Math.min(200, scale * 1.25); draw(); } }, 'Zoom +'),
-    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { scale = Math.max(10, scale / 1.25); draw(); } }, 'Zoom −'),
-    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { centerX -= 1.5; draw(); } }, '←'),
-    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { centerX += 1.5; draw(); } }, '→'),
-    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { centerY += 1.5; draw(); } }, '↑'),
-    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { centerY -= 1.5; draw(); } }, '↓'),
-    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { centerX = 0; centerY = 0; scale = 42; draw(); } }, 'Center')
+    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { playPop(600); scale = Math.min(200, scale * 1.25); draw(); } }, 'Zoom +'),
+    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { playPop(420); scale = Math.max(10, scale / 1.25); draw(); } }, 'Zoom −'),
+    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { playPop(460); centerX -= 1.5; draw(); } }, '←'),
+    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { playPop(460); centerX += 1.5; draw(); } }, '→'),
+    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { playPop(460); centerY += 1.5; draw(); } }, '↑'),
+    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { playPop(460); centerY -= 1.5; draw(); } }, '↓'),
+    el('button', { type: 'button', class: 'gbtn gbtn-mini warn', onclick: () => { playSquish(); centerX = 0; centerY = 0; scale = 42; draw(); } }, 'Center')
   );
 
   root.replaceChildren(
@@ -532,17 +526,13 @@ function graphingCalculator(root) {
 }
 
 // =========================================================================
-// 3. BODILY CALCULATOR (BMI etc.)
+// 3. BODILY CALCULATOR — Cozy Scale Dial Gauge + Custom Sliders
 // =========================================================================
 function bodilyCalculator(root) {
   let imperial = false;
   let sex = 'female';
   let activity = 1.375;
-
-  let heightCm = 170;
-  let weightKg = 66;
   let age = 26;
-  let waistCm = 76;
 
   const unitToggle = createGameToggle({
     checked: false,
@@ -550,16 +540,11 @@ function bodilyCalculator(root) {
     onLabel: 'IN / LB',
     label: 'Unit system',
     onChange: val => {
+      playPop(520);
       imperial = val;
-      if (imperial) {
-        heightSlider.el.querySelector('.gslider-label').textContent = 'Height (inches)';
-        weightSlider.el.querySelector('.gslider-label').textContent = 'Weight (pounds)';
-        waistSlider.el.querySelector('.gslider-label').textContent = 'Waist (inches)';
-      } else {
-        heightSlider.el.querySelector('.gslider-label').textContent = 'Height (cm)';
-        weightSlider.el.querySelector('.gslider-label').textContent = 'Weight (kg)';
-        waistSlider.el.querySelector('.gslider-label').textContent = 'Waist (cm)';
-      }
+      heightSlider.el.querySelector('.gslider-label').textContent = imperial ? 'Height (ft / in)' : 'Height (cm)';
+      weightSlider.el.querySelector('.gslider-label').textContent = imperial ? 'Weight (lb)' : 'Weight (kg)';
+      waistSlider.el.querySelector('.gslider-label').textContent = imperial ? 'Waist (in)' : 'Waist (cm)';
       update();
     }
   });
@@ -570,7 +555,7 @@ function bodilyCalculator(root) {
       { value: 'male', label: 'Male', icon: '🌿' }
     ],
     value: 'female',
-    onChange: v => { sex = v; update(); }
+    onChange: v => { playPop(540); sex = v; update(); }
   });
 
   const activityTabs = createGameTabs({
@@ -581,39 +566,53 @@ function bodilyCalculator(root) {
       { value: '1.725', label: 'Sporty' }
     ],
     value: '1.375',
-    onChange: v => { activity = Number(v); update(); }
+    onChange: v => { playPop(560); activity = Number(v); update(); }
   });
 
-  const heightSlider = createGameSlider({ label: 'Height (cm)', min: 120, max: 220, step: 1, value: 170, color: '#9bc9f2', onChange: v => { heightCm = imperial ? v * 2.54 : v; update(); } });
-  const weightSlider = createGameSlider({ label: 'Weight (kg)', min: 35, max: 180, step: 0.5, value: 66, color: '#f7b2a6', onChange: v => { weightKg = imperial ? v * 0.45359237 : v; update(); } });
+  const heightSlider = createGameSlider({ label: 'Height (cm)', min: 120, max: 220, step: 1, value: 170, color: '#9bc9f2', onChange: () => update() });
+  const weightSlider = createGameSlider({ label: 'Weight (kg)', min: 35, max: 180, step: 0.5, value: 66, color: '#f7b2a6', onChange: () => update() });
   const ageSlider = createGameSlider({ label: 'Age (years)', min: 14, max: 95, step: 1, value: 26, color: '#ffe082', onChange: v => { age = v; update(); } });
-  const waistSlider = createGameSlider({ label: 'Waist (cm)', min: 50, max: 140, step: 1, value: 76, color: '#b7dfb3', onChange: v => { waistCm = imperial ? v * 2.54 : v; update(); } });
+  const waistSlider = createGameSlider({ label: 'Waist (cm)', min: 50, max: 140, step: 1, value: 76, color: '#b7dfb3', onChange: () => update() });
 
   const bmiValEl = el('div', { class: 'stat-big' }, '22.8');
-  const bmiBadge = el('span', { class: 'gbadge' }, 'Cozy & Balanced');
-  const pinEl = el('div', { class: 'bmi-pin' }, '▼');
+  const bmiBadge = el('span', { class: 'gbadge' }, 'Cozy & Healthy');
+  const dialWrap = el('div', { class: 'bmi-dial-wrap' });
   const bmrValEl = el('div', { class: 'stat-mid' });
   const tdeeValEl = el('div', { class: 'stat-mid' });
   const rangeValEl = el('div', { class: 'stat-mid' });
   const whtrValEl = el('div', { class: 'stat-mid' });
+
+  function renderDial(bmi) {
+    // Map BMI 12..40 to -78deg..+78deg
+    const clamped = Math.min(40, Math.max(12, bmi));
+    const deg = -78 + ((clamped - 12) / 28) * 156;
+    dialWrap.innerHTML = `<svg class="game-svg" viewBox="0 0 220 125" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M22 105 A88 88 0 0 1 65 30" stroke="#bfe3ff" stroke-width="20" stroke-linecap="round"/>
+      <path d="M68 28 A88 88 0 0 1 132 20" stroke="#b8e3b3" stroke-width="20" stroke-linecap="round"/>
+      <path d="M135 21 A88 88 0 0 1 175 48" stroke="#ffe082" stroke-width="20" stroke-linecap="round"/>
+      <path d="M177 51 A88 88 0 0 1 198 105" stroke="#ffb3a7" stroke-width="20" stroke-linecap="round"/>
+      <path d="M22 105 A88 88 0 0 1 198 105" stroke="${INK}" stroke-width="3.5" stroke-dasharray="2 12" opacity="0.35"/>
+      <g transform="translate(110,104) rotate(${deg.toFixed(1)})">
+        <path d="M-6 0 L0 -76 L6 0 Z" fill="#e36d5b" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+      </g>
+      <circle cx="110" cy="104" r="12" fill="#ffe184" stroke="${INK}" stroke-width="3.5"/>
+    </svg>`;
+  }
 
   function update() {
     const hVal = heightSlider.getValue();
     const wVal = weightSlider.getValue();
     const wsVal = waistSlider.getValue();
 
-    // Interpret slider directly according to unit mode
-    const cm = imperial ? (hVal * 1.15) : hVal; // keep sliders mapped nicely:
     const actualCm = imperial ? Math.round(48 + ((hVal - 120) / 100) * 38) * 2.54 : hVal;
     const actualKg = imperial ? Math.round(80 + ((wVal - 35) / 145) * 270) * 0.45359237 : wVal;
     const actualWaist = imperial ? Math.round(20 + ((wsVal - 50) / 90) * 36) * 2.54 : wsVal;
 
-    // Update badge texts with exact displayed units when imperial
     if (imperial) {
       const inches = Math.round(actualCm / 2.54);
       const lbs = Math.round(actualKg / 0.45359237);
       const wIn = Math.round(actualWaist / 2.54);
-      heightSlider.el.querySelector('.gslider-badge').textContent = `${Math.floor(inches / 12)}'${inches % 12}" (${inches} in)`;
+      heightSlider.el.querySelector('.gslider-badge').textContent = `${Math.floor(inches / 12)}'${inches % 12}"`;
       weightSlider.el.querySelector('.gslider-badge').textContent = `${lbs} lb`;
       waistSlider.el.querySelector('.gslider-badge').textContent = `${wIn} in`;
     } else {
@@ -625,17 +624,15 @@ function bodilyCalculator(root) {
     const m = actualCm / 100;
     const bmi = actualKg / (m * m);
     bmiValEl.textContent = bmi.toFixed(1);
+    renderDial(bmi);
 
-    let cat = 'Healthy Range', badgeBg = '#b8e3b3';
+    let cat = 'Cozy & Healthy', badgeBg = '#b8e3b3';
     if (bmi < 18.5) { cat = 'Light / Underweight'; badgeBg = '#bfe3ff'; }
     else if (bmi < 25) { cat = 'Cozy & Healthy'; badgeBg = '#b8e3b3'; }
     else if (bmi < 30) { cat = 'Slightly Over'; badgeBg = '#ffe082'; }
     else { cat = 'High BMI'; badgeBg = '#ffb3a7'; }
     bmiBadge.textContent = cat;
     bmiBadge.style.background = badgeBg;
-
-    const pct = Math.min(96, Math.max(4, ((bmi - 14) / 24) * 100));
-    pinEl.style.left = `${pct}%`;
 
     const bmr = 10 * actualKg + 6.25 * actualCm - 5 * age + (sex === 'male' ? 5 : -161);
     const tdee = bmr * activity;
@@ -657,7 +654,7 @@ function bodilyCalculator(root) {
     el('div', { class: 'body-top' },
       el('div', { class: 'body-title-row' },
         (() => { const d = el('span'); d.innerHTML = cuteHeaderIcon; return d; })(),
-        el('div', {}, el('strong', {}, 'Cozy Health Check'), el('p', {}, 'Slide the knobs to explore BMI, calories & ratios'))
+        el('div', {}, el('strong', {}, 'Cozy Kitchen Scale & BMI'), el('p', {}, 'Drag the round sliders to watch the dial needle swing'))
       ),
       unitToggle.el
     ),
@@ -673,18 +670,10 @@ function bodilyCalculator(root) {
       ),
       el('div', { class: 'pastel-card cream' },
         el('div', { class: 'bmi-card' },
-          el('span', { class: 'gfield-label' }, 'Body Mass Index (BMI)'),
+          el('span', { class: 'gfield-label' }, 'Body Mass Dial'),
+          dialWrap,
           bmiValEl,
-          bmiBadge,
-          el('div', { class: 'bmi-meter' },
-            pinEl,
-            el('div', { class: 'bmi-bar' },
-              el('span', { style: 'width:20%;background:#bfe3ff' }),
-              el('span', { style: 'width:32%;background:#b8e3b3' }),
-              el('span', { style: 'width:24%;background:#ffe082' }),
-              el('span', { style: 'width:24%;background:#ffb3a7' })
-            )
-          )
+          bmiBadge
         ),
         el('div', { class: 'stat-grid' },
           el('div', { class: 'stat-box' }, el('span', {}, '🔥 Resting BMR'), bmrValEl),
@@ -700,7 +689,7 @@ function bodilyCalculator(root) {
 }
 
 // =========================================================================
-// 4. FRACTION CALCULATOR
+// 4. FRACTION CALCULATOR — Wooden Bakery Fraction Blocks & Pie
 // =========================================================================
 function gcdBig(a, b) {
   a = a < 0n ? -a : a;
@@ -714,6 +703,7 @@ function makeFractionBox(label, initN, initD, color, onChange) {
   const denIn = el('input', { type: 'text', class: 'frac-input', value: String(initD), inputmode: 'numeric', 'aria-label': `${label} denominator` });
 
   const step = (inp, delta, preventZero = false) => {
+    playPop(delta > 0 ? 580 : 440);
     const v = parseInt(inp.value, 10);
     let next = (Number.isFinite(v) ? v : 0) + delta;
     if (preventZero && next === 0) next += delta;
@@ -759,7 +749,7 @@ function fractions(root) {
     ],
     value: '+',
     cls: 'frac-ops',
-    onChange: v => { op = v; compute(); }
+    onChange: v => { playPop(560); op = v; compute(); }
   });
 
   function drawPie(n, d) {
@@ -769,7 +759,7 @@ function fractions(root) {
       return;
     }
     const ratio = Math.min(1, Math.max(0, Math.abs(num) / den));
-    const cx = 48, cy = 48, r = 38;
+    const cx = 56, cy = 56, r = 46;
     const angle = ratio * 2 * PI;
     const x = cx + r * Math.sin(angle);
     const y = cy - r * Math.cos(angle);
@@ -780,9 +770,9 @@ function fractions(root) {
     let lines = '';
     for (let k = 0; k < den; k++) {
       const a = (k / den) * 2 * PI;
-      lines += `<line x1="${cx}" y1="${cy}" x2="${(cx + r * Math.sin(a)).toFixed(2)}" y2="${(cy - r * Math.cos(a)).toFixed(2)}" stroke="${INK}" stroke-width="2"/>`;
+      lines += `<line x1="${cx}" y1="${cy}" x2="${(cx + r * Math.sin(a)).toFixed(2)}" y2="${(cy - r * Math.cos(a)).toFixed(2)}" stroke="${INK}" stroke-width="2.2"/>`;
     }
-    pieWrap.innerHTML = `<svg class="game-svg" width="96" height="96" viewBox="0 0 96 96"><circle cx="${cx}" cy="${cy}" r="${r}" fill="#fff6df" stroke="${INK}" stroke-width="3.5"/>${slice}${lines}<circle cx="${cx}" cy="${cy}" r="5" fill="#fff6df" stroke="${INK}" stroke-width="2.5"/></svg>`;
+    pieWrap.innerHTML = `<svg class="game-svg" width="112" height="112" viewBox="0 0 112 112"><circle cx="${cx}" cy="${cy + 4}" r="${r}" fill="#d6a057" stroke="${INK}" stroke-width="3.5"/><circle cx="${cx}" cy="${cy}" r="${r}" fill="#fff6df" stroke="${INK}" stroke-width="3.5"/>${slice}${lines}<circle cx="${cx}" cy="${cy}" r="6" fill="#fff6df" stroke="${INK}" stroke-width="2.5"/></svg>`;
   }
 
   function compute() {
@@ -834,7 +824,7 @@ function fractions(root) {
 }
 
 // =========================================================================
-// 5. PERCENTAGE CALCULATOR
+// 5. PERCENTAGE CALCULATOR — Cozy Shop Price Tag & Gold Coins
 // =========================================================================
 function percentage(root) {
   let mode = 'of';
@@ -842,6 +832,7 @@ function percentage(root) {
   const bField = createGameField({ label: 'Amount', value: '150', inputmode: 'decimal', onInput: update });
   const out = el('div', { class: 'output', 'aria-live': 'polite' });
   const barFill = el('div', { class: 'pct-fill' });
+  const priceTagBig = el('div', { class: 'price-tag-val' }, '30');
 
   const modeTabs = createGameTabs({
     items: [
@@ -853,6 +844,7 @@ function percentage(root) {
     ],
     value: 'of',
     onChange: v => {
+      playPop(540);
       mode = v;
       if (v === 'of') { aField.el.querySelector('.gfield-label').textContent = 'Percent A (%)'; bField.el.querySelector('.gfield-label').textContent = 'Of Value B'; }
       else if (v === 'what') { aField.el.querySelector('.gfield-label').textContent = 'Part A'; bField.el.querySelector('.gfield-label').textContent = 'Whole B'; }
@@ -868,7 +860,7 @@ function percentage(root) {
       el('button', {
         type: 'button',
         class: 'gbtn gbtn-coin',
-        onclick: () => { aField.input.value = String(p); update(); }
+        onclick: () => { playPop(640); aField.input.value = String(p); update(); }
       }, `${p}%`)
     )
   );
@@ -879,6 +871,7 @@ function percentage(root) {
     if (!aField.input.value.trim() || !bField.input.value.trim() || !Number.isFinite(a) || !Number.isFinite(b)) {
       out.classList.add('error');
       out.textContent = 'Enter valid numbers in both boxes.';
+      priceTagBig.textContent = '?';
       return;
     }
     out.classList.remove('error');
@@ -886,38 +879,46 @@ function percentage(root) {
     if (mode === 'of') {
       const res = (a / 100) * b;
       fillPct = Math.min(100, Math.max(0, a));
+      priceTagBig.textContent = numberText(res);
       out.textContent = `${numberText(a)}% of ${numberText(b)} = ${numberText(res)}`;
     } else if (mode === 'what') {
-      if (b === 0) { out.classList.add('error'); out.textContent = 'Whole B cannot be zero.'; return; }
+      if (b === 0) { out.classList.add('error'); out.textContent = 'Whole B cannot be zero.'; priceTagBig.textContent = '—'; return; }
       const pct = (a / b) * 100;
       fillPct = Math.min(100, Math.max(0, pct));
+      priceTagBig.textContent = `${numberText(pct)}%`;
       out.textContent = `${numberText(a)} is ${numberText(pct)}% of ${numberText(b)}`;
     } else if (mode === 'change') {
-      if (a === 0) { out.classList.add('error'); out.textContent = 'Original value A cannot be zero.'; return; }
+      if (a === 0) { out.classList.add('error'); out.textContent = 'Original value A cannot be zero.'; priceTagBig.textContent = '—'; return; }
       const chg = ((b - a) / Math.abs(a)) * 100;
       fillPct = Math.min(100, Math.max(0, Math.abs(chg)));
+      priceTagBig.textContent = `${chg >= 0 ? '+' : ''}${numberText(chg)}%`;
       out.textContent = `${chg >= 0 ? '+' : ''}${numberText(chg)}% change (diff ${numberText(b - a)})`;
     } else if (mode === 'discount') {
       const saved = (a / 100) * b;
       const finalPrice = b - saved;
       fillPct = Math.min(100, Math.max(0, 100 - a));
+      priceTagBig.textContent = numberText(finalPrice);
       out.textContent = `Pay: ${numberText(finalPrice)}   •   You save: ${numberText(saved)} (${numberText(a)}% off)`;
     } else {
       const added = (a / 100) * b;
       fillPct = Math.min(100, Math.max(0, a));
+      priceTagBig.textContent = numberText(b + added);
       out.textContent = `Total: ${numberText(b + added)}   •   Added: ${numberText(added)} (+${numberText(a)}%)`;
     }
     barFill.style.width = `${fillPct}%`;
   }
 
   const tagIcon = `<svg class="game-svg" width="52" height="52" viewBox="0 0 64 64" fill="none"><path d="M12 18 L38 10 L55 30 L33 54 L10 34 Z" fill="#ffe184" stroke="${INK}" stroke-width="3.5" stroke-linejoin="round"/><circle cx="22" cy="24" r="3.5" fill="#fff8e8" stroke="${INK}" stroke-width="2.5"/><circle cx="30" cy="31" r="4" fill="#ff9e85" stroke="${INK}" stroke-width="2.2"/><circle cx="40" cy="37" r="4" fill="#8fd3a4" stroke="${INK}" stroke-width="2.2"/><line x1="40" y1="25" x2="29" y2="43" stroke="${INK}" stroke-width="3" stroke-linecap="round"/></svg>`;
-
   const iconHolder = el('span');
   iconHolder.innerHTML = tagIcon;
 
   root.replaceChildren(
     el('div', { class: 'game-panel' },
-      el('div', { class: 'pct-head' }, iconHolder, el('div', {}, el('strong', {}, 'Cozy Percent Shop'), el('p', {}, 'Tap a quick coin or type your own numbers'))),
+      el('div', { class: 'pct-head' },
+        iconHolder,
+        el('div', { style: 'flex:1' }, el('strong', {}, 'Cozy Bakery Discount Tag'), el('p', {}, 'Tap a gold coin or enter numbers')),
+        el('div', { class: 'hanging-price-tag' }, el('span', { class: 'tag-hole' }), priceTagBig)
+      ),
       modeTabs.el,
       coinRow,
       el('div', { class: 'two-col' }, aField.el, bField.el),
@@ -929,7 +930,7 @@ function percentage(root) {
 }
 
 // =========================================================================
-// 6. DICE ROLLER (CUSTOM FACES)
+// 6. DICE ROLLER — 2.5D Felt Tray + Bouncing Custom Dice
 // =========================================================================
 function secureRandInt(maxExclusive) {
   if (globalThis.crypto?.getRandomValues) {
@@ -975,17 +976,16 @@ function diceRoller(root) {
   function renderTray(bouncing = false) {
     trayEl.replaceChildren(...dice.map((d, idx) => {
       const face = d.faces[d.current] ?? '?';
-      const btn = el('button', {
+      return el('button', {
         type: 'button',
         class: `die-25d ${idx === selectedIdx ? 'is-selected' : ''} ${bouncing ? 'die-bounce' : ''}`,
-        style: `background:${d.color}`,
+        style: `background:${d.color};animation-delay:${idx * 35}ms`,
         'aria-label': `Die ${idx + 1} showing ${face}. Tap to edit faces.`,
-        onclick: () => { selectedIdx = idx; renderTray(); renderEditor(); }
+        onclick: () => { playPop(520); selectedIdx = idx; renderTray(); renderEditor(); }
       },
         el('span', { class: 'die-tag' }, `D${d.faces.length}`),
         renderPipsOrText(face)
       );
-      return btn;
     }));
 
     const shown = dice.map(d => d.faces[d.current] ?? '?');
@@ -1012,6 +1012,7 @@ function diceRoller(root) {
           class: 'gbtn gbtn-mini danger',
           'aria-label': `Remove face ${fi + 1}`,
           onclick: () => {
+            playPop(380);
             d.faces.splice(fi, 1);
             if (d.current >= d.faces.length) d.current = 0;
             renderTray(); renderEditor();
@@ -1037,7 +1038,7 @@ function diceRoller(root) {
         el('button', {
           type: 'button',
           class: 'gbtn gbtn-mini',
-          onclick: () => { d.faces.push(String(d.faces.length + 1)); renderTray(); renderEditor(); }
+          onclick: () => { playPop(580); d.faces.push(String(d.faces.length + 1)); renderTray(); renderEditor(); }
         }, '+ Add Face')
       ),
       el('div', { class: 'preset-row' },
@@ -1045,7 +1046,7 @@ function diceRoller(root) {
           el('button', {
             type: 'button',
             class: 'gbtn gbtn-chip',
-            onclick: () => { d.faces = [...faces]; d.current = 0; renderTray(); renderEditor(); }
+            onclick: () => { playPop(540); d.faces = [...faces]; d.current = 0; renderTray(); renderEditor(); }
           }, name)
         )
       ),
@@ -1054,6 +1055,7 @@ function diceRoller(root) {
   }
 
   function rollAll() {
+    playDiceRoll();
     for (const d of dice) d.current = secureRandInt(d.faces.length);
     renderTray(true);
   }
@@ -1065,6 +1067,7 @@ function diceRoller(root) {
       class: 'gbtn',
       onclick: () => {
         if (dice.length >= 8) return;
+        playPop(600);
         dice.push({ faces: ['1', '2', '3', '4', '5', '6'], current: secureRandInt(6), color: palette[dice.length % palette.length] });
         selectedIdx = dice.length - 1;
         renderTray(true); renderEditor();
@@ -1075,6 +1078,7 @@ function diceRoller(root) {
       class: 'gbtn',
       onclick: () => {
         if (dice.length <= 1) return;
+        playPop(420);
         dice.splice(selectedIdx, 1);
         selectedIdx = Math.min(selectedIdx, dice.length - 1);
         renderTray(); renderEditor();
@@ -1095,7 +1099,7 @@ function diceRoller(root) {
 }
 
 // =========================================================================
-// 7. ROMAN NUMERAL CALCULATOR (WITH VINCULUM)
+// 7. ROMAN NUMERAL CALCULATOR (PARCHMENT + VINCULUM OVERLINE)
 // =========================================================================
 const ROMAN_PAIRS = [
   [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'],
@@ -1111,21 +1115,14 @@ function intToRomanParts(n) {
   const units = n % 1000;
   let over = '';
   let base = '';
-  // Use vinculum for >= 4000 (standard M up to 3999, vinculum for thousands >= 4)
   if (n >= 4000) {
     let t = thousands;
-    for (const [val, sym] of ROMAN_PAIRS) {
-      while (t >= val) { over += sym; t -= val; }
-    }
+    for (const [val, sym] of ROMAN_PAIRS) { while (t >= val) { over += sym; t -= val; } }
     let u = units;
-    for (const [val, sym] of ROMAN_PAIRS) {
-      while (u >= val) { base += sym; u -= val; }
-    }
+    for (const [val, sym] of ROMAN_PAIRS) { while (u >= val) { base += sym; u -= val; } }
   } else {
     let rem = n;
-    for (const [val, sym] of ROMAN_PAIRS) {
-      while (rem >= val) { base += sym; rem -= val; }
-    }
+    for (const [val, sym] of ROMAN_PAIRS) { while (rem >= val) { base += sym; rem -= val; } }
   }
   return { over, base };
 }
@@ -1138,12 +1135,9 @@ function renderRomanNode(n) {
   return frag;
 }
 
-/** Parse Roman input where `_` prefix or combining overline `\u0305` marks vinculum (x1000). */
 function parseRomanInput(raw) {
   const cleaned = raw.trim().toUpperCase().replace(/\s+/g, '');
   if (!cleaned) throw new Error('Enter a Roman numeral (use _V or V̅ for ×1,000).');
-
-  // Tokenize into { sym, vinc }
   const tokens = [];
   for (let i = 0; i < cleaned.length; i++) {
     const ch = cleaned[i];
@@ -1159,7 +1153,7 @@ function parseRomanInput(raw) {
     } else if (ch === '\u0305' || ch === '\u0304') {
       continue;
     } else {
-      throw new Error(`Invalid Roman character “${ch}”. Use I, V, X, L, C, D, M (and _ or overline for ×1000).`);
+      throw new Error(`Invalid Roman character “${ch}”.`);
     }
   }
   const vals = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
@@ -1167,12 +1161,8 @@ function parseRomanInput(raw) {
   for (let i = 0; i < tokens.length; i++) {
     const cur = vals[tokens[i].sym] * (tokens[i].vinc ? 1000 : 1);
     const nxt = i + 1 < tokens.length ? vals[tokens[i + 1].sym] * (tokens[i + 1].vinc ? 1000 : 1) : 0;
-    if (cur < nxt) {
-      total += nxt - cur;
-      i++;
-    } else {
-      total += cur;
-    }
+    if (cur < nxt) { total += nxt - cur; i++; }
+    else { total += cur; }
   }
   if (total < 1 || total > 3999999) throw new Error('Value must be between 1 and 3,999,999.');
   return total;
@@ -1188,7 +1178,7 @@ function romanNumerals(root) {
       { value: 'calc', label: 'Roman Math (+ − × ÷)', icon: '⚖️' }
     ],
     value: 'convert',
-    onChange: v => { tab = v; renderMode(); }
+    onChange: v => { playPop(520); tab = v; renderMode(); }
   });
 
   const body = el('div');
@@ -1240,6 +1230,7 @@ function romanNumerals(root) {
             type: 'button',
             class: `gbtn gbtn-chip ${lbl.length > 1 && lbl !== 'Clear' ? 'vinc-chip' : ''}`,
             onclick: () => {
+              playPop(480);
               if (lbl === 'Clear') romField.input.value = '';
               else romField.input.value += ins;
               syncFromRom();
@@ -1266,7 +1257,7 @@ function romanNumerals(root) {
           { value: '/', label: '÷' }
         ],
         value: op,
-        onChange: v => { op = v; calcRoman(); }
+        onChange: v => { playPop(540); op = v; calcRoman(); }
       });
 
       const calcRoman = () => {
@@ -1311,7 +1302,7 @@ function romanNumerals(root) {
 }
 
 // =========================================================================
-// 8. NUMBER BASE CONVERTER (2, 8, 10, 16, 36)
+// 8. NUMBER BASE CONVERTER (2, 8, 10, 16, 36 + Tappable 8-Bit Lamp Row)
 // =========================================================================
 function parseBigIntInBase(str, base) {
   let s = str.trim().toLowerCase();
@@ -1342,13 +1333,39 @@ function numberBase(root) {
   ];
 
   let activeBase = 10;
+  let currentVal = 255n;
   const inputs = new Map();
   const status = el('div', { class: 'output', 'aria-live': 'polite' });
+  const bitRow = el('div', { class: 'bit-switch-row' });
   const padWrap = el('div', { class: 'base-pad' });
+
+  function renderBits() {
+    const abs = currentVal < 0n ? -currentVal : currentVal;
+    const buttons = [];
+    for (let bit = 7; bit >= 0; bit--) {
+      const mask = 1n << BigInt(bit);
+      const isOn = (abs & mask) !== 0n;
+      buttons.push(
+        el('button', {
+          type: 'button',
+          class: `gbtn bit-pill ${isOn ? 'is-on' : ''}`,
+          onclick: () => {
+            playPop(isOn ? 420 : 620);
+            const next = abs ^ mask;
+            const signed = currentVal < 0n ? -next : next;
+            inputs.get(10).value = String(signed);
+            updateFrom(10, String(signed));
+          }
+        }, el('small', {}, `2^${bit}`), el('strong', {}, isOn ? '1' : '0'))
+      );
+    }
+    bitRow.replaceChildren(...buttons);
+  }
 
   function updateFrom(sourceBase, raw) {
     try {
       const val = parseBigIntInBase(raw, sourceBase);
+      currentVal = val;
       for (const b of bases) {
         if (b.base !== sourceBase) {
           inputs.get(b.base).value = val.toString(b.base).toUpperCase();
@@ -1357,7 +1374,8 @@ function numberBase(root) {
       const bin = (val < 0n ? (-val).toString(2) : val.toString(2));
       const grouped = bin.padStart(Math.ceil(bin.length / 4) * 4, '0').replace(/(.{4})/g, '$1 ').trim();
       status.classList.remove('error');
-      status.textContent = `Value: ${val}  •  Nibbles: ${val < 0n ? '-' : ''}${grouped}`;
+      status.textContent = `Decimal: ${val}  •  Nibbles: ${val < 0n ? '-' : ''}${grouped}`;
+      renderBits();
     } catch (e) {
       status.classList.add('error');
       status.textContent = e.message;
@@ -1373,6 +1391,7 @@ function numberBase(root) {
           type: 'button',
           class: 'gbtn gbtn-mini',
           onclick: () => {
+            playPop(540);
             const inp = inputs.get(activeBase);
             inp.value = (inp.value === '0' ? '' : inp.value) + ch;
             updateFrom(activeBase, inp.value);
@@ -1382,6 +1401,7 @@ function numberBase(root) {
           type: 'button',
           class: 'gbtn gbtn-mini warn',
           onclick: () => {
+            playPop(400);
             const inp = inputs.get(activeBase);
             inp.value = inp.value.slice(0, -1) || '0';
             updateFrom(activeBase, inp.value);
@@ -1391,6 +1411,7 @@ function numberBase(root) {
           type: 'button',
           class: 'gbtn gbtn-mini danger',
           onclick: () => {
+            playSquish();
             const inp = inputs.get(activeBase);
             inp.value = '0';
             updateFrom(activeBase, '0');
@@ -1412,11 +1433,10 @@ function numberBase(root) {
       oninput: () => { activeBase = b.base; highlightActive(); updateFrom(b.base, inp.value); }
     });
     inputs.set(b.base, inp);
-    const card = el('div', { class: 'base-card', style: `background:${b.color}`, 'data-base': b.base },
+    return el('div', { class: 'base-card', style: `background:${b.color}`, 'data-base': b.base },
       el('span', { class: 'gfield-label' }, b.name),
       el('div', { class: 'gfield-tray' }, inp)
     );
-    return card;
   });
 
   function highlightActive() {
@@ -1425,6 +1445,8 @@ function numberBase(root) {
 
   root.replaceChildren(
     el('div', { class: 'game-panel' },
+      el('div', { class: 'gfield-label' }, 'Tap Bits to Flip (8-bit Toy Switches)'),
+      bitRow,
       el('div', { class: 'base-grid' }, ...cards),
       padWrap,
       status
@@ -1436,7 +1458,7 @@ function numberBase(root) {
 }
 
 // =========================================================================
-// 9. PRIME NUMBER CHECKER
+// 9. PRIME NUMBER CHECKER — Collectible Prime Card + Factor Blocks
 // =========================================================================
 function modPow(a, d, n) {
   let r = 1n;
@@ -1491,14 +1513,13 @@ function primeChecker(root) {
   function burstConfetti() {
     confettiLayer.replaceChildren();
     const colors = ['#ffbfa3', '#ffe082', '#b8e3b3', '#bfe3ff', '#e4c7f5'];
-    for (let i = 0; i < 16; i++) {
-      const angle = (i / 16) * 2 * PI;
-      const dist = 55 + (i % 3) * 28;
-      const dot = el('span', {
+    for (let i = 0; i < 18; i++) {
+      const angle = (i / 18) * 2 * PI;
+      const dist = 55 + (i % 3) * 30;
+      confettiLayer.append(el('span', {
         class: 'confetti-sprinkle',
         style: `background:${colors[i % colors.length]};--tx:${Math.cos(angle) * dist}px;--ty:${Math.sin(angle) * dist}px`
-      });
-      confettiLayer.append(dot);
+      }));
     }
   }
 
@@ -1508,11 +1529,11 @@ function primeChecker(root) {
       if (n < 2n) n = 2n;
       while (!isPrimeBig(n) && n < 18446744073709551615n) n += BigInt(dir);
       numField.input.value = String(n);
-      check();
+      check(true);
     } catch {}
   }
 
-  function check() {
+  function check(withSound = false) {
     const raw = numField.input.value.trim();
     if (!/^\d+$/.test(raw) || raw.length > 20) {
       cardEl.className = 'prime-card is-neutral';
@@ -1535,39 +1556,46 @@ function primeChecker(root) {
     }
 
     if (isPrimeBig(n)) {
+      if (withSound) playSparkle();
       cardEl.className = 'prime-card is-prime';
       cardEl.replaceChildren(
         confettiLayer,
-        el('div', { class: 'prime-mascot' }, '⭐'),
+        el('div', { class: 'prime-mascot' }, '👑'),
         el('div', { class: 'prime-big-num' }, String(n)),
         el('span', { class: 'gbadge prime-yes' }, 'PRIME NUMBER!'),
-        el('p', {}, `${n} is only divisible by 1 and itself.`)
+        el('p', {}, `${n} is indivisible — only 1 and ${n} divide it evenly!`)
       );
       burstConfetti();
     } else {
+      if (withSound) playSquish();
       const facs = smallFactorize(n);
-      const expr = facs.map(([p, c, unfactored]) => `${p}${c > 1 ? `^${c}` : ''}${unfactored ? ' (composite)' : ''}`).join(' × ');
       const firstDiv = facs[0][0];
+      const blocks = el('div', { class: 'factor-blocks' },
+        el('span', { class: 'factor-pill' }, String(firstDiv)),
+        el('span', { class: 'factor-times' }, '×'),
+        el('span', { class: 'factor-pill' }, String(n / firstDiv))
+      );
+      const expr = facs.map(([p, c, unfactored]) => `${p}${c > 1 ? `^${c}` : ''}${unfactored ? ' (composite)' : ''}`).join(' × ');
       cardEl.className = 'prime-card is-composite';
       cardEl.replaceChildren(
         el('div', { class: 'prime-mascot split' }, '🧩'),
         el('div', { class: 'prime-big-num' }, String(n)),
         el('span', { class: 'gbadge prime-no' }, 'COMPOSITE'),
-        el('p', {}, `Splits into: ${firstDiv} × ${n / firstDiv}`),
-        el('div', { class: 'prime-factors' }, `Factorization: ${expr}`)
+        blocks,
+        el('div', { class: 'prime-factors' }, `Prime factors: ${expr}`)
       );
     }
   }
 
   const actions = el('div', { class: 'preset-row' },
-    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { try { const v = BigInt(numField.input.value || '2') - 1n; numField.input.value = String(v < 0n ? 0n : v); check(); } catch {} } }, '− 1'),
-    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { try { numField.input.value = String(BigInt(numField.input.value || '0') + 1n); check(); } catch {} } }, '+ 1'),
+    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { try { const v = BigInt(numField.input.value || '2') - 1n; numField.input.value = String(v < 0n ? 0n : v); check(true); } catch {} } }, '− 1'),
+    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { try { numField.input.value = String(BigInt(numField.input.value || '0') + 1n); check(true); } catch {} } }, '+ 1'),
     el('button', { type: 'button', class: 'gbtn gbtn-chip', onclick: () => stepPrime(-1) }, '← Prev Prime'),
     el('button', { type: 'button', class: 'gbtn gbtn-chip', onclick: () => stepPrime(1) }, 'Next Prime →'),
     el('button', { type: 'button', class: 'gbtn gbtn-chip', onclick: () => {
       const sample = [17, 29, 97, 131, 353, 797, 1999, 7919, 104729][secureRandInt(9)];
       numField.input.value = String(sample);
-      check();
+      check(true);
     } }, '✨ Lucky Prime')
   );
 
@@ -1578,11 +1606,11 @@ function primeChecker(root) {
       cardEl
     )
   );
-  check();
+  check(false);
 }
 
 // =========================================================================
-// 10. SEQUENCE PLAYGROUND (8 PHYSICAL SEQUENCE TILES)
+// 10. SEQUENCE PLAYGROUND — 8 Physical Shelf Tiles + Geometry Visuals
 // =========================================================================
 function isPrimeNum(n) {
   if (n < 2) return false;
@@ -1609,7 +1637,7 @@ function happyChain(n) {
   const path = [n];
   const seen = new Set([n]);
   let cur = n;
-  while (cur !== 1 && path.length < 10) {
+  while (cur !== 1 && path.length < 9) {
     let sum = 0;
     for (const ch of String(cur)) sum += Number(ch) ** 2;
     cur = sum;
@@ -1700,10 +1728,45 @@ const SEQUENCES = [
   }
 ];
 
+function sequenceVisual(seqId) {
+  if (seqId === 'triangular') {
+    const rows = [1, 2, 3, 4].map(r =>
+      el('div', { class: 'dot-row' }, Array.from({ length: r }, () => el('span', { class: 'vis-dot', style: 'background:#ffe082' })))
+    );
+    return el('div', { class: 'seq-vis-box' }, el('small', {}, 'T(4) = 1+2+3+4 = 10'), ...rows);
+  }
+  if (seqId === 'square') {
+    const grid = el('div', { class: 'vis-square-grid' }, Array.from({ length: 16 }, () => el('span', { class: 'vis-dot', style: 'background:#9fd99e' })));
+    return el('div', { class: 'seq-vis-box' }, el('small', {}, '4 × 4 = 16'), grid);
+  }
+  if (seqId === 'cube') {
+    return el('div', { class: 'seq-vis-box' },
+      el('small', {}, '3³ = 27 blocks'),
+      el('div', { class: 'vis-cube-row' }, '🧊 🧊 🧊')
+    );
+  }
+  if (seqId === 'happy') {
+    return el('div', { class: 'seq-vis-box' }, el('small', {}, '19 → 1²+9²=82 → 68 → 100 → 1 😊'));
+  }
+  if (seqId === 'perfect') {
+    return el('div', { class: 'seq-vis-box' }, el('small', {}, '28 = 1 + 2 + 4 + 7 + 14 💎'));
+  }
+  if (seqId === 'fibonacci') {
+    return el('div', { class: 'seq-vis-box' },
+      el('small', {}, 'Growing petal steps: 1, 1, 2, 3, 5, 8'),
+      el('div', { class: 'vis-bars' }, [1, 1, 2, 3, 5, 8].map(h => el('span', { style: `height:${h * 5 + 8}px` })))
+    );
+  }
+  if (seqId === 'palindromic') {
+    return el('div', { class: 'seq-vis-box' }, el('small', {}, '12321 🪞 reads the same reversed!'));
+  }
+  return el('div', { class: 'seq-vis-box' }, el('small', {}, '2, 3, 5, 7, 11… indivisible stars ⭐'));
+}
+
 function sequencePlayground(root) {
   let activeId = 'fibonacci';
   let count = 12;
-  let inspectedVal = 13;
+  let inspectedVal = 28;
 
   const shelfEl = el('div', { class: 'seq-shelf' });
   const detailBox = el('div', { class: 'seq-detail pastel-card cream' });
@@ -1738,6 +1801,7 @@ function sequencePlayground(root) {
         style: `background:${seq.color}`,
         'aria-pressed': String(seq.id === activeId),
         onclick: () => {
+          playPop(560);
           activeId = seq.id;
           renderShelf();
           renderSequence();
@@ -1766,6 +1830,7 @@ function sequencePlayground(root) {
         class: 'gbtn seq-num-chip',
         style: `background:${seq.color}`,
         onclick: () => {
+          playPop(620);
           inspectedVal = val;
           testField.input.value = String(val);
           renderInspector();
@@ -1776,10 +1841,11 @@ function sequencePlayground(root) {
     detailBox.replaceChildren(
       el('div', { class: 'seq-head' },
         el('span', { class: 'seq-big-icon' }, seq.icon),
-        el('div', {},
+        el('div', { style: 'flex:1' },
           el('h3', {}, seq.name),
           el('p', {}, seq.rule)
-        )
+        ),
+        sequenceVisual(seq.id)
       ),
       seq.id === 'perfect' ? el('p', { class: 'seq-note' }, 'Showing the first known even perfect numbers (they grow astronomically fast!).') : null,
       chipsEl
@@ -1800,7 +1866,6 @@ function sequencePlayground(root) {
   );
   renderShelf();
   renderSequence();
-  inspectedVal = 28;
   renderInspector();
 }
 

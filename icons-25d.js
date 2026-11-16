@@ -1,47 +1,68 @@
-// Hand-crafted, multi-color 2.5D cartoon game SVG props & icons (no monochrome icons).
+// Hand-crafted, multi-color 2.5D cartoon game SVG props & mascots.
 const INK = '#4b3121';
 
 export function waffleMascotSVG(cls = 'waffle-svg') {
-  return `<svg class="${cls}" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <ellipse cx="90" cy="162" rx="56" ry="12" fill="#8d5c34" opacity="0.24"/>
-    <rect x="24" y="34" width="132" height="122" rx="34" fill="#d99442" stroke="${INK}" stroke-width="5"/>
-    <rect x="24" y="24" width="132" height="122" rx="34" fill="#f7c46c" stroke="${INK}" stroke-width="5"/>
-    <rect x="35" y="35" width="110" height="100" rx="24" fill="#f5b858"/>
-    <!-- Waffle pockets -->
-    <g fill="#d68c3a" stroke="#b97228" stroke-width="2">
-      <rect x="43" y="43" width="22" height="20" rx="6"/>
-      <rect x="71" y="43" width="22" height="20" rx="6"/>
-      <rect x="99" y="43" width="22" height="20" rx="6"/>
-      <rect x="125" y="43" width="14" height="20" rx="5"/>
-      <rect x="43" y="70" width="22" height="20" rx="6"/>
-      <rect x="71" y="70" width="22" height="20" rx="6"/>
-      <rect x="99" y="70" width="22" height="20" rx="6"/>
-      <rect x="125" y="70" width="14" height="20" rx="5"/>
-      <rect x="43" y="97" width="22" height="20" rx="6"/>
-      <rect x="71" y="97" width="22" height="20" rx="6"/>
-      <rect x="99" y="97" width="22" height="20" rx="6"/>
-      <rect x="125" y="97" width="14" height="20" rx="5"/>
+  return `<svg class="${cls}" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <!-- Cozy ceramic plate -->
+    <ellipse cx="100" cy="172" rx="76" ry="18" fill="#fff3dc" stroke="${INK}" stroke-width="5"/>
+    <ellipse cx="100" cy="170" rx="58" ry="11" fill="#edd3ac"/>
+    <!-- Little dangling feet -->
+    <ellipse cx="76" cy="162" rx="11" ry="7" fill="#e59a47" stroke="${INK}" stroke-width="4.5"/>
+    <ellipse cx="124" cy="162" rx="11" ry="7" fill="#e59a47" stroke="${INK}" stroke-width="4.5"/>
+    <!-- 2.5D Waffle crust depth -->
+    <rect x="30" y="42" width="140" height="122" rx="36" fill="#cd8133" stroke="${INK}" stroke-width="5"/>
+    <!-- Main toasted waffle face -->
+    <rect x="30" y="30" width="140" height="122" rx="36" fill="#f7c46c" stroke="${INK}" stroke-width="5"/>
+    <rect x="42" y="42" width="116" height="98" rx="25" fill="#f5b858"/>
+    <!-- Waffle pockets with 2.5D top shadow -->
+    <g>
+      <rect x="50" y="50" width="22" height="20" rx="6" fill="#d38735" stroke="#b97024" stroke-width="2"/>
+      <rect x="78" y="50" width="22" height="20" rx="6" fill="#d38735" stroke="#b97024" stroke-width="2"/>
+      <rect x="106" y="50" width="22" height="20" rx="6" fill="#d38735" stroke="#b97024" stroke-width="2"/>
+      <rect x="134" y="50" width="16" height="20" rx="5" fill="#d38735" stroke="#b97024" stroke-width="2"/>
+      <rect x="50" y="77" width="22" height="20" rx="6" fill="#d38735" stroke="#b97024" stroke-width="2"/>
+      <rect x="78" y="77" width="22" height="20" rx="6" fill="#d38735" stroke="#b97024" stroke-width="2"/>
+      <rect x="106" y="77" width="22" height="20" rx="6" fill="#d38735" stroke="#b97024" stroke-width="2"/>
+      <rect x="134" y="77" width="16" height="20" rx="5" fill="#d38735" stroke="#b97024" stroke-width="2"/>
+      <rect x="50" y="104" width="22" height="20" rx="6" fill="#d38735" stroke="#b97024" stroke-width="2"/>
+      <rect x="78" y="104" width="22" height="20" rx="6" fill="#d38735" stroke="#b97024" stroke-width="2"/>
+      <rect x="106" y="104" width="22" height="20" rx="6" fill="#d38735" stroke="#b97024" stroke-width="2"/>
+      <rect x="134" y="104" width="16" height="20" rx="5" fill="#d38735" stroke="#b97024" stroke-width="2"/>
     </g>
-    <!-- Syrup drizzle -->
-    <path d="M40 34 C45 20, 135 20, 140 34 C144 46, 132 54, 126 44 C121 36, 114 55, 106 49 C99 43, 95 62, 87 54 C80 46, 71 58, 64 47 C58 38, 48 50, 40 34Z" fill="#c96f2d" stroke="${INK}" stroke-width="4" stroke-linejoin="round"/>
-    <!-- Butter pat hat -->
-    <rect x="67" y="13" width="46" height="24" rx="8" transform="rotate(-6 90 25)" fill="#fff099" stroke="${INK}" stroke-width="4.5"/>
-    <rect x="74" y="18" width="18" height="6" rx="3" transform="rotate(-6 90 25)" fill="#fffbe0"/>
-    <!-- Cute face -->
-    <ellipse cx="56" cy="103" rx="11" ry="7" fill="#ff9e9e" opacity="0.85"/>
-    <ellipse cx="124" cy="103" rx="11" ry="7" fill="#ff9e9e" opacity="0.85"/>
+    <!-- Maple syrup hair cap -->
+    <path d="M46 40 C52 24, 148 24, 154 40 C158 54, 145 62, 138 51 C132 42, 124 64, 115 57 C108 51, 103 70, 94 61 C86 52, 78 66, 70 54 C63 44, 53 58, 46 40Z" fill="#c96f2d" stroke="${INK}" stroke-width="4.5" stroke-linejoin="round"/>
+    <!-- Butter pat crown -->
+    <rect x="75" y="16" width="50" height="26" rx="9" transform="rotate(-7 100 29)" fill="#fff099" stroke="${INK}" stroke-width="4.5"/>
+    <rect x="83" y="22" width="20" height="6" rx="3" transform="rotate(-7 100 29)" fill="#fffbe2"/>
+    <!-- Rosy cheeks & expressive face -->
+    <ellipse cx="64" cy="109" rx="12" ry="7.5" fill="#ff9e9e" opacity="0.88"/>
+    <ellipse cx="136" cy="109" rx="12" ry="7.5" fill="#ff9e9e" opacity="0.88"/>
     <g class="waffle-eyes">
-      <circle cx="67" cy="90" r="9.5" fill="${INK}"/>
-      <circle cx="113" cy="90" r="9.5" fill="${INK}"/>
-      <circle cx="64" cy="86.5" r="3.4" fill="#fff8eb"/>
-      <circle cx="110" cy="86.5" r="3.4" fill="#fff8eb"/>
-      <circle cx="70" cy="93" r="1.6" fill="#fff8eb"/>
-      <circle cx="116" cy="93" r="1.6" fill="#fff8eb"/>
+      <circle cx="76" cy="95" r="10.5" fill="${INK}"/>
+      <circle cx="124" cy="95" r="10.5" fill="${INK}"/>
+      <circle cx="73" cy="91" r="3.8" fill="#fff8eb"/>
+      <circle cx="121" cy="91" r="3.8" fill="#fff8eb"/>
+      <circle cx="79" cy="99" r="1.8" fill="#fff8eb"/>
+      <circle cx="127" cy="99" r="1.8" fill="#fff8eb"/>
     </g>
-    <path d="M80 100 Q90 113 100 100" stroke="${INK}" stroke-width="4.5" stroke-linecap="round" fill="none"/>
-    <!-- Little hands -->
-    <path d="M23 94 C11 90, 10 108, 24 108" fill="#f7c46c" stroke="${INK}" stroke-width="4.5" stroke-linecap="round"/>
-    <path d="M157 94 C169 90, 170 108, 156 108" fill="#f7c46c" stroke="${INK}" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M89 107 Q100 121 111 107" stroke="${INK}" stroke-width="4.8" stroke-linecap="round" fill="none"/>
+    <!-- Waving arms -->
+    <path d="M30 98 C14 89, 13 111, 29 113" fill="#f7c46c" stroke="${INK}" stroke-width="4.8" stroke-linecap="round"/>
+    <path d="M170 98 C186 89, 187 111, 171 113" fill="#f7c46c" stroke="${INK}" stroke-width="4.8" stroke-linecap="round"/>
+  </svg>`;
+}
+
+export function kitchenWindowSVG() {
+  return `<svg class="window-svg" viewBox="0 0 140 130" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <rect x="10" y="10" width="120" height="104" rx="52" fill="#bfe3f7" stroke="${INK}" stroke-width="4.5"/>
+    <ellipse cx="52" cy="48" rx="18" ry="9" fill="#fff9ec"/>
+    <ellipse cx="64" cy="45" rx="13" ry="10" fill="#fff9ec"/>
+    <circle cx="100" cy="42" r="13" fill="#ffe484"/>
+    <path d="M12 92 Q45 72 80 90 T128 84 V112 H12 Z" fill="#a8d59d"/>
+    <rect x="10" y="10" width="120" height="104" rx="52" stroke="${INK}" stroke-width="4.5"/>
+    <line x1="70" y1="12" x2="70" y2="112" stroke="${INK}" stroke-width="4"/>
+    <line x1="12" y1="68" x2="128" y2="68" stroke="${INK}" stroke-width="4"/>
+    <rect x="4" y="108" width="132" height="15" rx="7.5" fill="#e5b378" stroke="${INK}" stroke-width="4"/>
   </svg>`;
 }
 
@@ -105,7 +126,7 @@ export function cupboardIconSVG(id) {
 export function toolPropSVG(id) {
   const props = {
     calculator: `<svg class="game-svg" viewBox="0 0 76 76" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="14" y="10" width="48" height="58" rx="13" fill="#9bd19b" stroke="${INK}" stroke-width="3.5"/>
+      <rect x="14" y="10" width="48" height="58" rx="13" fill="#86c486" stroke="${INK}" stroke-width="3.5"/>
       <rect x="14" y="6" width="48" height="56" rx="13" fill="#b9e6b3" stroke="${INK}" stroke-width="3.5"/>
       <rect x="21" y="13" width="34" height="14" rx="5" fill="#fff7dd" stroke="${INK}" stroke-width="3"/>
       <text x="50" y="24" text-anchor="end" font-family="Fredoka,sans-serif" font-weight="700" font-size="10" fill="${INK}">42</text>
@@ -186,7 +207,6 @@ export function toolPropSVG(id) {
     </svg>`
   };
   if (props[id]) return props[id];
-  // Colorful cartoon generic badge for other cupboards' tools
   return `<svg class="game-svg" viewBox="0 0 76 76" fill="none" xmlns="http://www.w3.org/2000/svg">
     <rect x="13" y="15" width="50" height="48" rx="14" fill="#d9c6ef" stroke="${INK}" stroke-width="3.5"/>
     <rect x="13" y="11" width="50" height="46" rx="14" fill="#efe4fb" stroke="${INK}" stroke-width="3.5"/>
@@ -200,7 +220,8 @@ export function uiIconSVG(name) {
     heart: `<svg class="game-svg" viewBox="0 0 32 32" fill="none"><path d="M16 27 C16 27 5 19.5 5 11.5 C5 7.5 8 5 11.5 5 C13.8 5 15.5 6.4 16 8 C16.5 6.4 18.2 5 20.5 5 C24 5 27 7.5 27 11.5 C27 19.5 16 27 16 27Z" fill="#ff9e9e" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/></svg>`,
     clock: `<svg class="game-svg" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="11" fill="#bfe3ff" stroke="${INK}" stroke-width="2.5"/><path d="M16 10 V16 L20 19" stroke="${INK}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
     back: `<svg class="game-svg" viewBox="0 0 32 32" fill="none"><path d="M20 7 L10 16 L20 25" stroke="${INK}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-    star: `<svg class="game-svg" viewBox="0 0 32 32" fill="none"><path d="M16 4 L19.5 11.5 L28 12.5 L21.8 18.4 L23.5 26.8 L16 22.8 L8.5 26.8 L10.2 18.4 L4 12.5 L12.5 11.5 Z" fill="#ffe17d" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/></svg>`
+    soundOn: `<svg class="game-svg" viewBox="0 0 32 32" fill="none"><path d="M6 12 H11 L18 6 V26 L11 20 H6 Z" fill="#ffe184" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/><path d="M22 11 C24.5 13.5 24.5 18.5 22 21" stroke="${INK}" stroke-width="2.5" stroke-linecap="round"/><path d="M25.5 8 C29.5 12 29.5 20 25.5 24" stroke="${INK}" stroke-width="2.5" stroke-linecap="round"/></svg>`,
+    soundOff: `<svg class="game-svg" viewBox="0 0 32 32" fill="none"><path d="M6 12 H11 L18 6 V26 L11 20 H6 Z" fill="#e5d5b8" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/><path d="M22 12 L28 20 M28 12 L22 20" stroke="#c94d3b" stroke-width="2.8" stroke-linecap="round"/></svg>`
   };
-  return map[name] || map.star;
+  return map[name] || map.home;
 }

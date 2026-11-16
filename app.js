@@ -1,6 +1,7 @@
 import './style.css';
 import { cupboards, allTools } from './catalog.js';
-import { waffleMascotSVG, cupboardIconSVG, toolPropSVG, uiIconSVG } from './icons-25d.js';
+import { waffleMascotSVG, kitchenWindowSVG, cupboardIconSVG, toolPropSVG, uiIconSVG } from './icons-25d.js';
+import { isMuted, toggleMute, playPop, playBoing, playCupboardOpen, playSquish } from './sfx.js';
 
 const $ = s => document.querySelector(s);
 const storage = {
@@ -18,9 +19,9 @@ const WAFFLE_QUIPS = [
   'Boing! Sweet math!',
   'Tap a cupboard!',
   'Freshly baked numbers!',
-  'Waffle power! 🧇',
+  'Waffle power!',
   'Cozy kitchen vibes!',
-  'Pick a shelf toy!'
+  'Pick a toy off the shelf!'
 ];
 let quipIndex = 0;
 
@@ -33,26 +34,20 @@ const ALL_CUPBOARDS = [
 
 const app = $('#app');
 app.innerHTML = `
-  <div class="waffle-world" id="waffle-bg" aria-hidden="false">
+  <div class="waffle-world" id="waffle-bg">
     <div class="waffle-grid-layer" id="waffle-grid"></div>
     <div class="waffle-pops" id="waffle-pops" aria-hidden="true"></div>
   </div>
   <div class="game-viewport">
-    <header class="game-topbar">
-      <div class="topbar-left">
-        <button type="button" class="waffle-mascot-btn" id="waffle-mascot" aria-label="Tap Sir Waffle mascot to bounce">
-          ${waffleMascotSVG()}
-          <span class="waffle-speech" id="waffle-speech">Tap a cupboard!</span>
-        </button>
-        <button type="button" class="wood-sign-brand gbtn" data-nav="all" aria-label="Go to kitchen wall">
-          <span class="sign-title">BiteSized</span>
-          <span class="sign-sub">COZY KITCHEN</span>
-        </button>
-      </div>
+    <header class="game-hud">
+      <button type="button" class="wood-sign-brand gbtn" data-nav="all" aria-label="Go to kitchen wall">
+        <span class="sign-title">BiteSized Kitchen</span>
+        <span class="sign-sub">COZY 2.5D UTILITIES</span>
+      </button>
       <nav class="game-nav" aria-label="Kitchen navigation">
         <button type="button" class="gbtn gnav-btn selected" data-nav="all">
           <span class="gnav-icon">${uiIconSVG('home')}</span>
-          <span class="gnav-label">Kitchen</span>
+          <span class="gnav-label">Wall</span>
         </button>
         <button type="button" class="gbtn gnav-btn" data-nav="favorites">
           <span class="gnav-icon">${uiIconSVG('heart')}</span>
@@ -63,14 +58,28 @@ app.innerHTML = `
           <span class="gnav-icon">${uiIconSVG('clock')}</span>
           <span class="gnav-label">Recent</span>
         </button>
+        <button type="button" class="gbtn gnav-btn sound-btn" id="sound-toggle" aria-label="Toggle sound effects" aria-pressed="${!isMuted()}">
+          <span class="gnav-icon" id="sound-icon">${uiIconSVG(isMuted() ? 'soundOff' : 'soundOn')}</span>
+        </button>
       </nav>
     </header>
+
     <main id="main" class="kitchen-stage"></main>
+
+    <aside class="waffle-corner" aria-label="Sir Waffle Mascot">
+      <div class="counter-plate-wrap">
+        <div class="waffle-speech" id="waffle-speech">Tap a cupboard!</div>
+        <button type="button" class="waffle-mascot-btn" id="waffle-mascot" aria-label="Tap Sir Waffle mascot to bounce">
+          ${waffleMascotSVG()}
+        </button>
+      </div>
+    </aside>
   </div>
   <div id="toast" role="status" aria-live="polite"></div>
 `;
 
 function triggerWaffleBounce(clientX, clientY, fromMascot = false) {
+  playBoing();
   const grid = $('#waffle-grid');
   const mascot = $('#waffle-mascot');
   const speech = $('#waffle-speech');
@@ -83,7 +92,7 @@ function triggerWaffleBounce(clientX, clientY, fromMascot = false) {
   void mascot.offsetWidth;
   mascot.classList.add('is-bouncing');
 
-  if (fromMascot || Math.random() < 0.6) {
+  if (fromMascot || Math.random() < 0.7) {
     quipIndex = (quipIndex + 1) % WAFFLE_QUIPS.length;
     speech.textContent = WAFFLE_QUIPS[quipIndex];
     speech.classList.remove('pop-in');
@@ -108,9 +117,16 @@ $('#waffle-mascot').addEventListener('click', e => {
   triggerWaffleBounce(rect.left + rect.width / 2, rect.top + rect.height / 2, true);
 });
 
-// Tapping the waffle background (or empty stage around cupboards) bounces the waffle!
+$('#sound-toggle').addEventListener('click', () => {
+  const nowMuted = toggleMute();
+  $('#sound-toggle').setAttribute('aria-pressed', String(!nowMuted));
+  $('#sound-icon').innerHTML = uiIconSVG(nowMuted ? 'soundOff' : 'soundOn');
+  toast(nowMuted ? 'Kitchen sounds muted' : 'Kitchen sounds ON!');
+});
+
+// Tapping the waffle background bounces the waffle world & mascot
 document.addEventListener('click', e => {
-  if (e.target.closest('button, a, input, textarea, select, canvas, .gslider-track, .tool-workspace, .cupboard-card, .open-cupboard')) return;
+  if (e.target.closest('button, a, input, textarea, select, canvas, .gslider-track, .tool-workspace, .cupboard-card, .open-cupboard, .game-hud')) return;
   triggerWaffleBounce(e.clientX, e.clientY, false);
 });
 
@@ -125,6 +141,7 @@ function cupboardCard(c) {
   const countText = c.id === 'games' ? '100 GAMES' : `${c.tools.length} TOYS`;
   return `
     <article class="cupboard-card" style="--cup:${c.color};--trim:${c.trim}" data-cupboard="${c.id}">
+      <div class="cupboard-crown" aria-hidden="true"></div>
       <div class="cupboard-frame">
         <div class="cupboard-recess" aria-hidden="true">
           <div class="mini-shelf ms1"><span></span><span></span><span></span></div>
@@ -155,9 +172,16 @@ function home() {
 
   $('#main').innerHTML = `
     <section class="kitchen-wall" aria-label="Cozy 2.5D Kitchen Wall">
-      <div class="wall-banner">
-        <h1>Welcome to the Kitchen!</h1>
-        <p>Open any cupboard to play with cozy tools — or tap Sir Waffle anytime!</p>
+      <div class="kitchen-ceiling-trim" aria-hidden="true">
+        <div class="hanging-utensils">
+          <span class="utensil spoon">🥄</span>
+          <span class="utensil herb">🌿</span>
+        </div>
+        <div class="kitchen-window-frame">${kitchenWindowSVG()}</div>
+        <div class="wall-plaque">
+          <h1>Kitchen Cupboards</h1>
+          <p>Tap a door to swing it open!</p>
+        </div>
       </div>
       <div class="cupboard-grid">
         ${ALL_CUPBOARDS.map(cupboardCard).join('')}
@@ -212,7 +236,7 @@ async function collection(id) {
       <section class="open-cupboard" style="--cup:#dfd0f5;--trim:#a68fd1">
         <div class="open-cupboard-head">
           <button type="button" class="gbtn close-door-btn" data-nav="all">
-            <span class="btn-svg">${uiIconSVG('back')}</span> Close Cupboard
+            <span class="btn-svg">${uiIconSVG('back')}</span> Close Door
           </button>
           <div class="cupboard-head-title">
             <span class="head-icon">${cupboardIconSVG('games')}</span>
@@ -256,19 +280,19 @@ async function collection(id) {
       <div class="swing-wing right" aria-hidden="true"></div>
       <div class="open-cupboard-head">
         <button type="button" class="gbtn close-door-btn" data-nav="all">
-          <span class="btn-svg">${uiIconSVG('back')}</span> Close Cupboard
+          <span class="btn-svg">${uiIconSVG('back')}</span> Close Door
         </button>
         <div class="cupboard-head-title">
           <span class="head-icon">${cupboardIconSVG(c?.id || 'math')}</span>
           <div>
             <h1>${esc(title)}</h1>
-            <p>${esc(subtitle)} • ${tools.length} ${tools.length === 1 ? 'object' : 'objects'}</p>
+            <p>${esc(subtitle)} • ${tools.length} ${tools.length === 1 ? 'toy' : 'toys'}</p>
           </div>
         </div>
       </div>
       <div class="cupboard-shelves-stage">
-        ${shelves.length ? shelves.map(row => `
-          <div class="wooden-shelf-row">
+        ${shelves.length ? shelves.map((row, rIdx) => `
+          <div class="wooden-shelf-row" style="animation-delay:${rIdx * 70}ms">
             <div class="shelf-objects-grid">${row.map(shelfItemCard).join('')}</div>
             <div class="wooden-plank" aria-hidden="true"></div>
           </div>
@@ -305,7 +329,7 @@ async function openTool(id) {
     <section class="tool-workbench" style="--cup:${t.color};--trim:${cup?.trim || '#b88456'}">
       <div class="workbench-top">
         <button type="button" class="gbtn close-door-btn" data-nav="${t.cupboard}">
-          <span class="btn-svg">${uiIconSVG('back')}</span> Back to ${esc(cup?.name || 'Shelf')}
+          <span class="btn-svg">${uiIconSVG('back')}</span> Shelf
         </button>
         <div class="workbench-title">
           <span class="workbench-prop">${toolPropSVG(t.id)}</span>
@@ -345,7 +369,7 @@ async function openTool(id) {
 
 function bindActions(root = document) {
   root.querySelectorAll('[data-nav]').forEach(b => {
-    b.onclick = () => navigate(b.dataset.nav);
+    b.onclick = () => { playPop(500); navigate(b.dataset.nav); };
   });
 
   root.querySelectorAll('[data-open-cupboard]').forEach(b => {
@@ -353,22 +377,24 @@ function bindActions(root = document) {
       const id = b.dataset.openCupboard;
       const card = b.closest('.cupboard-card');
       const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      playCupboardOpen();
       if (!card || reduced) {
         navigate(id);
         return;
       }
       card.classList.add('is-opening');
-      setTimeout(() => navigate(id), 340);
+      setTimeout(() => navigate(id), 420);
     };
   });
 
   root.querySelectorAll('[data-tool]').forEach(b => {
-    b.onclick = () => { location.hash = 'tool/' + b.dataset.tool; };
+    b.onclick = () => { playSquish(); location.hash = 'tool/' + b.dataset.tool; };
   });
 
   root.querySelectorAll('[data-fav]').forEach(b => {
     b.onclick = e => {
       e.stopPropagation();
+      playPop(660);
       const id = b.dataset.fav;
       if (favorites.has(id)) favorites.delete(id);
       else favorites.add(id);

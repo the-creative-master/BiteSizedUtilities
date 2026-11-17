@@ -164,10 +164,16 @@ test('Waffle AI chatbot, streaming code boxes, DOCX creation/parsing, single Waf
   assert.ok(SERVER_MODELS['qwen2.5-coder-1.5b'] && SERVER_MODELS['qwen3-0.6b'], 'Server exposes Qwen 2.5 Coder 1.5B and Qwen 3 0.6B');
   assert.ok(fs.existsSync('.cache/waffle-ai/qwen3-0.6b.gguf'), 'Qwen 3 0.6B GGUF is pre-cached on disk');
 
-  const { TEXT_MODELS } = await import('../waffle-browser-ai.js');
+  const { TEXT_MODELS, EXECUTION_MODES, AI_DISCLAIMER_TEXT } = await import('../waffle-browser-ai.js');
   assert.ok(TEXT_MODELS.some(m => m.id === 'llama3.2-1b'), 'Llama 3.2 1B available');
   assert.ok(TEXT_MODELS.some(m => m.id === 'qwen3.5-0.8b'), 'Qwen 3.5 0.8B available');
   assert.ok(TEXT_MODELS.some(m => m.id === 'qwen2.5-coder-1.5b'), 'Qwen 2.5 Coder 1.5B available');
+  assert.ok(['auto', 'server', 'webgpu', 'wllama', 'wasm'].every(id => EXECUTION_MODES.some(m => m.id === id)), 'All fallback modes wired');
+  assert.ok(AI_DISCLAIMER_TEXT.includes('iOS 26') && AI_DISCLAIMER_TEXT.includes('WebGPU'), 'AI disclaimer warns about iOS 26 and WebGPU');
+  assert.ok(!/tier\s*[123]|diagram/i.test(AI_DISCLAIMER_TEXT), 'AI disclaimer does not mention tier numbers or diagrams');
+  assert.ok(fs.existsSync('node_modules/@wllama/wllama/esm/wasm/wllama.wasm'), 'WLlama WASM binary installed locally');
+  assert.ok(viteSrc.includes('/wllama/') && viteSrc.includes('/api/waffle-ai/gguf/'), 'Vite serves self-hosted WLlama WASM and local GGUF ranges');
+  assert.ok(uiSrc.includes('bite-open-settings') && uiSrc.includes('streamWllamaChat'), 'Waffle AI opens Settings for models and supports WLlama fallback');
 
   const { APP_LANGUAGES, tUI } = await import('../i18n.js');
   const { EN_KEYS, NATIVE_DICTS } = await import('../i18n-dicts.js');

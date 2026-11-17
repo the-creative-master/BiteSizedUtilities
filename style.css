@@ -2118,17 +2118,83 @@ body.waffle-modal-open {
 }
 
 .english-device-note {
-  margin: 0 auto 10px;
-  max-width: 720px;
-  text-align: center;
+  margin: 0 auto 12px;
+  max-width: 780px;
+  text-align: left;
   font-size: 13px;
   font-weight: 700;
   color: #6b3d16;
   background: #ffefc7;
-  border: 2.5px solid var(--ink);
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  padding: 10px 14px;
+  box-shadow: 0 4px 0 #c9942a;
+}
+.english-disclaimer-card {
+  display: grid;
+  gap: 6px;
+  background: #ffefc7;
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  padding: 10px 14px;
+  box-shadow: 0 4px 0 #c9942a;
+}
+.english-disclaimer-copy {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #5c3312;
+}
+.waffle-disclaimer-box {
+  display: grid;
+  gap: 5px;
+  background: #ffefc7;
+  border: 2.5px solid #c9942a;
+  border-radius: 14px;
+  padding: 8px 11px;
+  margin-top: 6px;
+}
+.waffle-disclaimer-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12px;
+  color: #6b3d16;
+}
+.waffle-disclaimer-copy {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.42;
+  color: #5c3312;
+}
+.waffle-device-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
   border-radius: 999px;
-  padding: 6px 14px;
-  box-shadow: 0 3px 0 #c9942a;
+  font-size: 11px;
+  font-weight: 800;
+  border: 2px solid var(--ink);
+}
+.waffle-device-pill.is-ok {
+  background: #c7f0b6;
+  color: #214e19;
+}
+.waffle-device-pill.is-risk {
+  background: #ffd3c4;
+  color: #7c2310;
+}
+.settings-ai-section {
+  border-top: 2.5px dashed #d7b685;
+  padding-top: 12px;
+}
+.settings-sub-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink-soft);
+  margin: 6px 0 4px;
 }
 
 .settings-overlay {
@@ -2210,7 +2276,9 @@ html[data-kitchen-theme="midnight"] .english-device-note {
 
 .settings-overlay[hidden] { display: none; }
 .settings-card {
-  width: min(480px, 100%);
+  width: min(680px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
   background: var(--cream);
   border: var(--outline);
   border-radius: 22px;

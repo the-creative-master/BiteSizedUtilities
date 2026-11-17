@@ -1,7 +1,17 @@
 import { waffleMascotSVG } from './icons-25d.js';
 import { playPop, playBoing, playSquish, playSparkle } from './sfx.js';
 import { createDocxBlob, extractTextFromUpload, triggerFileDownload } from './file-tools-client.js';
-import { TEXT_MODELS, streamBrowserChat } from './waffle-browser-ai.js';
+import {
+  TEXT_MODELS,
+  streamBrowserChat,
+  streamWllamaChat,
+  getSelectedTextModel,
+  getSelectedImageModel,
+  getSelectedExecutionMode,
+  getSmartPromptEnabled,
+  detectDeviceDiagnostics,
+  AI_DISCLAIMER_TEXT
+} from './waffle-browser-ai.js';
 import { IMAGE_MODELS, detectImageCapabilities, generateWaffleImage } from './waffle-image-gen.js';
 
 const STARTER_PROMPTS = [
@@ -16,11 +26,11 @@ const WELCOME_MSG = {
   content: [
     'Hey there, kitchen friend! I’m **Sir Waffle**, your **Waffle AI** assistant.',
     '',
-    '- **Local & Browser AI Models**: **Qwen 2.5 1.5B**, **Qwen 2.5 Coder 1.5B**, **Qwen 3 0.6B** (pre-cached on server) + in-browser **Llama 3.2 1B**, **Qwen 3.5 0.8B**, **SmolLM2 360M**, **Qwen 2.5 0.5B**, and **DeepSeek R1 1.5B**',
+    '- **AI Models & Fallbacks (in ⚙ Settings)**: Choose **Qwen 2.5 1.5B**, **Qwen 2.5 Coder 1.5B**, **Qwen 3 0.6B**, **Llama 3.2 1B**, **Qwen 3.5 0.8B**, **SmolLM2 360M**, **Qwen 2.5 0.5B**, or **DeepSeek R1 1.5B**',
     '- **Image Generation**: Tap **🎨 Image** (or type `/imagine ...`) with **SDXS-512 (1-Step)** or **SD-Turbo (WebGPU)**',
     '- **Files & Markdown**: Attach `.docx` / `.txt` / `.md` / code files, or ask me to generate a downloadable `.docx`!',
     '',
-    '> ⚠ *Device note: Depending on which AI model you choose, a decent device (good RAM/CPU, or WebGPU for browser models) is recommended.*'
+    `> ⚠ **${AI_DISCLAIMER_TEXT}**`
   ].join('\n')
 };
 
@@ -38,12 +48,9 @@ let isGenerating = false;
 let activeAbort = null;
 let modelState = { preCached: true, loaded: false, loading: false };
 let codeArtifacts = [];
-let selectedTextModel = 'qwen2.5-1.5b';
-let selectedImageModel = 'sdxs-512';
 let imageMode = false;
-let smartPrompt = true;
-let showModelDrawer = false;
 let imageCaps = { hasWebGPU: false, hasF16: false };
+let deviceDiag = { hasWebGPU: false, isOldIOS: false, hasRisk: true, summaryLabel: 'Checking device…' };
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -244,7 +251,7 @@ export function formatWaffleMarkdown(raw, streaming = false) {
   }).join('');
 }
 
-export async function streamWaffleChat({ modelId, messages: msgList, systemPrompt, maxTokens = 520, temperature = 0.7, signal, onStatus, onToken }) {
+async function streamServerChat({ modelId, messages: msgList, systemPrompt, maxTokens = 520, temperature = 0.7, signal, onStatus, onToken }) {
   const res = await fetch('./api/waffle-ai/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -290,6 +297,80 @@ export async function streamWaffleChat({ modelId, messages: msgList, systemPromp
   return finalText.trim();
 }
 
+export async function streamWaffleChat({ modelId, messages: msgList, systemPrompt, maxTokens = 520, temperature = 0.7, signal, onStatus, onToken }) {
+  const chosenId = modelId || getSelectedTextModel();
+  const cfg = TEXT_MODELS.find(m => m.id === chosenId) || TEXT_MODELS[0];
+  const mode = getSelectedExecutionMode();
+  const diag = await detectDeviceDiagnostics().catch(() => ({ hasWebGPU: false }));
+
+  // Build ordered automatic fallback chain without surfacing internal tier names
+  const attempts = [];
+  if (mode === 'server') {
+    attempts.push({ kind: 'server', id: cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b' });
+    if (diag.hasWebGPU) attempts.push({ kind: 'browser', id: cfg.kind === 'browser' ? cfg.id : 'qwen2.5-0.5b', dev: 'webgpu' });
+    attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: false });
+    attempts.push({ kind: 'browser', id: cfg.kind === 'browser' ? cfg.id : 'qwen2.5-0.5b', dev: 'wasm' });
+  } else if (mode === 'webgpu') {
+    if (diag.hasWebGPU) {
+      attempts.push({ kind: 'browser', id: cfg.kind === 'browser' ? cfg.id : 'qwen3.5-0.8b', dev: 'webgpu' });
+      attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: true });
+    }
+    attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: false });
+    attempts.push({ kind: 'browser', id: cfg.kind === 'browser' ? cfg.id : 'qwen2.5-0.5b', dev: 'wasm' });
+    attempts.push({ kind: 'server', id: cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b' });
+  } else if (mode === 'wllama') {
+    if (diag.hasWebGPU) attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: true });
+    attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: false });
+    attempts.push({ kind: 'browser', id: 'qwen2.5-0.5b', dev: 'wasm' });
+    attempts.push({ kind: 'server', id: cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b' });
+  } else if (mode === 'wasm') {
+    attempts.push({ kind: 'browser', id: cfg.kind === 'browser' ? cfg.id : 'qwen2.5-0.5b', dev: 'wasm' });
+    attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: false });
+    attempts.push({ kind: 'server', id: cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b' });
+  } else {
+    // Auto fallback chain
+    if (cfg.kind === 'browser') {
+      if (diag.hasWebGPU) {
+        attempts.push({ kind: 'browser', id: cfg.id, dev: 'webgpu' });
+        attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: true });
+      }
+      attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: false });
+      attempts.push({ kind: 'browser', id: cfg.id, dev: 'wasm' });
+      attempts.push({ kind: 'server', id: 'qwen2.5-1.5b' });
+    } else {
+      attempts.push({ kind: 'server', id: cfg.id });
+      if (diag.hasWebGPU) {
+        attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'webgpu' });
+        attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: true });
+      }
+      attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: false });
+      attempts.push({ kind: 'browser', id: 'qwen2.5-0.5b', dev: 'wasm' });
+    }
+  }
+
+  let lastErr = null;
+  for (let i = 0; i < attempts.length; i++) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    const step = attempts[i];
+    if (i > 0) {
+      onStatus?.({ state: 'loading', detail: `Switching to fallback (${step.kind === 'wllama' ? 'WLlama' : step.dev ? step.dev.toUpperCase() : 'Server'})…` });
+    }
+    try {
+      if (step.kind === 'server') {
+        return await streamServerChat({ modelId: step.id, messages: msgList, systemPrompt, maxTokens, temperature, signal, onStatus, onToken });
+      }
+      if (step.kind === 'wllama') {
+        return await streamWllamaChat({ ggufFile: step.gguf, messages: msgList, systemPrompt, maxTokens, temperature, useWebGPU: step.webgpu, signal, onStatus, onToken });
+      }
+      return await streamBrowserChat({ modelId: step.id, messages: msgList, systemPrompt, maxTokens, temperature, preferredDevice: step.dev, signal, onStatus, onToken });
+    } catch (err) {
+      if (err.name === 'AbortError' || signal?.aborted) throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('All AI runtimes failed on this device.');
+}
+
 async function fetchStatus() {
   try {
     const r = await fetch('./api/waffle-ai/status', { cache: 'no-store' });
@@ -311,21 +392,28 @@ export async function warmupWaffleAI() {
 }
 
 function activeTextCfg() {
-  return TEXT_MODELS.find(m => m.id === selectedTextModel) || TEXT_MODELS[0];
+  const id = getSelectedTextModel();
+  return TEXT_MODELS.find(m => m.id === id) || TEXT_MODELS[0];
 }
 
 function activeImageCfg() {
-  return IMAGE_MODELS.find(m => m.id === selectedImageModel) || IMAGE_MODELS[0];
+  const id = getSelectedImageModel();
+  return IMAGE_MODELS.find(m => m.id === id) || IMAGE_MODELS[0];
 }
 
 function updateStatusBadge(customNote) {
   if (!overlayEl) return;
   const badge = overlayEl.querySelector('#waffle-ai-badge');
   const toggleBtn = overlayEl.querySelector('#waffle-ai-models-btn');
+  const diagEl = overlayEl.querySelector('#waffle-ai-device-status');
   const tCfg = activeTextCfg();
   const iCfg = activeImageCfg();
   if (toggleBtn) {
-    toggleBtn.textContent = imageMode ? `🎨 ${iCfg.name}` : `🤖 ${tCfg.label}`;
+    toggleBtn.textContent = imageMode ? `🎨 ${iCfg.name} · ⚙` : `🤖 ${tCfg.label} · ⚙`;
+  }
+  if (diagEl) {
+    diagEl.textContent = deviceDiag.summaryLabel;
+    diagEl.className = `waffle-device-pill ${deviceDiag.hasRisk ? 'is-risk' : 'is-ok'}`;
   }
   if (!badge) return;
   if (customNote) {
@@ -334,7 +422,7 @@ function updateStatusBadge(customNote) {
     return;
   }
   if (imageMode) {
-    const gpuLabel = imageCaps.hasWebGPU ? 'WebGPU Ready' : 'WASM CPU Mode';
+    const gpuLabel = imageCaps.hasWebGPU ? 'WebGPU Ready' : 'WASM CPU Fallback';
     badge.textContent = `${iCfg.name} · ${gpuLabel}`;
     badge.className = 'waffle-ai-badge is-ready';
     return;
@@ -351,78 +439,12 @@ function updateStatusBadge(customNote) {
     badge.textContent = `${tCfg.label} · Thinking…`;
     badge.className = 'waffle-ai-badge is-busy';
   } else if (modelState.loaded && modelState.modelId === tCfg.id) {
-    badge.textContent = `${tCfg.label} · node-llama.cpp · Ready`;
+    badge.textContent = `${tCfg.label} · Ready`;
     badge.className = 'waffle-ai-badge is-ready';
   } else {
-    badge.textContent = `${tCfg.label} · node-llama.cpp · Pre-cached`;
+    badge.textContent = `${tCfg.label} · Pre-cached`;
     badge.className = 'waffle-ai-badge';
   }
-}
-
-function renderModelDrawer() {
-  if (!overlayEl) return;
-  const drawer = overlayEl.querySelector('#waffle-model-drawer');
-  if (!drawer) return;
-  drawer.hidden = !showModelDrawer;
-  if (!showModelDrawer) return;
-
-  drawer.innerHTML = `
-    <div class="waffle-device-warn">⚠ Note: Depending on which AI model you choose, a decent device (good RAM/CPU or WebGPU) is recommended.</div>
-    <div class="waffle-drawer-sec">
-      <div class="waffle-drawer-label">Chat Models (${TEXT_MODELS.length})</div>
-      <div class="waffle-pill-grid">
-        ${TEXT_MODELS.map(m => `
-          <button type="button" class="gbtn waffle-model-pill ${selectedTextModel === m.id ? 'selected' : ''}" data-pick-text="${esc(m.id)}" title="${esc(m.desc)}">
-            <strong>${esc(m.label)}</strong>
-            <small>${esc(m.badge)}</small>
-          </button>
-        `).join('')}
-      </div>
-    </div>
-    <div class="waffle-drawer-sec">
-      <div class="waffle-drawer-label">Image Generation Models (Self-Hosted ONNX · ${imageCaps.hasWebGPU ? 'WebGPU Detected' : 'WASM CPU Mode'})</div>
-      <div class="waffle-pill-grid">
-        ${IMAGE_MODELS.map(m => {
-          const disabled = m.requiresWebGPU && !imageCaps.hasWebGPU;
-          return `
-            <button type="button" class="gbtn waffle-model-pill ${selectedImageModel === m.id ? 'selected' : ''}" data-pick-img="${esc(m.id)}" ${disabled ? 'disabled title="Requires WebGPU browser"' : `title="${esc(m.sizeLabel)}"`}>
-              <strong>${esc(m.name)}</strong>
-              <small>${disabled ? 'Needs WebGPU' : esc(m.badge)}</small>
-            </button>
-          `;
-        }).join('')}
-        <button type="button" class="gbtn waffle-model-pill ${smartPrompt ? 'selected' : ''}" id="waffle-smart-prompt-btn" title="Let Qwen polish short image prompts">
-          <strong>✨ Smart Prompt: ${smartPrompt ? 'ON' : 'OFF'}</strong>
-          <small>Expand brief prompts</small>
-        </button>
-      </div>
-    </div>
-  `;
-
-  drawer.querySelectorAll('[data-pick-text]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      selectedTextModel = btn.dataset.pickText;
-      playPop(640);
-      renderModelDrawer();
-      updateStatusBadge();
-    });
-  });
-
-  drawer.querySelectorAll('[data-pick-img]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      selectedImageModel = btn.dataset.pickImg;
-      imageMode = true;
-      playPop(640);
-      renderModelDrawer();
-      syncComposerState();
-    });
-  });
-
-  drawer.querySelector('#waffle-smart-prompt-btn')?.addEventListener('click', () => {
-    smartPrompt = !smartPrompt;
-    playPop(600);
-    renderModelDrawer();
-  });
 }
 
 function renderAttachments() {
@@ -646,7 +668,7 @@ function parseImageIntent(text) {
   return natural ? natural[1].trim() : null;
 }
 
-async function runImageGeneration(promptText, displayPrompt = promptText, allowEnhance = smartPrompt) {
+async function runImageGeneration(promptText, displayPrompt = promptText, allowEnhance = getSmartPromptEnabled()) {
   if (isGenerating) return;
   const imgCfg = activeImageCfg();
   playPop(600);
@@ -674,7 +696,7 @@ async function runImageGeneration(promptText, displayPrompt = promptText, allowE
   try {
     let finalPrompt = promptText;
     if (allowEnhance && promptText.split(/\s+/).length <= 12) {
-      messages[assistantIdx].imageProgress = { stage: 'Polishing prompt with Qwen 2.5 1.5B…', percent: 4, detail: promptText };
+      messages[assistantIdx].imageProgress = { stage: 'Polishing prompt…', percent: 4, detail: promptText };
       renderMessages();
       try {
         const polished = await streamWaffleChat({
@@ -691,7 +713,7 @@ async function runImageGeneration(promptText, displayPrompt = promptText, allowE
     }
 
     const res = await generateWaffleImage({
-      model: selectedImageModel,
+      model: getSelectedImageModel(),
       prompt: finalPrompt,
       steps: imgCfg.defaultSteps,
       signal: activeAbort.signal,
@@ -733,7 +755,7 @@ async function sendMessage(rawText) {
   if (!attachments.length) {
     const imgPrompt = parseImageIntent(text);
     if (imgPrompt) {
-      await runImageGeneration(imgPrompt, imgPrompt, smartPrompt);
+      await runImageGeneration(imgPrompt, imgPrompt, getSmartPromptEnabled());
       return;
     }
   }
@@ -767,46 +789,30 @@ async function sendMessage(rawText) {
   activeAbort = new AbortController();
 
   try {
-    let finalText = '';
-    if (tCfg.kind === 'browser') {
-      finalText = await streamBrowserChat({
-        modelId: tCfg.id,
-        messages: historyPayload,
-        systemPrompt: 'You are Sir Waffle, the cheerful, helpful mascot of BiteSizedUtilities. Answer clearly in Markdown.',
-        maxTokens: 560,
-        temperature: 0.7,
-        signal: activeAbort.signal,
-        onStatus(s) {
-          updateStatusBadge(s.detail || `${tCfg.label}…`);
-        },
-        onToken(chunk) {
-          messages[assistantIdx].content += chunk;
-          renderMessages();
+    const finalText = await streamWaffleChat({
+      modelId: tCfg.id,
+      messages: historyPayload,
+      systemPrompt: tCfg.kind === 'browser'
+        ? 'You are Sir Waffle, the cheerful, helpful mascot of BiteSizedUtilities. Answer clearly in Markdown.'
+        : undefined,
+      maxTokens: tCfg.kind === 'browser' ? 560 : 680,
+      temperature: 0.7,
+      signal: activeAbort.signal,
+      onStatus(payload) {
+        if (payload.detail) updateStatusBadge(payload.detail);
+        else if (payload.state === 'loading') updateStatusBadge(`Loading ${tCfg.label}…`);
+        else if (payload.state === 'generating') {
+          modelState.loaded = true;
+          modelState.modelId = tCfg.id;
+          updateStatusBadge();
         }
-      });
-    } else {
-      finalText = await streamWaffleChat({
-        modelId: tCfg.id,
-        messages: historyPayload,
-        maxTokens: 680,
-        temperature: 0.7,
-        signal: activeAbort.signal,
-        onStatus(payload) {
-          if (payload.state === 'loading') {
-            updateStatusBadge(`Loading ${tCfg.label}…`);
-          } else if (payload.state === 'generating') {
-            modelState.loaded = true;
-            modelState.modelId = tCfg.id;
-            updateStatusBadge();
-          }
-        },
-        onToken(chunk) {
-          messages[assistantIdx].content += chunk;
-          renderMessages();
-        }
-      });
-      modelState.loaded = true;
-    }
+      },
+      onToken(chunk) {
+        messages[assistantIdx].content += chunk;
+        renderMessages();
+      }
+    });
+    modelState.loaded = true;
     if (finalText) messages[assistantIdx].content = finalText;
     playSquish();
   } catch (err) {
@@ -851,12 +857,18 @@ function buildOverlay() {
             </div>
           </div>
           <div class="waffle-ai-actions">
-            <button type="button" class="gbtn waffle-reset-btn" id="waffle-ai-models-btn" title="Switch Chat or Image AI Models">🤖 Qwen 2.5 1.5B</button>
+            <button type="button" class="gbtn waffle-reset-btn" id="waffle-ai-models-btn" title="Open Settings to switch Chat, Image, or Fallback AI Mode">🤖 Qwen 2.5 1.5B · ⚙</button>
             <button type="button" class="gbtn waffle-reset-btn" id="waffle-ai-reset" title="Start a fresh chat">New Chat</button>
             <button type="button" class="window-close-x" id="waffle-ai-close" aria-label="Close Waffle AI">✕</button>
           </div>
         </div>
-        <div class="waffle-model-drawer" id="waffle-model-drawer" hidden></div>
+        <div class="waffle-disclaimer-box" id="waffle-ai-disclaimer">
+          <div class="waffle-disclaimer-head">
+            <strong>⚠ DEVICE &amp; WEBGPU DISCLAIMER</strong>
+            <span class="waffle-device-pill is-risk" id="waffle-ai-device-status">Checking WebGPU…</span>
+          </div>
+          <p class="waffle-disclaimer-copy">${esc(AI_DISCLAIMER_TEXT)}</p>
+        </div>
       </div>
 
       <div class="waffle-ai-feed" id="waffle-ai-feed" aria-live="polite"></div>
@@ -891,9 +903,13 @@ function buildOverlay() {
   });
 
   wrap.querySelector('#waffle-ai-models-btn').addEventListener('click', () => {
-    showModelDrawer = !showModelDrawer;
     playPop(620);
-    renderModelDrawer();
+    closeWaffleAI();
+    window.dispatchEvent(new CustomEvent('bite-open-settings', { detail: { section: 'ai' } }));
+  });
+
+  window.addEventListener('bite-ai-settings-changed', () => {
+    syncComposerState();
   });
 
   wrap.querySelector('#waffle-ai-img-toggle').addEventListener('click', () => {
@@ -969,12 +985,14 @@ export function openWaffleAI() {
   document.body.classList.add('waffle-modal-open');
   renderAttachments();
   renderMessages();
-  renderModelDrawer();
   syncComposerState();
   fetchStatus();
+  detectDeviceDiagnostics().then(d => {
+    deviceDiag = d;
+    updateStatusBadge();
+  }).catch(() => {});
   detectImageCapabilities().then(caps => {
     imageCaps = caps;
-    renderModelDrawer();
     updateStatusBadge();
   }).catch(() => {});
   if (!modelState.loaded && !modelState.loading) warmupWaffleAI();

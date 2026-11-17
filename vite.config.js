@@ -34,10 +34,14 @@ const MIME = {
 
 function attachLocalModelRoutes(middlewares) {
   const sdRoot = path.resolve('.cache/waffle-ai/sd-models');
+  const ggufRoot = path.resolve('.cache/waffle-ai');
   const ortRoot = path.resolve('node_modules/onnxruntime-web/dist');
+  const wllamaRoot = path.resolve('node_modules/@wllama/wllama/esm/wasm');
   const mounts = [
     ['/api/waffle-ai/sd-models/', sdRoot, 'public, max-age=86400'],
+    ['/api/waffle-ai/gguf/', ggufRoot, 'public, max-age=86400'],
     ['/ort/', ortRoot, 'public, max-age=86400'],
+    ['/wllama/', wllamaRoot, 'public, max-age=86400'],
     ['/runtimes/', path.resolve('runtimes'), 'no-cache'],
     ['/games/', path.resolve('games'), 'no-cache']
   ];
@@ -52,16 +56,38 @@ function attachLocalModelRoutes(middlewares) {
     for (const [marker, rootDir, cacheCtl] of mounts) {
       const offset = pathname.indexOf(marker);
       if (offset < 0) continue;
-      const file = path.resolve(rootDir, pathname.slice(offset + marker.length));
+      const rel = pathname.slice(offset + marker.length);
+      if (marker === '/api/waffle-ai/gguf/' && !rel.endsWith('.gguf')) return next();
+      const file = path.resolve(rootDir, rel);
       if (!file.startsWith(rootDir + path.sep)) {
         res.statusCode = 403;
         res.end('Forbidden');
         return;
       }
       if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return next();
+      const stat = fs.statSync(file);
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Cache-Control', cacheCtl);
+      res.setHeader('Accept-Ranges', 'bytes');
       res.setHeader('Content-Type', MIME[path.extname(file).toLowerCase()] || 'application/octet-stream');
+
+      const range = req.headers.range;
+      if (range && /^bytes=\d*-\d*$/.test(range)) {
+        const [sPart, ePart] = range.replace('bytes=', '').split('-');
+        const start = sPart ? parseInt(sPart, 10) : 0;
+        const end = ePart ? Math.min(parseInt(ePart, 10), stat.size - 1) : stat.size - 1;
+        if (Number.isFinite(start) && Number.isFinite(end) && start <= end && end < stat.size) {
+          res.statusCode = 206;
+          res.setHeader('Content-Range', `bytes ${start}-${end}/${stat.size}`);
+          res.setHeader('Content-Length', String(end - start + 1));
+          if (req.method === 'HEAD') { res.end(); return; }
+          fs.createReadStream(file, { start, end }).on('error', () => { res.statusCode = 500; res.end(); }).pipe(res);
+          return;
+        }
+      }
+
+      res.setHeader('Content-Length', String(stat.size));
+      if (req.method === 'HEAD') { res.end(); return; }
       fs.createReadStream(file).on('error', () => {
         res.statusCode = 500;
         res.end();
@@ -124,6 +150,15 @@ export default defineConfig({
           }
         }
       }
+      const wllamaDist = path.resolve('node_modules/@wllama/wllama/esm/wasm');
+      if (fs.existsSync(wllamaDist)) {
+        fs.mkdirSync('dist/wllama', { recursive: true });
+        for (const f of fs.readdirSync(wllamaDist)) {
+          if (f.endsWith('.wasm')) {
+            fs.copyFileSync(path.join(wllamaDist, f), path.join('dist/wllama', f));
+          }
+        }
+      }
       // Cache the application shell, not hundreds of megabytes of optional games/runtimes.
       const files = [];
       function walk(dir) {
@@ -134,7 +169,7 @@ export default defineConfig({
         }
       }
       walk('dist');
-      const shell = files.filter(p => !p.startsWith('./games/') && !p.startsWith('./runtimes/') && !p.startsWith('./ort/') && p !== './sw.js');
+      const shell = files.filter(p => !p.startsWith('./games/') && !p.startsWith('./runtimes/') && !p.startsWith('./ort/') && !p.startsWith('./wllama/') && p !== './sw.js');
       const version = 'bite-' + Date.now();
       fs.writeFileSync('dist/sw.js', `const CACHE=${JSON.stringify(version)};const SHELL=${JSON.stringify(shell)};self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('bite-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.origin!==location.origin||u.pathname.startsWith('/api/'))return;e.respondWith(fetch(e.request).then(r=>{if(r.ok&&r.type==='basic'){const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy)).catch(()=>{})}return r}).catch(()=>caches.match(e.request).then(hit=>hit||(e.request.mode==='navigate'?caches.match('./index.html'):Response.error()))))});`);
     }

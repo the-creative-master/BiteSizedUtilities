@@ -9,6 +9,21 @@ import { mountEnglish } from './tools-english.js';
 import { mountGames } from './games.js';
 import { openWaffleAI, warmupWaffleAI } from './waffle-ai.js';
 import { APP_LANGUAGES, getAppLanguage, setAppLanguage, initAppI18n } from './i18n.js';
+import {
+  TEXT_MODELS,
+  EXECUTION_MODES,
+  getSelectedTextModel,
+  setSelectedTextModel,
+  getSelectedImageModel,
+  setSelectedImageModel,
+  getSelectedExecutionMode,
+  setSelectedExecutionMode,
+  getSmartPromptEnabled,
+  setSmartPromptEnabled,
+  detectDeviceDiagnostics,
+  AI_DISCLAIMER_TEXT
+} from './waffle-browser-ai.js';
+import { IMAGE_MODELS, detectImageCapabilities } from './waffle-image-gen.js';
 
 const $ = s => document.querySelector(s);
 const storage = {
@@ -115,6 +130,22 @@ app.innerHTML = `
         <div class="gfield">
           <span class="gfield-label">Language</span>
           <div class="gtabs settings-lang-grid" id="settings-lang-list"></div>
+        </div>
+        <div class="gfield settings-ai-section" id="settings-ai-section" data-no-i18n>
+          <span class="gfield-label">AI Models &amp; Device Fallbacks</span>
+          <div class="waffle-disclaimer-box">
+            <div class="waffle-disclaimer-head">
+              <strong>⚠ DEVICE &amp; WEBGPU DISCLAIMER</strong>
+              <span class="waffle-device-pill is-risk" id="settings-device-pill">Checking WebGPU…</span>
+            </div>
+            <p class="waffle-disclaimer-copy">${esc(AI_DISCLAIMER_TEXT)}</p>
+          </div>
+          <div class="settings-sub-label">Chat AI Model</div>
+          <div class="waffle-pill-grid" id="settings-ai-text-list"></div>
+          <div class="settings-sub-label">Image AI Model</div>
+          <div class="waffle-pill-grid" id="settings-ai-image-list"></div>
+          <div class="settings-sub-label">Fallback / Runtime Mode</div>
+          <div class="waffle-pill-grid" id="settings-ai-exec-list"></div>
         </div>
       </div>
     </div>
@@ -423,7 +454,16 @@ async function collection(id) {
   $('#main').innerHTML = `
     <section class="open-cupboard-scene" style="--cup:${theme.color};--trim:${theme.trim}">
       ${woodenSignboardHTML({ kicker: tagline, title, leftDoodle: theme.doodles[0], rightDoodle: theme.doodles[1] })}
-      ${id === 'english' ? '<p class="english-device-note">⚠ Uses Qwen 2.5 1.5B (local AI) — you need a decent device to run this cupboard smoothly.</p>' : ''}
+      ${id === 'english' ? `
+        <div class="english-device-note english-disclaimer-card">
+          <div class="eng-ai-banner">
+            <strong>⚠ Uses Qwen 2.5 1.5B (Local AI) — Decent Device &amp; WebGPU Recommended</strong>
+            <button type="button" class="gbtn gbtn-chip" id="eng-cupboard-ai-settings">⚙ AI &amp; Fallback Settings</button>
+          </div>
+          <p class="english-disclaimer-copy">${esc(AI_DISCLAIMER_TEXT)}</p>
+          <p class="english-disclaimer-copy">⚠ iPhone / Mobile Warning: Devices below iOS 26 or without WebGPU (~1 in 4 phones) may crash or run slowly with local AI models. Waffle Translate uses Google Translate; the other 14 tools use AI with automatic WebGPU → WLlama → WASM CPU / Local Server fallbacks.</p>
+        </div>
+      ` : ''}
       <div class="cabinet-bookcase ${perShelf === 2 ? 'cabinet-compact' : ''}">
         <div class="cabinet-crown" aria-hidden="true"></div>
         <div class="cabinet-interior">
@@ -443,6 +483,10 @@ async function collection(id) {
     </section>
   `;
   bindActions();
+  $('#eng-cupboard-ai-settings')?.addEventListener('click', () => {
+    playPop(580);
+    window.dispatchEvent(new CustomEvent('bite-open-settings', { detail: { section: 'ai' } }));
+  });
   window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
@@ -587,6 +631,8 @@ function syncSoundUI() {
   if (sl) sl.textContent = on ? 'Kitchen Sounds On' : 'Muted';
 }
 
+let settingsImageCaps = { hasWebGPU: false, hasF16: false };
+
 function renderSettingsModal() {
   syncSoundUI();
   const themeList = $('#settings-theme-list');
@@ -607,28 +653,117 @@ function renderSettingsModal() {
     });
   }
   const list = $('#settings-lang-list');
-  if (!list) return;
-  const cur = getAppLanguage();
-  list.innerHTML = APP_LANGUAGES.map(l => `
-    <button type="button" class="gbtn gtab ${l.name === cur ? 'is-active' : ''}" data-pick-lang="${esc(l.name)}" data-no-i18n>
-      <span>${esc(l.native)}</span>
-    </button>
-  `).join('');
-  list.querySelectorAll('[data-pick-lang]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const lang = btn.dataset.pickLang;
-      playPop(620);
-      setAppLanguage(lang);
+  if (list) {
+    const cur = getAppLanguage();
+    list.innerHTML = APP_LANGUAGES.map(l => `
+      <button type="button" class="gbtn gtab ${l.name === cur ? 'is-active' : ''}" data-pick-lang="${esc(l.name)}" data-no-i18n>
+        <span>${esc(l.native)}</span>
+      </button>
+    `).join('');
+    list.querySelectorAll('[data-pick-lang]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const lang = btn.dataset.pickLang;
+        playPop(620);
+        setAppLanguage(lang);
+        renderSettingsModal();
+      });
+    });
+  }
+
+  const textList = $('#settings-ai-text-list');
+  if (textList) {
+    const curText = getSelectedTextModel();
+    textList.innerHTML = TEXT_MODELS.map(m => `
+      <button type="button" class="gbtn waffle-model-pill ${curText === m.id ? 'selected' : ''}" data-set-text="${esc(m.id)}" title="${esc(m.desc)}">
+        <strong>${esc(m.label)}</strong>
+        <small>${esc(m.badge)}</small>
+      </button>
+    `).join('');
+    textList.querySelectorAll('[data-set-text]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        setSelectedTextModel(btn.dataset.setText);
+        playPop(640);
+        renderSettingsModal();
+      });
+    });
+  }
+
+  const imgList = $('#settings-ai-image-list');
+  if (imgList) {
+    const curImg = getSelectedImageModel();
+    const smartOn = getSmartPromptEnabled();
+    imgList.innerHTML = `
+      ${IMAGE_MODELS.map(m => {
+        const disabled = m.requiresWebGPU && !settingsImageCaps.hasWebGPU;
+        return `
+          <button type="button" class="gbtn waffle-model-pill ${curImg === m.id ? 'selected' : ''}" data-set-img="${esc(m.id)}" ${disabled ? 'disabled title="Requires WebGPU browser"' : `title="${esc(m.sizeLabel)}"`}>
+            <strong>${esc(m.name)}</strong>
+            <small>${disabled ? 'Needs WebGPU' : esc(m.badge)}</small>
+          </button>
+        `;
+      }).join('')}
+      <button type="button" class="gbtn waffle-model-pill ${smartOn ? 'selected' : ''}" id="settings-smart-prompt">
+        <strong>✨ Smart Prompt: ${smartOn ? 'ON' : 'OFF'}</strong>
+        <small>Expand short image prompts</small>
+      </button>
+    `;
+    imgList.querySelectorAll('[data-set-img]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        setSelectedImageModel(btn.dataset.setImg);
+        playPop(640);
+        renderSettingsModal();
+      });
+    });
+    imgList.querySelector('#settings-smart-prompt')?.addEventListener('click', () => {
+      setSmartPromptEnabled(!smartOn);
+      playPop(600);
       renderSettingsModal();
     });
-  });
+  }
+
+  const execList = $('#settings-ai-exec-list');
+  if (execList) {
+    const curExec = getSelectedExecutionMode();
+    execList.innerHTML = EXECUTION_MODES.map(m => `
+      <button type="button" class="gbtn waffle-model-pill ${curExec === m.id ? 'selected' : ''}" data-set-exec="${esc(m.id)}" title="${esc(m.desc)}">
+        <strong>${esc(m.label)}</strong>
+        <small>${esc(m.desc)}</small>
+      </button>
+    `).join('');
+    execList.querySelectorAll('[data-set-exec]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        setSelectedExecutionMode(btn.dataset.setExec);
+        playPop(640);
+        renderSettingsModal();
+      });
+    });
+  }
+
+  detectDeviceDiagnostics().then(d => {
+    const pill = $('#settings-device-pill');
+    if (pill) {
+      pill.textContent = d.summaryLabel;
+      pill.className = `waffle-device-pill ${d.hasRisk ? 'is-risk' : 'is-ok'}`;
+    }
+  }).catch(() => {});
+  detectImageCapabilities().then(caps => {
+    const changed = caps.hasWebGPU !== settingsImageCaps.hasWebGPU;
+    settingsImageCaps = caps;
+    if (changed && !$('#settings-overlay').hidden) renderSettingsModal();
+  }).catch(() => {});
 }
 
-$('#settings-toggle').addEventListener('click', () => {
+function openSettingsModal(scrollToSection = '') {
   playPop(580);
   renderSettingsModal();
   $('#settings-overlay').hidden = false;
-});
+  if (scrollToSection === 'ai') {
+    setTimeout(() => $('#settings-ai-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40);
+  }
+}
+
+$('#settings-toggle').addEventListener('click', () => openSettingsModal());
+window.addEventListener('bite-open-settings', e => openSettingsModal(e?.detail?.section || ''));
 $('#settings-sound-toggle')?.addEventListener('click', () => {
   toggleMute();
   syncSoundUI();

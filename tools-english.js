@@ -3,6 +3,7 @@ import { playPop, playSparkle, playBoing } from './sfx.js';
 import { streamWaffleChat, formatWaffleMarkdown } from './waffle-ai.js';
 import { createDocxBlob, extractTextFromUpload, triggerFileDownload } from './file-tools-client.js';
 import { getAppLanguage } from './i18n.js';
+import { AI_DISCLAIMER_TEXT, detectDeviceDiagnostics, getSelectedTextModel, TEXT_MODELS } from './waffle-browser-ai.js';
 
 const ENGLISH_IDS = [
   'waffle-translate', 'sentence-corrector', 'tone-rewriter', 'grammar-explainer',
@@ -419,13 +420,29 @@ export function mountEnglish(id, root) {
   root.replaceChildren();
 
   const form = gEl('section', { class: 'game-panel tool-form' });
+  const activeModel = TEXT_MODELS.find(m => m.id === getSelectedTextModel()) || TEXT_MODELS[0];
   const badgeText = id === 'waffle-translate'
-    ? '🌐 Google Translate + Qwen 2.5 1.5B · Decent device recommended for AI tools'
-    : '⚠ Uses Qwen 2.5 1.5B · A decent device is recommended to run this tool';
-  const badge = gEl('div', { class: 'eng-ai-banner' },
-    gEl('span', { class: 'gbadge' }, badgeText)
+    ? `🌐 Google Translate + ${activeModel.label} · Decent device & WebGPU recommended`
+    : `⚠ Uses ${activeModel.label} (Qwen 2.5 1.5B default) · Decent device & WebGPU recommended`;
+  const devStatusPill = gEl('span', { class: 'waffle-device-pill is-risk' }, 'Checking WebGPU…');
+  const openSettingsBtn = gameBtn('⚙ AI & Fallback Settings', 'chip', () => {
+    playPop(580);
+    window.dispatchEvent(new CustomEvent('bite-open-settings', { detail: { section: 'ai' } }));
+  });
+  const disclaimerCard = gEl('div', { class: 'english-disclaimer-card' },
+    gEl('div', { class: 'eng-ai-banner' },
+      gEl('span', { class: 'gbadge' }, badgeText),
+      devStatusPill,
+      openSettingsBtn
+    ),
+    gEl('p', { class: 'english-disclaimer-copy' }, AI_DISCLAIMER_TEXT),
+    gEl('p', { class: 'english-disclaimer-copy' }, '⚠ Mobile Warning: On an iPhone below iOS 26 or any phone/tablet without WebGPU, browser AI models may crash, freeze, or run slowly — switch to a lighter model or Local Server / WASM CPU mode in Settings if needed.')
   );
-  form.append(badge);
+  detectDeviceDiagnostics().then(d => {
+    devStatusPill.textContent = d.summaryLabel;
+    devStatusPill.className = `waffle-device-pill ${d.hasRisk ? 'is-risk' : 'is-ok'}`;
+  }).catch(() => {});
+  form.append(disclaimerCard);
   root.append(form);
 
   const run = createRunner(form);

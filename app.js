@@ -68,8 +68,9 @@ app.innerHTML = `
         <button type="button" class="gbtn gnav-btn sound-btn" id="sound-toggle" aria-label="Toggle sound effects" aria-pressed="${!isMuted()}">
           <span class="gnav-icon" id="sound-icon">${uiIconSVG(isMuted() ? 'soundOff' : 'soundOn')}</span>
         </button>
-        <button type="button" class="gbtn gnav-btn sound-btn" id="settings-toggle" aria-label="Settings" title="Settings">
+        <button type="button" class="gbtn gnav-btn settings-nav-btn" id="settings-toggle" aria-label="Open Settings" title="Settings">
           <span class="gnav-icon">${uiIconSVG('gear')}</span>
+          <span class="gnav-label">Settings</span>
         </button>
       </nav>
     </header>
@@ -78,9 +79,22 @@ app.innerHTML = `
 
     <div class="settings-overlay" id="settings-overlay" hidden>
       <div class="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="window-grab-pill" aria-hidden="true"></div>
         <div class="settings-head">
-          <h2 id="settings-title">Settings</h2>
+          <div class="settings-title-group">
+            <span class="gnav-icon">${uiIconSVG('gear')}</span>
+            <h2 id="settings-title">Settings</h2>
+          </div>
           <button type="button" class="window-close-x" id="settings-close" aria-label="Close settings">✕</button>
+        </div>
+        <div class="gfield">
+          <span class="gfield-label">Sound Effects</span>
+          <div>
+            <button type="button" class="gtoggle ${!isMuted() ? 'is-on' : ''}" id="settings-sound-toggle" aria-pressed="${!isMuted()}">
+              <span class="gtoggle-knob" aria-hidden="true"></span>
+              <span id="settings-sound-label">${isMuted() ? 'Muted' : 'Kitchen Sounds On'}</span>
+            </button>
+          </div>
         </div>
         <div class="gfield">
           <span class="gfield-label">Language</span>
@@ -510,7 +524,23 @@ window.addEventListener('waffle-open-art-studio', e => {
   }
   openTool('art-studio');
 });
+function syncSoundUI() {
+  const on = !isMuted();
+  const btn = $('#sound-toggle');
+  if (btn) btn.setAttribute('aria-pressed', String(on));
+  const ic = $('#sound-icon');
+  if (ic) ic.innerHTML = uiIconSVG(on ? 'soundOn' : 'soundOff');
+  const st = $('#settings-sound-toggle');
+  if (st) {
+    st.classList.toggle('is-on', on);
+    st.setAttribute('aria-pressed', String(on));
+  }
+  const sl = $('#settings-sound-label');
+  if (sl) sl.textContent = on ? 'Kitchen Sounds On' : 'Muted';
+}
+
 function renderSettingsModal() {
+  syncSoundUI();
   const list = $('#settings-lang-list');
   if (!list) return;
   const cur = getAppLanguage();
@@ -533,6 +563,11 @@ $('#settings-toggle').addEventListener('click', () => {
   playPop(580);
   renderSettingsModal();
   $('#settings-overlay').hidden = false;
+});
+$('#settings-sound-toggle')?.addEventListener('click', () => {
+  toggleMute();
+  syncSoundUI();
+  if (!isMuted()) playPop(640);
 });
 $('#settings-close').addEventListener('click', () => {
   playPop(460);

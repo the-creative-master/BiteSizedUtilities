@@ -2141,10 +2141,19 @@ body.waffle-modal-open {
   align-items: center;
   justify-content: space-between;
 }
+.settings-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .settings-head h2 {
   margin: 0;
   font-family: var(--display);
   font-size: 22px;
+}
+.settings-nav-btn {
+  background: var(--parchment);
+  box-shadow: 0 5px 0 #c9a775, 0 8px 12px rgba(79, 47, 35, 0.16);
 }
 .settings-lang-grid {
   max-height: 260px;

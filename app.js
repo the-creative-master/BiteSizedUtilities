@@ -490,6 +490,11 @@ route();
 
 setTimeout(() => warmupWaffleAI(), 800);
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  navigator.serviceWorker.register('./sw.js').catch(console.warn);
+if ('serviceWorker' in navigator) {
+  if (import.meta.env.PROD) {
+    navigator.serviceWorker.register('./sw.js').catch(console.warn);
+  } else {
+    navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
+    if ('caches' in window) caches.keys().then(ks => ks.filter(k => k.startsWith('bite-')).forEach(k => caches.delete(k))).catch(() => {});
+  }
 }

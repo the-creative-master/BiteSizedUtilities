@@ -14,11 +14,13 @@ const STARTER_PROMPTS = [
 const WELCOME_MSG = {
   role: 'assistant',
   content: [
-    'Hey there, kitchen friend! I’m **Sir Waffle**, your multi-model **Waffle AI** studio.',
+    'Hey there, kitchen friend! I’m **Sir Waffle**, your **Waffle AI** assistant.',
     '',
-    '- **6 Chat AI Models**: Instant **Qwen 2.5 1.5B** (server) + in-browser **SmolLM2 360M**, **Qwen 2.5 0.5B**, **Qwen 3 0.6B**, **Llama 3.2 1B**, and **DeepSeek R1 1.5B**',
-    '- **Real AI Image Generation**: Tap **🎨 Image** (or type `/imagine ...`) with local **SDXS-512 (1-Step)** or **SD-Turbo (WebGPU)**!',
-    '- **Markdown, Code & Files**: Attach `.docx` / `.txt` / `.md` / code files, or ask me to bake a downloadable `.docx`!'
+    '- **Local & Browser AI Models**: **Qwen 2.5 1.5B**, **Qwen 2.5 Coder 1.5B**, **Qwen 3 0.6B** (pre-cached on server) + in-browser **Llama 3.2 1B**, **Qwen 3.5 0.8B**, **SmolLM2 360M**, **Qwen 2.5 0.5B**, and **DeepSeek R1 1.5B**',
+    '- **Image Generation**: Tap **🎨 Image** (or type `/imagine ...`) with **SDXS-512 (1-Step)** or **SD-Turbo (WebGPU)**',
+    '- **Files & Markdown**: Attach `.docx` / `.txt` / `.md` / code files, or ask me to generate a downloadable `.docx`!',
+    '',
+    '> ⚠ *Device note: Depending on which AI model you choose, a decent device (good RAM/CPU, or WebGPU for browser models) is recommended.*'
   ].join('\n')
 };
 
@@ -242,11 +244,11 @@ export function formatWaffleMarkdown(raw, streaming = false) {
   }).join('');
 }
 
-export async function streamWaffleChat({ messages: msgList, systemPrompt, maxTokens = 520, temperature = 0.7, signal, onStatus, onToken }) {
+export async function streamWaffleChat({ modelId, messages: msgList, systemPrompt, maxTokens = 520, temperature = 0.7, signal, onStatus, onToken }) {
   const res = await fetch('./api/waffle-ai/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages: msgList, systemPrompt, maxTokens, temperature, stream: true }),
+    body: JSON.stringify({ modelId, messages: msgList, systemPrompt, maxTokens, temperature, stream: true }),
     signal
   });
   if (!res.ok) {
@@ -343,16 +345,16 @@ function updateStatusBadge(customNote) {
     return;
   }
   if (modelState.error) {
-    badge.textContent = `Qwen 2.5 1.5B · ${modelState.error}`;
+    badge.textContent = `${tCfg.label} · ${modelState.error}`;
     badge.className = 'waffle-ai-badge is-warn';
   } else if (isGenerating) {
-    badge.textContent = 'Qwen 2.5 1.5B · Thinking…';
+    badge.textContent = `${tCfg.label} · Thinking…`;
     badge.className = 'waffle-ai-badge is-busy';
-  } else if (modelState.loaded) {
-    badge.textContent = 'Qwen 2.5 1.5B · node-llama.cpp · Ready';
+  } else if (modelState.loaded && modelState.modelId === tCfg.id) {
+    badge.textContent = `${tCfg.label} · node-llama.cpp · Ready`;
     badge.className = 'waffle-ai-badge is-ready';
   } else {
-    badge.textContent = 'Qwen 2.5 1.5B · node-llama.cpp · Pre-cached';
+    badge.textContent = `${tCfg.label} · node-llama.cpp · Pre-cached`;
     badge.className = 'waffle-ai-badge';
   }
 }
@@ -365,6 +367,7 @@ function renderModelDrawer() {
   if (!showModelDrawer) return;
 
   drawer.innerHTML = `
+    <div class="waffle-device-warn">⚠ Note: Depending on which AI model you choose, a decent device (good RAM/CPU or WebGPU) is recommended.</div>
     <div class="waffle-drawer-sec">
       <div class="waffle-drawer-label">Chat Models (${TEXT_MODELS.length})</div>
       <div class="waffle-pill-grid">
@@ -783,13 +786,17 @@ async function sendMessage(rawText) {
       });
     } else {
       finalText = await streamWaffleChat({
+        modelId: tCfg.id,
         messages: historyPayload,
         maxTokens: 680,
         temperature: 0.7,
         signal: activeAbort.signal,
         onStatus(payload) {
-          if (payload.state === 'generating') {
+          if (payload.state === 'loading') {
+            updateStatusBadge(`Loading ${tCfg.label}…`);
+          } else if (payload.state === 'generating') {
             modelState.loaded = true;
+            modelState.modelId = tCfg.id;
             updateStatusBadge();
           }
         },

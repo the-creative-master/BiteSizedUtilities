@@ -299,7 +299,8 @@ export function uiIconSVG(name) {
     back: `<svg class="game-svg" viewBox="0 0 32 32" fill="none"><path d="M20 7 L10 16 L20 25" stroke="${INK}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
     soundOn: `<svg class="game-svg" viewBox="0 0 32 32" fill="none"><path d="M6 12 H11 L18 6 V26 L11 20 H6 Z" fill="#ffe184" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/><path d="M22 11 C24.5 13.5 24.5 18.5 22 21" stroke="${INK}" stroke-width="2.5" stroke-linecap="round"/><path d="M25.5 8 C29.5 12 29.5 20 25.5 24" stroke="${INK}" stroke-width="2.5" stroke-linecap="round"/></svg>`,
     soundOff: `<svg class="game-svg" viewBox="0 0 32 32" fill="none"><path d="M6 12 H11 L18 6 V26 L11 20 H6 Z" fill="#e5d5b8" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/><path d="M22 12 L28 20 M28 12 L22 20" stroke="#c94d3b" stroke-width="2.8" stroke-linecap="round"/></svg>`,
-    search: `<svg class="game-svg" viewBox="0 0 32 32" fill="none"><circle cx="14" cy="14" r="8" stroke="${INK}" stroke-width="2.8"/><line x1="20" y1="20" x2="27" y2="27" stroke="${INK}" stroke-width="3" stroke-linecap="round"/></svg>`
+    search: `<svg class="game-svg" viewBox="0 0 32 32" fill="none"><circle cx="14" cy="14" r="8" stroke="${INK}" stroke-width="2.8"/><line x1="20" y1="20" x2="27" y2="27" stroke="${INK}" stroke-width="3" stroke-linecap="round"/></svg>`,
+    gear: `<svg class="game-svg" viewBox="0 0 32 32" fill="none"><path d="M13 4 H19 L20 7.5 L23 8.8 L26 6.8 L29.2 10 L27.2 13 L28.5 16 L31 17 V21 L28.5 22 L27.2 25 L29.2 28 L26 31.2 L23 29.2 L20 30.5 L19 34 H13 L12 30.5 L9 29.2 L6 31.2 L2.8 28 L4.8 25 L3.5 22 L1 21 V17 L3.5 16 L4.8 13 L2.8 10 L6 6.8 L9 8.8 L12 7.5 Z" transform="translate(0 -3) scale(1 0.96)" fill="#e7d3b0" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/><circle cx="16" cy="16" r="4.5" fill="#fff8e8" stroke="${INK}" stroke-width="2.4"/></svg>`
   };
   return map[name] || map.home;
 }

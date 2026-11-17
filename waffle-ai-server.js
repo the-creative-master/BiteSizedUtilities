@@ -3,11 +3,30 @@ import path from 'node:path';
 
 export const WAFFLE_MODEL_PATH = process.env.WAFFLE_AI_MODEL_PATH || path.resolve('.cache/waffle-ai/qwen2.5-1.5b.gguf');
 
+export const SERVER_MODELS = {
+  'qwen2.5-1.5b': {
+    id: 'qwen2.5-1.5b',
+    label: 'Qwen 2.5 1.5B',
+    path: WAFFLE_MODEL_PATH
+  },
+  'qwen2.5-coder-1.5b': {
+    id: 'qwen2.5-coder-1.5b',
+    label: 'Qwen 2.5 Coder 1.5B',
+    path: WAFFLE_MODEL_PATH
+  },
+  'qwen3-0.6b': {
+    id: 'qwen3-0.6b',
+    label: 'Qwen 3 0.6B',
+    path: path.resolve('.cache/waffle-ai/qwen3-0.6b.gguf')
+  }
+};
+
 export const WAFFLE_SYSTEM_PROMPT = [
   'You are Sir Waffle, the cheerful, warm-hearted 2.5D waffle mascot of BiteSizedUtilities.',
+  'Always respond in English unless the user explicitly asks you to write in another language.',
   'Speak with cozy kitchen charm (occasional maple syrup, butter, or crispy waffle puns are welcome, but keep answers clear, accurate, and well-formatted in Markdown).',
   'Never say "As an AI language model" — stay in character as Sir Waffle.',
-  'You live in the BiteSizedUtilities kitchen, which has 6 utility cupboards (85 tools: Math & Numbers, Coding & Developing, Text & Files, Art & Coloring, Science & Physics, and English & Languages with Waffle Translate & Sentence Corrector) plus a 45-game arcade (including Fancade hit Roper!).',
+  'You live in the BiteSizedUtilities kitchen, which has 6 utility cupboards (85 tools: Math & Numbers, Coding & Developing, Text & Files, Art & Coloring, Science & Physics, and English & Languages) plus a 45-game arcade (including Fancade hit Roper!).',
   'When writing code, always use standard fenced code blocks with the language name (like ```python).',
   'When the user asks you to make, create, or generate a downloadable file (such as .docx, .md, .txt, .csv, .json, .html, .py, .js), wrap the full file contents inside a fenced block whose tag is file:filename.ext (for example ```file:waffle-guide.docx with clean Markdown headings/lists/paragraphs inside, or ```file:hello.py).',
   'Users can also attach/upload .docx, .txt, .md, .csv, and code files for you to read, summarize, translate, edit, or turn into new files.'
@@ -17,56 +36,98 @@ let llamaInstance = null;
 let modelInstance = null;
 let contextInstance = null;
 let sessionInstance = null;
+let activeModelId = 'qwen2.5-1.5b';
 let loadPromise = null;
+let loadingModelId = null;
 let loadError = null;
 let chatQueue = Promise.resolve();
 
-function getModelStats() {
+function resolveModel(modelId) {
+  return SERVER_MODELS[modelId] || SERVER_MODELS['qwen2.5-1.5b'];
+}
+
+function getModelStats(modelId = activeModelId) {
+  const cfg = resolveModel(modelId);
   try {
-    const st = fs.statSync(WAFFLE_MODEL_PATH);
-    return { exists: st.isFile() && st.size > 100_000_000, sizeBytes: st.size };
+    const st = fs.statSync(cfg.path);
+    return { exists: st.isFile() && st.size > 100_000_000, sizeBytes: st.size, cfg };
   } catch {
-    return { exists: false, sizeBytes: 0 };
+    return { exists: false, sizeBytes: 0, cfg };
   }
 }
 
-export function getWaffleStatus() {
-  const stats = getModelStats();
+export function getWaffleStatus(modelId = activeModelId) {
+  const stats = getModelStats(modelId);
+  const available = Object.values(SERVER_MODELS)
+    .filter(m => m.id !== 'qwen2.5-coder-1.5b')
+    .map(m => {
+      const s = getModelStats(m.id);
+      return { id: m.id, label: m.label, preCached: s.exists, sizeBytes: s.sizeBytes };
+    });
   return {
     ok: stats.exists && !loadError,
     preCached: stats.exists,
-    loaded: Boolean(sessionInstance),
+    loaded: Boolean(sessionInstance && activeModelId === stats.cfg.id),
     loading: Boolean(loadPromise && !sessionInstance),
     engine: 'node-llama.cpp',
-    model: 'Qwen 2.5 1.5B',
-    modelFile: path.basename(WAFFLE_MODEL_PATH),
+    model: stats.cfg.label,
+    modelId: stats.cfg.id,
+    modelFile: path.basename(stats.cfg.path),
     sizeBytes: stats.sizeBytes,
+    available,
     error: loadError ? String(loadError.message || loadError) : null
   };
 }
 
-export async function ensureWaffleSession() {
-  if (sessionInstance) return sessionInstance;
-  if (loadPromise) return loadPromise;
+async function disposeActiveModel() {
+  const s = sessionInstance;
+  const c = contextInstance;
+  const m = modelInstance;
+  sessionInstance = null;
+  contextInstance = null;
+  modelInstance = null;
+  loadPromise = null;
+  loadingModelId = null;
+  try { await s?.dispose?.(); } catch {}
+  try { await c?.dispose?.(); } catch {}
+  try { await m?.dispose?.(); } catch {}
+}
 
+export async function ensureWaffleSession(requestedModelId = activeModelId) {
+  const cfg = resolveModel(requestedModelId);
+  const samePath = modelInstance && resolveModel(activeModelId).path === cfg.path;
+  if (sessionInstance && (activeModelId === cfg.id || samePath)) {
+    activeModelId = cfg.id;
+    return sessionInstance;
+  }
+  if (loadPromise && loadingModelId === cfg.id) return loadPromise;
+
+  if (sessionInstance || loadPromise) {
+    await disposeActiveModel();
+  }
+
+  loadingModelId = cfg.id;
   loadPromise = (async () => {
     loadError = null;
-    const stats = getModelStats();
+    const stats = getModelStats(cfg.id);
     if (!stats.exists) {
-      throw new Error(`Pre-cached Qwen 2.5 1.5B GGUF model not found at ${WAFFLE_MODEL_PATH}`);
+      throw new Error(`Pre-cached ${cfg.label} GGUF model not found at ${cfg.path}`);
     }
     const { getLlama, LlamaChatSession } = await import('node-llama-cpp');
-    llamaInstance = await getLlama();
-    modelInstance = await llamaInstance.loadModel({ modelPath: WAFFLE_MODEL_PATH });
+    if (!llamaInstance) llamaInstance = await getLlama();
+    modelInstance = await llamaInstance.loadModel({ modelPath: cfg.path });
     contextInstance = await modelInstance.createContext({ contextSize: 3072, threads: 2 });
     sessionInstance = new LlamaChatSession({
       contextSequence: contextInstance.getSequence(),
       systemPrompt: WAFFLE_SYSTEM_PROMPT
     });
+    activeModelId = cfg.id;
+    loadingModelId = null;
     return sessionInstance;
   })().catch(err => {
     loadError = err;
     loadPromise = null;
+    loadingModelId = null;
     throw err;
   });
 
@@ -75,7 +136,7 @@ export async function ensureWaffleSession() {
 
 export function scheduleWaffleWarmup(delayMs = 1500) {
   const timer = setTimeout(() => {
-    ensureWaffleSession().catch(err => {
+    ensureWaffleSession('qwen2.5-1.5b').catch(err => {
       console.warn('[Waffle AI] Background warmup skipped:', err.message);
     });
   }, delayMs);
@@ -83,18 +144,9 @@ export function scheduleWaffleWarmup(delayMs = 1500) {
 }
 
 export async function disposeWaffleAI() {
-  const s = sessionInstance;
-  const c = contextInstance;
-  const m = modelInstance;
+  await disposeActiveModel();
   const l = llamaInstance;
-  sessionInstance = null;
-  contextInstance = null;
-  modelInstance = null;
   llamaInstance = null;
-  loadPromise = null;
-  try { await s?.dispose?.(); } catch {}
-  try { await c?.dispose?.(); } catch {}
-  try { await m?.dispose?.(); } catch {}
   try { await l?.dispose?.(); } catch {}
 }
 
@@ -103,7 +155,6 @@ function buildChatHistory(messages, customSystemPrompt) {
     .filter(m => m && typeof m.content === 'string' && m.content.trim())
     .slice(-12);
 
-  // Last user message will be passed to session.prompt(...)
   let lastUserIdx = -1;
   for (let i = cleaned.length - 1; i >= 0; i--) {
     if (cleaned[i].role === 'user') {
@@ -113,26 +164,36 @@ function buildChatHistory(messages, customSystemPrompt) {
   }
   if (lastUserIdx < 0) return { history: [], userText: '' };
 
-  const sysText = (typeof customSystemPrompt === 'string' && customSystemPrompt.trim())
+  const userText = cleaned[lastUserIdx].content.trim();
+  const hasSpeakHint = /\(Speak in [^)]+\)\s*$/i.test(userText);
+  const baseSys = (typeof customSystemPrompt === 'string' && customSystemPrompt.trim())
     ? customSystemPrompt.trim().slice(0, 1500)
     : WAFFLE_SYSTEM_PROMPT;
-  const userText = cleaned[lastUserIdx].content.trim();
+  const langGuard = hasSpeakHint
+    ? ' Follow the requested output language at the end of the prompt.'
+    : (baseSys === WAFFLE_SYSTEM_PROMPT ? '' : ' Respond in English unless instructed otherwise.');
+  const sysText = baseSys + langGuard;
   const history = [{ type: 'system', text: sysText }];
+
   for (let i = 0; i < lastUserIdx; i++) {
     const m = cleaned[i];
-    if (m.role === 'user') history.push({ type: 'user', text: m.content.trim() });
-    else if (m.role === 'assistant') history.push({ type: 'model', response: [m.content.trim()] });
+    if (m.role === 'user') {
+      history.push({ type: 'user', text: m.content.trim() });
+    } else if (m.role === 'assistant') {
+      history.push({ type: 'model', response: [m.content.trim()] });
+    }
   }
+
   return { history, userText };
 }
 
-function readJsonBody(req, maxBytes = 512 * 1024) {
+function readJsonBody(req, maxBytes = 256 * 1024) {
   return new Promise((resolve, reject) => {
+    let size = 0;
     const chunks = [];
-    let total = 0;
     req.on('data', chunk => {
-      total += chunk.length;
-      if (total > maxBytes) {
+      size += chunk.length;
+      if (size > maxBytes) {
         reject(Object.assign(new Error('Request body too large'), { statusCode: 413 }));
         req.destroy();
         return;
@@ -144,7 +205,7 @@ function readJsonBody(req, maxBytes = 512 * 1024) {
         const raw = Buffer.concat(chunks).toString('utf8');
         resolve(raw ? JSON.parse(raw) : {});
       } catch {
-        reject(Object.assign(new Error('Invalid JSON body'), { statusCode: 400 }));
+        reject(Object.assign(new Error('Invalid JSON payload'), { statusCode: 400 }));
       }
     });
     req.on('error', reject);
@@ -152,6 +213,7 @@ function readJsonBody(req, maxBytes = 512 * 1024) {
 }
 
 function sendJson(res, statusCode, data) {
+  if (res.writableEnded || res.destroyed) return;
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -187,11 +249,16 @@ export function attachWaffleAiMiddleware(middlewares) {
     }
 
     if (pathname === '/api/waffle-ai/warmup' && req.method === 'POST') {
+      let modelId = activeModelId;
       try {
-        await ensureWaffleSession();
-        return sendJson(res, 200, getWaffleStatus());
+        const b = await readJsonBody(req);
+        if (b?.modelId) modelId = b.modelId;
+      } catch {}
+      try {
+        await ensureWaffleSession(modelId);
+        return sendJson(res, 200, getWaffleStatus(modelId));
       } catch (err) {
-        return sendJson(res, 500, { ...getWaffleStatus(), error: err.message });
+        return sendJson(res, 500, { ...getWaffleStatus(modelId), error: err.message });
       }
     }
 
@@ -207,20 +274,20 @@ export function attachWaffleAiMiddleware(middlewares) {
 
       const runQuip = async () => {
         if (abortController.signal.aborted) return;
-        const session = await ensureWaffleSession();
+        const session = await ensureWaffleSession(activeModelId);
         if (abortController.signal.aborted) return;
         session.setChatHistory([{
           type: 'system',
-          text: 'You are Sir Waffle, a cheerful 2.5D waffle mascot. Reply with ONE playful, short reaction (max 10 words, no quotes, no markdown) when someone pokes your bouncy waffle kitchen wall.'
+          text: 'You are Sir Waffle, a cheerful 2.5D waffle mascot. Reply ONLY in English with ONE playful, short reaction (max 10 words, no quotes, no markdown) when someone pokes your bouncy waffle kitchen wall.'
         }]);
-        const reply = await session.prompt(`The user just bounced the waffle wall! Make a cute 1-line quip inspired by: ${theme}.`, {
+        const reply = await session.prompt(`The user just bounced the waffle wall! Make a cute 1-line English quip inspired by: ${theme}.`, {
           maxTokens: 28,
-          temperature: 0.95,
+          temperature: 0.9,
           signal: abortController.signal,
           stopOnAbortSignal: true
         });
         const quip = (reply || 'Boing! Crispy waffle vibes!').replace(/["*\n\r]+/g, ' ').trim().slice(0, 72);
-        sendJson(res, 200, { quip, model: 'Qwen 2.5 1.5B', engine: 'node-llama.cpp' });
+        sendJson(res, 200, { quip, model: resolveModel(activeModelId).label, engine: 'node-llama.cpp' });
       };
 
       const queued = chatQueue.then(runQuip, runQuip);
@@ -243,6 +310,7 @@ export function attachWaffleAiMiddleware(middlewares) {
         return sendJson(res, err.statusCode || 400, { error: err.message });
       }
 
+      const targetCfg = resolveModel(body.modelId || activeModelId);
       const { history, userText } = buildChatHistory(body.messages, body.systemPrompt);
       if (!userText) {
         return sendJson(res, 400, { error: 'A user message is required.' });
@@ -265,28 +333,33 @@ export function attachWaffleAiMiddleware(middlewares) {
         res.setHeader('X-Accel-Buffering', 'no');
         res.flushHeaders?.();
         sendSse(res, 'status', {
-          state: sessionInstance ? 'generating' : 'loading',
-          model: 'Qwen 2.5 1.5B',
+          state: sessionInstance && activeModelId === targetCfg.id ? 'generating' : 'loading',
+          model: targetCfg.label,
+          modelId: targetCfg.id,
           engine: 'node-llama.cpp'
         });
       }
 
       const runTask = async () => {
         if (abortController.signal.aborted) return;
-        const session = await ensureWaffleSession();
+        const session = await ensureWaffleSession(targetCfg.id);
         if (abortController.signal.aborted) return;
 
         if (stream) {
           sendSse(res, 'status', {
             state: 'generating',
-            model: 'Qwen 2.5 1.5B',
+            model: targetCfg.label,
+            modelId: targetCfg.id,
             engine: 'node-llama.cpp'
           });
         }
 
         session.setChatHistory(history);
+        const promptForModel = (targetCfg.id === 'qwen3-0.6b' && !/\/(think|no_think)\b/.test(userText))
+          ? `${userText} /no_think`
+          : userText;
         let fullText = '';
-        const reply = await session.prompt(userText, {
+        const reply = await session.prompt(promptForModel, {
           maxTokens,
           temperature,
           signal: abortController.signal,
@@ -297,12 +370,12 @@ export function attachWaffleAiMiddleware(middlewares) {
           }
         });
 
-        const finalText = (reply || fullText || '').trim();
+        const finalText = (reply || fullText || '').replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
         if (stream) {
-          sendSse(res, 'done', { text: finalText, model: 'Qwen 2.5 1.5B', engine: 'node-llama.cpp' });
+          sendSse(res, 'done', { text: finalText, model: targetCfg.label, modelId: targetCfg.id, engine: 'node-llama.cpp' });
           if (!res.writableEnded) res.end();
         } else {
-          sendJson(res, 200, { reply: finalText, model: 'Qwen 2.5 1.5B', engine: 'node-llama.cpp' });
+          sendJson(res, 200, { reply: finalText, model: targetCfg.label, modelId: targetCfg.id, engine: 'node-llama.cpp' });
         }
       };
 

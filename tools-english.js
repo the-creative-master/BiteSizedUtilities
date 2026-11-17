@@ -2,6 +2,7 @@ import { gEl, gameBtn, gameTabs, gameToggle, gameField, gameFilePill } from './u
 import { playPop, playSparkle, playBoing } from './sfx.js';
 import { streamWaffleChat, formatWaffleMarkdown } from './waffle-ai.js';
 import { createDocxBlob, extractTextFromUpload, triggerFileDownload } from './file-tools-client.js';
+import { getAppLanguage } from './i18n.js';
 
 const ENGLISH_IDS = [
   'waffle-translate', 'sentence-corrector', 'tone-rewriter', 'grammar-explainer',
@@ -82,7 +83,7 @@ function createRunner(form) {
   const outActions = gEl('div', { class: 'gtabs eng-out-actions', hidden: true }, copyBtn, docxBtn, mdBtn);
   outBox.append(outBody, outActions);
 
-  async function ask({ systemPrompt, userPrompt, temperature = 0.45, maxTokens = 560, onDone }) {
+  async function ask({ systemPrompt, userPrompt, temperature = 0.45, maxTokens = 560, skipSpeakHint = false, onDone }) {
     if (activeReq) activeReq.abort();
     const ac = new AbortController();
     activeReq = ac;
@@ -92,11 +93,14 @@ function createRunner(form) {
     lastText = '';
     outBox.hidden = false;
     outActions.hidden = true;
-    outBody.innerHTML = '<span class="waffle-thinking">Sir Waffle is thinking with Qwen 2.5 1.5B…</span><span class="waffle-cursor" aria-hidden="true">▌</span>';
+    outBody.innerHTML = '<span class="waffle-thinking">Sir Waffle is thinking…</span><span class="waffle-cursor" aria-hidden="true">▌</span>';
+
+    const appLang = getAppLanguage();
+    const finalPrompt = skipSpeakHint ? userPrompt : `${userPrompt}\n\n(Speak in ${appLang})`;
 
     try {
       const full = await streamWaffleChat({
-        messages: [{ role: 'user', content: userPrompt }],
+        messages: [{ role: 'user', content: finalPrompt }],
         systemPrompt,
         temperature,
         maxTokens,
@@ -209,6 +213,7 @@ function mountTranslate(form, run) {
       userPrompt: `Translate from ${srcLang.value} to ${dstLang.value}:\n${text}`,
       temperature: 0.15,
       maxTokens: 400,
+      skipSpeakHint: true,
       onDone(out) {
         lastTranslation = out.trim();
         lastLangCode = LANG_CODES[dstLang.value] || 'en';
@@ -415,8 +420,8 @@ export function mountEnglish(id, root) {
 
   const form = gEl('section', { class: 'game-panel tool-form' });
   const badgeText = id === 'waffle-translate'
-    ? '🌐 GOOGLE TRANSLATE + WAFFLE AI'
-    : '✨ POWERED BY WAFFLE AI · QWEN 2.5 1.5B (PRE-CACHED)';
+    ? '🌐 Google Translate + Qwen 2.5 1.5B · Decent device recommended for AI tools'
+    : '⚠ Uses Qwen 2.5 1.5B · A decent device is recommended to run this tool';
   const badge = gEl('div', { class: 'eng-ai-banner' },
     gEl('span', { class: 'gbadge' }, badgeText)
   );

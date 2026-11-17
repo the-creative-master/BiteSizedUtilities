@@ -8,6 +8,7 @@ import { mountTextArt } from './tools-text-art.js';
 import { mountEnglish } from './tools-english.js';
 import { mountGames } from './games.js';
 import { openWaffleAI, warmupWaffleAI } from './waffle-ai.js';
+import { APP_LANGUAGES, getAppLanguage, setAppLanguage, initAppI18n } from './i18n.js';
 
 const $ = s => document.querySelector(s);
 const storage = {
@@ -31,7 +32,7 @@ const CUPBOARD_THEME = {
   text:    { color: '#a595c4', trim: '#756495', doodles: ['Aa', '✎'], tagline: 'A PLACE FOR EVERY WORD.' },
   art:     { color: '#e895bf', trim: '#b8638e', doodles: ['✿', '◈'], tagline: 'MAKE A COLORFUL MESS.' },
   science: { color: '#94c496', trim: '#609362', doodles: ['⚛', '⚖'], tagline: 'FEED YOUR CURIOSITY.' },
-  english: { color: '#f3be72', trim: '#b87d32', doodles: ['Aa', '文'], tagline: 'AI-POWERED ENGLISH & LANGUAGES.' },
+  english: { color: '#f3be72', trim: '#b87d32', doodles: ['Aa', '文'], tagline: 'ENGLISH & LANGUAGES.' },
   games:   { color: '#d7b5eb', trim: '#9875b4', doodles: ['★', '♧'], tagline: '45 GAMES + ROPER FANCADE' }
 };
 
@@ -67,10 +68,26 @@ app.innerHTML = `
         <button type="button" class="gbtn gnav-btn sound-btn" id="sound-toggle" aria-label="Toggle sound effects" aria-pressed="${!isMuted()}">
           <span class="gnav-icon" id="sound-icon">${uiIconSVG(isMuted() ? 'soundOff' : 'soundOn')}</span>
         </button>
+        <button type="button" class="gbtn gnav-btn sound-btn" id="settings-toggle" aria-label="Settings" title="Settings">
+          <span class="gnav-icon">${uiIconSVG('gear')}</span>
+        </button>
       </nav>
     </header>
 
     <main id="main" class="kitchen-stage"></main>
+
+    <div class="settings-overlay" id="settings-overlay" hidden>
+      <div class="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="settings-head">
+          <h2 id="settings-title">Settings</h2>
+          <button type="button" class="window-close-x" id="settings-close" aria-label="Close settings">✕</button>
+        </div>
+        <div class="gfield">
+          <span class="gfield-label">Language</span>
+          <div class="gtabs settings-lang-grid" id="settings-lang-list"></div>
+        </div>
+      </div>
+    </div>
 
     <aside class="waffle-corner" aria-label="Waffle AI Button">
       <div class="counter-plate-wrap">
@@ -344,6 +361,7 @@ async function collection(id) {
   $('#main').innerHTML = `
     <section class="open-cupboard-scene" style="--cup:${theme.color};--trim:${theme.trim}">
       ${woodenSignboardHTML({ kicker: tagline, title, leftDoodle: theme.doodles[0], rightDoodle: theme.doodles[1] })}
+      ${id === 'english' ? '<p class="english-device-note">⚠ Uses Qwen 2.5 1.5B (local AI) — you need a decent device to run this cupboard smoothly.</p>' : ''}
       <div class="cabinet-bookcase ${perShelf === 2 ? 'cabinet-compact' : ''}">
         <div class="cabinet-crown" aria-hidden="true"></div>
         <div class="cabinet-interior">
@@ -492,8 +510,44 @@ window.addEventListener('waffle-open-art-studio', e => {
   }
   openTool('art-studio');
 });
+function renderSettingsModal() {
+  const list = $('#settings-lang-list');
+  if (!list) return;
+  const cur = getAppLanguage();
+  list.innerHTML = APP_LANGUAGES.map(l => `
+    <button type="button" class="gbtn gtab ${l.name === cur ? 'is-active' : ''}" data-pick-lang="${esc(l.name)}" data-no-i18n>
+      <span>${esc(l.native)}</span>
+    </button>
+  `).join('');
+  list.querySelectorAll('[data-pick-lang]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const lang = btn.dataset.pickLang;
+      playPop(620);
+      setAppLanguage(lang);
+      renderSettingsModal();
+    });
+  });
+}
+
+$('#settings-toggle').addEventListener('click', () => {
+  playPop(580);
+  renderSettingsModal();
+  $('#settings-overlay').hidden = false;
+});
+$('#settings-close').addEventListener('click', () => {
+  playPop(460);
+  $('#settings-overlay').hidden = true;
+});
+$('#settings-overlay').addEventListener('click', e => {
+  if (e.target === $('#settings-overlay')) {
+    playPop(460);
+    $('#settings-overlay').hidden = true;
+  }
+});
+
 bindActions();
 route();
+initAppI18n();
 
 setTimeout(() => warmupWaffleAI(), 800);
 

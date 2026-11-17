@@ -2,9 +2,41 @@ export const TEXT_MODELS = [
   {
     id: 'qwen2.5-1.5b',
     label: 'Qwen 2.5 1.5B',
-    badge: 'Local Server · Instant',
+    badge: 'Server · Instant',
     kind: 'server',
     desc: 'Pre-cached on server via node-llama.cpp'
+  },
+  {
+    id: 'qwen2.5-coder-1.5b',
+    label: 'Qwen 2.5 Coder 1.5B',
+    badge: 'Server · Coding',
+    kind: 'server',
+    desc: 'Pre-cached Qwen 2.5 Coder 1.5B on server via node-llama.cpp'
+  },
+  {
+    id: 'qwen3-0.6b',
+    label: 'Qwen 3 0.6B',
+    badge: 'Server · Fast 462 MB',
+    kind: 'server',
+    desc: 'Pre-cached Qwen 3 0.6B GGUF on server via node-llama.cpp'
+  },
+  {
+    id: 'llama3.2-1b',
+    label: 'Llama 3.2 1B',
+    badge: 'Browser · WebGPU',
+    kind: 'browser',
+    hfId: 'onnx-community/Llama-3.2-1B-Instruct-ONNX',
+    dtype: 'q4f16',
+    desc: 'Meta Llama 3.2 1B running in-browser (~750 MB)'
+  },
+  {
+    id: 'qwen3.5-0.8b',
+    label: 'Qwen 3.5 0.8B',
+    badge: 'Browser · Compact',
+    kind: 'browser',
+    hfId: 'onnx-community/Qwen3.5-0.8B-ONNX',
+    dtype: 'q4f16',
+    desc: 'Qwen 3.5 0.8B running in-browser (~550 MB)'
   },
   {
     id: 'smollm2-360m',
@@ -23,24 +55,6 @@ export const TEXT_MODELS = [
     hfId: 'onnx-community/Qwen2.5-0.5B-Instruct',
     dtype: 'q4',
     desc: 'Nimble multilingual model in-browser (~400 MB)'
-  },
-  {
-    id: 'qwen3-0.6b',
-    label: 'Qwen 3 0.6B',
-    badge: 'Browser · Smart',
-    kind: 'browser',
-    hfId: 'onnx-community/Qwen3-0.6B-ONNX',
-    dtype: 'q4f16',
-    desc: 'Next-gen Qwen 3 reasoning model in-browser (~450 MB)'
-  },
-  {
-    id: 'llama3.2-1b',
-    label: 'Llama 3.2 1B',
-    badge: 'Browser · WebGPU',
-    kind: 'browser',
-    hfId: 'onnx-community/Llama-3.2-1B-Instruct-ONNX',
-    dtype: 'q4f16',
-    desc: 'Meta Llama 3.2 1B running in-browser (~750 MB)'
   },
   {
     id: 'deepseek-r1-1.5b',

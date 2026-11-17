@@ -157,9 +157,21 @@ test('Waffle AI chatbot, streaming code boxes, DOCX creation/parsing, single Waf
 
   const englishSrc = fs.readFileSync('tools-english.js', 'utf8');
   assert.ok(englishSrc.includes('translate.googleapis.com/translate_a/single'), 'Waffle Translate uses Google Translate API');
+  assert.ok(englishSrc.includes('(Speak in ${appLang})'), 'English utilities silently append Speak-in language hint');
+
+  const { SERVER_MODELS } = await import('../waffle-ai-server.js');
+  assert.ok(SERVER_MODELS['qwen2.5-coder-1.5b'] && SERVER_MODELS['qwen3-0.6b'], 'Server exposes Qwen 2.5 Coder 1.5B and Qwen 3 0.6B');
+  assert.ok(fs.existsSync('.cache/waffle-ai/qwen3-0.6b.gguf'), 'Qwen 3 0.6B GGUF is pre-cached on disk');
 
   const { TEXT_MODELS } = await import('../waffle-browser-ai.js');
-  assert.ok(TEXT_MODELS.length >= 6, 'Waffle AI exposes multiple chat AI models');
+  assert.ok(TEXT_MODELS.some(m => m.id === 'llama3.2-1b'), 'Llama 3.2 1B available');
+  assert.ok(TEXT_MODELS.some(m => m.id === 'qwen3.5-0.8b'), 'Qwen 3.5 0.8B available');
+  assert.ok(TEXT_MODELS.some(m => m.id === 'qwen2.5-coder-1.5b'), 'Qwen 2.5 Coder 1.5B available');
+
+  const { APP_LANGUAGES } = await import('../i18n.js');
+  assert.ok(APP_LANGUAGES.length >= 12, 'Settings supports many languages');
+  const i18nSrc = fs.readFileSync('i18n.js', 'utf8');
+  assert.ok(i18nSrc.includes('#waffle-ai-overlay'), 'i18n skips Waffle AI modal');
 
   const { IMAGE_MODELS } = await import('../waffle-image-gen.js');
   assert.ok(IMAGE_MODELS.some(m => m.id === 'sdxs-512') && IMAGE_MODELS.some(m => m.id === 'sd-turbo'), 'Waffle AI exposes SDXS-512 and SD-Turbo image generation');

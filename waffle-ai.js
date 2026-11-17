@@ -29,7 +29,7 @@ const WELCOME_MSG = {
   content: [
     'Hey there, kitchen friend! I’m **Sir Waffle**, your **Waffle AI** assistant.',
     '',
-    '- **AI Models & Fallbacks (in ⚙ Settings)**: Choose **Qwen 2.5 1.5B**, **Qwen 2.5 Coder 1.5B**, **Qwen 3 0.6B**, **Llama 3.2 1B**, **Qwen 3.5 0.8B**, **SmolLM2 360M**, **Qwen 2.5 0.5B**, or **DeepSeek R1 1.5B**',
+    '- **AI Models & Fallbacks (in ⚙ Settings)**: Choose **Qwen 2.5 1.5B**, **Qwen 2.5 Coder 1.5B**, **Qwen 3 0.6B**, **SmolLM2 135M (Chromium Safe)**, **SmolLM2 360M**, **Qwen 2.5 0.5B**, **Qwen 3.5 0.8B**, **Llama 3.2 1B**, or **DeepSeek R1 1.5B** (default **Compact Q3_K_L / q4** quantization for lighter Chromium memory)',
     '- **Image Generation**: Tap **🎨 Image** (or type `/imagine ...`) with **SDXS-512 (1-Step)** or **SD-Turbo (WebGPU)**',
     '- **Files & Images**: Attach `.docx`, `.pdf`, `.xlsx`, `.pptx`, `.txt`, code files, or images for **Qwen 3.5 0.8B Vision**!',
     '',
@@ -314,15 +314,21 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
   const attempts = [];
   const pushBrowser = (dev, id = cfg.id) => {
     const m = TEXT_MODELS.find(x => x.id === id);
-    if (m?.hfId) attempts.push({ kind: 'browser', id: m.id, dev });
+    if (m?.hfId) attempts.push({ kind: 'browser', id: m.id, dev, label: m.label });
   };
-  const pushWllama = webgpu => {
-    if (cfg.hfGgufRepo || cfg.ggufFile) {
-      attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu });
+  const pushWllama = (webgpu, m = cfg) => {
+    if (m.hfGgufRepo || m.ggufFile) {
+      attempts.push({ kind: 'wllama', gguf: m.ggufFile || 'qwen3-0.6b.gguf', hfRepo: m.hfGgufRepo, hfQuant: m.hfGgufQuant, webgpu, label: m.label });
     }
   };
   const pushServer = (id = cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b') => {
-    attempts.push({ kind: 'server', id });
+    attempts.push({ kind: 'server', id, label: cfg.label });
+  };
+  const pushChromiumSafetyNet = () => {
+    const tiny = TEXT_MODELS.find(x => x.id === 'smollm2-135m');
+    if (!tiny || cfg.id === tiny.id) return;
+    pushWllama(false, tiny);
+    pushBrowser('wasm', tiny.id);
   };
 
   if (hasImages) {
@@ -337,6 +343,7 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     }
     pushWllama(false);
     pushBrowser('wasm');
+    pushChromiumSafetyNet();
   } else if (mode === 'webgpu') {
     if (diag.hasWebGPU) {
       pushBrowser('webgpu');
@@ -345,42 +352,48 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     pushWllama(false);
     pushBrowser('wasm');
     if (canTryServer) pushServer();
+    pushChromiumSafetyNet();
   } else if (mode === 'wllama') {
     if (diag.hasWebGPU) pushWllama(true);
     pushWllama(false);
     if (diag.hasWebGPU) pushBrowser('webgpu');
     pushBrowser('wasm');
     if (canTryServer) pushServer();
+    pushChromiumSafetyNet();
   } else if (mode === 'wasm') {
-    pushBrowser('wasm');
     pushWllama(false);
+    pushBrowser('wasm');
     if (canTryServer) pushServer();
+    pushChromiumSafetyNet();
   } else {
     // Auto fallback chain — always try the user's chosen model on its best available runtime first
     if (cfg.kind === 'server' && canTryServer) {
       pushServer(cfg.id);
       if (diag.hasWebGPU) {
-        pushBrowser('webgpu');
         pushWllama(true);
+        pushBrowser('webgpu');
       }
       pushWllama(false);
       pushBrowser('wasm');
+      pushChromiumSafetyNet();
     } else if (cfg.kind === 'server') {
       if (diag.hasWebGPU) {
-        pushBrowser('webgpu');
         pushWllama(true);
+        pushBrowser('webgpu');
       }
       pushWllama(false);
       pushBrowser('wasm');
       if (modelState.serverReachable !== false) pushServer(cfg.id);
+      pushChromiumSafetyNet();
     } else {
       if (diag.hasWebGPU) {
         pushBrowser('webgpu');
         pushWllama(true);
       }
-      pushBrowser('wasm');
       pushWllama(false);
+      pushBrowser('wasm');
       if (canTryServer) pushServer('qwen2.5-1.5b');
+      pushChromiumSafetyNet();
     }
   }
 
@@ -388,10 +401,11 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
   for (let i = 0; i < attempts.length; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const step = attempts[i];
+    const stepName = step.label || cfg.label;
     const stepLabel = step.kind === 'wllama'
-      ? `WLlama (${step.webgpu ? 'WebGPU' : 'WASM'})`
+      ? `${stepName} WLlama (${step.webgpu ? 'WebGPU' : 'WASM'})`
       : step.kind === 'browser'
-        ? `${cfg.label} (${step.dev.toUpperCase()})`
+        ? `${stepName} (${step.dev.toUpperCase()})`
         : 'Server';
     if (i > 0) {
       onStatus?.({ state: 'loading', detail: `Switching to ${stepLabel}…` });

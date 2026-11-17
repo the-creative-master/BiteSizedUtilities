@@ -2,50 +2,74 @@ export const TEXT_MODELS = [
   {
     id: 'qwen2.5-1.5b',
     label: 'Qwen 2.5 1.5B',
-    badge: 'Balanced · Server / Browser',
+    badge: 'Balanced · Q3_K_L / q4',
     kind: 'server',
     hfId: 'onnx-community/Qwen2.5-1.5B-Instruct',
-    dtype: 'q4f16',
+    dtype: 'q4',
     hfGgufRepo: 'Qwen/Qwen2.5-1.5B-Instruct-GGUF',
-    hfGgufQuant: 'Q4_K_M',
+    hfGgufQuant: 'Q3_K_L',
     ggufFile: 'qwen2.5-1.5b.gguf',
-    desc: 'Qwen 2.5 1.5B via local llama.cpp when cached, or ONNX/WLlama in browser'
+    desc: 'Qwen 2.5 1.5B via local llama.cpp when cached, or Q3_K_L / q4 in browser (~850 MB)'
   },
   {
     id: 'qwen2.5-coder-1.5b',
     label: 'Qwen 2.5 Coder 1.5B',
-    badge: 'Coding · Server / Browser',
+    badge: 'Coding · Q3_K_L / q4',
     kind: 'server',
     hfId: 'onnx-community/Qwen2.5-Coder-1.5B-Instruct',
-    dtype: 'q4f16',
+    dtype: 'q4',
     hfGgufRepo: 'Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF',
-    hfGgufQuant: 'Q4_K_M',
+    hfGgufQuant: 'Q3_K_L',
     ggufFile: 'qwen2.5-1.5b.gguf',
-    desc: 'Qwen 2.5 Coder 1.5B for coding & debugging (local server or browser fallback)'
+    desc: 'Qwen 2.5 Coder 1.5B for coding & debugging (local server or Q3_K_L / q4 fallback)'
   },
   {
     id: 'qwen3-0.6b',
     label: 'Qwen 3 0.6B',
-    badge: 'Light · Server / Browser',
+    badge: 'Light · ~350 MB',
     kind: 'server',
     hfId: 'onnx-community/Qwen3-0.6B-ONNX',
-    dtype: 'q4f16',
+    dtype: 'q4',
     hfGgufRepo: 'unsloth/Qwen3-0.6B-GGUF',
-    hfGgufQuant: 'Q4_K_M',
+    hfGgufQuant: 'Q3_K_L',
     ggufFile: 'qwen3-0.6b.gguf',
-    desc: 'Fast, lightweight Qwen 3 0.6B via llama.cpp, ONNX, or WLlama'
+    desc: 'Fast, lightweight Qwen 3 0.6B via llama.cpp, q4 ONNX, or Q3_K_L WLlama'
   },
   {
-    id: 'llama3.2-1b',
-    label: 'Llama 3.2 1B',
-    badge: 'Browser · WebGPU / WASM',
+    id: 'smollm2-135m',
+    label: 'SmolLM2 135M',
+    badge: 'Chromium Safe · ~95 MB',
     kind: 'browser',
-    hfId: 'onnx-community/Llama-3.2-1B-Instruct-ONNX',
-    dtype: 'q4f16',
-    hfGgufRepo: 'bartowski/Llama-3.2-1B-Instruct-GGUF',
-    hfGgufQuant: 'Q4_K_M',
+    hfId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+    dtype: 'q4',
+    hfGgufRepo: 'bartowski/SmolLM2-135M-Instruct-GGUF',
+    hfGgufQuant: 'Q3_K_L',
     ggufFile: 'qwen3-0.6b.gguf',
-    desc: 'Meta Llama 3.2 1B in-browser (~750 MB, requires decent device / WebGPU)'
+    desc: 'Ultra-compact ~95 MB model safe for low-RAM Chromium & mobile browsers'
+  },
+  {
+    id: 'smollm2-360m',
+    label: 'SmolLM2 360M',
+    badge: 'Browser · ~190 MB',
+    kind: 'browser',
+    hfId: 'HuggingFaceTB/SmolLM2-360M-Instruct',
+    dtype: 'q4',
+    hfGgufRepo: 'bartowski/SmolLM2-360M-Instruct-GGUF',
+    hfGgufQuant: 'Q3_K_L',
+    ggufFile: 'qwen3-0.6b.gguf',
+    desc: 'Compact in-browser WebGPU/WASM model (~190 MB in Q3_K_L / q4)'
+  },
+  {
+    id: 'qwen2.5-0.5b',
+    label: 'Qwen 2.5 0.5B',
+    badge: 'Browser · ~310 MB',
+    kind: 'browser',
+    hfId: 'onnx-community/Qwen2.5-0.5B-Instruct',
+    dtype: 'q4',
+    hfGgufRepo: 'Qwen/Qwen2.5-0.5B-Instruct-GGUF',
+    hfGgufQuant: 'Q3_K_L',
+    ggufFile: 'qwen3-0.6b.gguf',
+    desc: 'Nimble multilingual model in-browser (~310 MB in Q3_K_L / q4)'
   },
   {
     id: 'qwen3.5-0.8b',
@@ -56,33 +80,21 @@ export const TEXT_MODELS = [
     hfId: 'onnx-community/Qwen3.5-0.8B-ONNX',
     dtype: { embed_tokens: 'q4', decoder_model_merged: 'q4' },
     hfGgufRepo: 'unsloth/Qwen3.5-0.8B-GGUF',
-    hfGgufQuant: 'Q4_K_M',
+    hfGgufQuant: 'Q3_K_L',
     ggufFile: 'qwen3-0.6b.gguf',
-    desc: 'Qwen 3.5 0.8B multimodal & chat in-browser (~550 MB, auto-falls back if WebGPU missing)'
+    desc: 'Qwen 3.5 0.8B multimodal & chat in-browser (~420 MB Q3_K_L / q4)'
   },
   {
-    id: 'smollm2-360m',
-    label: 'SmolLM2 360M',
-    badge: 'Browser · Ultra-Fast',
+    id: 'llama3.2-1b',
+    label: 'Llama 3.2 1B',
+    badge: 'Browser · ~630 MB',
     kind: 'browser',
-    hfId: 'HuggingFaceTB/SmolLM2-360M-Instruct',
+    hfId: 'onnx-community/Llama-3.2-1B-Instruct-ONNX',
     dtype: 'q4',
-    hfGgufRepo: 'bartowski/SmolLM2-360M-Instruct-GGUF',
-    hfGgufQuant: 'Q4_K_M',
+    hfGgufRepo: 'bartowski/Llama-3.2-1B-Instruct-GGUF',
+    hfGgufQuant: 'Q3_K_L',
     ggufFile: 'qwen3-0.6b.gguf',
-    desc: 'Compact in-browser WebGPU/WASM model (~250 MB)'
-  },
-  {
-    id: 'qwen2.5-0.5b',
-    label: 'Qwen 2.5 0.5B',
-    badge: 'Browser · Light',
-    kind: 'browser',
-    hfId: 'onnx-community/Qwen2.5-0.5B-Instruct',
-    dtype: 'q4',
-    hfGgufRepo: 'Qwen/Qwen2.5-0.5B-Instruct-GGUF',
-    hfGgufQuant: 'Q4_K_M',
-    ggufFile: 'qwen3-0.6b.gguf',
-    desc: 'Nimble multilingual model in-browser (~400 MB)'
+    desc: 'Meta Llama 3.2 1B in-browser (~630 MB Q3_K_L — decent WebGPU recommended)'
   },
   {
     id: 'deepseek-r1-1.5b',
@@ -90,11 +102,35 @@ export const TEXT_MODELS = [
     badge: 'Browser · Reasoning',
     kind: 'browser',
     hfId: 'onnx-community/DeepSeek-R1-Distill-Qwen-1.5B-ONNX',
-    dtype: 'q4f16',
+    dtype: 'q4',
     hfGgufRepo: 'bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF',
-    hfGgufQuant: 'Q4_K_M',
+    hfGgufQuant: 'Q3_K_L',
     ggufFile: 'qwen2.5-1.5b.gguf',
-    desc: 'DeepSeek R1 reasoning model (~1.1 GB — strong WebGPU device required)'
+    desc: 'DeepSeek R1 reasoning model (~850 MB Q3_K_L — strong WebGPU device required)'
+  }
+];
+
+export const QUANT_PRESETS = [
+  {
+    id: 'compact',
+    label: 'Compact (Q3_K_L / q4)',
+    desc: '25–35% smaller downloads & lower RAM for Chromium browsers (Default)',
+    ggufQuants: ['Q3_K_L', 'Q3_K_M', 'Q3_K_S', 'IQ3_M', 'IQ3_XS', 'Q4_K_S', 'Q4_K_M', 'Q4_0'],
+    onnxDtype: 'q4'
+  },
+  {
+    id: 'ultralight',
+    label: 'Ultra-Light (Q2_K / Q3_K_S)',
+    desc: 'Smallest possible file size for mobile & low-RAM Chromium tabs',
+    ggufQuants: ['Q2_K', 'IQ2_M', 'IQ2_XS', 'Q3_K_S', 'Q3_K_M', 'Q3_K_L', 'Q4_K_S', 'Q4_0'],
+    onnxDtype: 'q4'
+  },
+  {
+    id: 'balanced',
+    label: 'Balanced (Q4_K_M / q4f16)',
+    desc: 'Higher precision weights (larger files, needs more device RAM)',
+    ggufQuants: ['Q4_K_M', 'Q4_K_S', 'Q3_K_L', 'Q4_0', 'Q3_K_M'],
+    onnxDtype: 'q4f16'
   }
 ];
 
@@ -109,6 +145,7 @@ export const EXECUTION_MODES = [
 const KEY_TEXT = 'bite-ai-text-model';
 const KEY_IMAGE = 'bite-ai-image-model';
 const KEY_EXEC = 'bite-ai-exec-mode';
+const KEY_QUANT = 'bite-ai-quant-preset';
 const KEY_SMART = 'bite-ai-smart-prompt';
 
 function readPref(key, fallback) {
@@ -150,6 +187,14 @@ export function getSelectedExecutionMode() {
 }
 export function setSelectedExecutionMode(id) {
   if (EXECUTION_MODES.some(m => m.id === id)) writePref(KEY_EXEC, id);
+}
+
+export function getSelectedQuantPreset() {
+  const saved = readPref(KEY_QUANT, 'compact');
+  return QUANT_PRESETS.some(q => q.id === saved) ? saved : 'compact';
+}
+export function setSelectedQuantPreset(id) {
+  if (QUANT_PRESETS.some(q => q.id === id)) writePref(KEY_QUANT, id);
 }
 
 export function getSmartPromptEnabled() {
@@ -219,6 +264,24 @@ const pipeCache = new Map();
 let wllamaInstance = null;
 let wllamaLoadedFile = null;
 
+async function disposeBrowserModels(keepKey = null) {
+  for (const [key, entryPromise] of [...pipeCache.entries()]) {
+    if (key === keepKey) continue;
+    pipeCache.delete(key);
+    try {
+      const entry = await entryPromise;
+      await entry?.model?.dispose?.();
+      await entry?.gen?.dispose?.();
+    } catch {}
+  }
+}
+
+async function disposeWllama() {
+  try { await wllamaInstance?.exit?.(); } catch {}
+  wllamaInstance = null;
+  wllamaLoadedFile = null;
+}
+
 function resolveAssetUrl(relPath) {
   const base = typeof document !== 'undefined' && document.baseURI
     ? document.baseURI
@@ -238,14 +301,20 @@ async function getTransformers() {
         mjs: `${ortBase}ort-wasm-simd-threaded${suffix}.mjs`,
         wasm: `${ortBase}ort-wasm-simd-threaded${suffix}.wasm`
       };
+      if (!globalThis.crossOriginIsolated) {
+        mod.env.backends.onnx.wasm.numThreads = 1;
+      }
     }
   }
   return mod;
 }
 
 async function getBrowserGenerator(modelCfg, preferredDevice, onStatus, withVision = false) {
-  const cacheKey = `${modelCfg.id}:${withVision ? 'vision:' : ''}${preferredDevice}`;
+  const preset = QUANT_PRESETS.find(q => q.id === getSelectedQuantPreset()) || QUANT_PRESETS[0];
+  const cacheKey = `${modelCfg.id}:${withVision ? 'vision:' : ''}${preferredDevice}:${preset.id}`;
   if (pipeCache.has(cacheKey)) return pipeCache.get(cacheKey);
+  await disposeWllama();
+  await disposeBrowserModels(cacheKey);
   const promise = (async () => {
     const mod = await getTransformers();
     const { pipeline, AutoTokenizer, AutoProcessor, Qwen3_5ForCausalLM, Qwen3_5ForConditionalGeneration } = mod;
@@ -286,25 +355,27 @@ async function getBrowserGenerator(modelCfg, preferredDevice, onStatus, withVisi
       return { kind: 'qwen3_5', tokenizer, model, device: preferredDevice };
     }
 
-    const wantedDtype = preferredDevice === 'webgpu' ? (modelCfg.dtype || 'q4f16') : 'q4';
+    const diag = await detectDeviceDiagnostics().catch(() => ({ hasF16: false }));
+    const wantF16 = preferredDevice === 'webgpu' && preset.onnxDtype === 'q4f16' && diag.hasF16;
+    const dtypeOrder = wantF16
+      ? ['q4f16', 'q4', 'int8']
+      : ['q4', 'int8', ...(preferredDevice === 'webgpu' && diag.hasF16 ? ['q4f16'] : [])];
+
     let gen;
-    try {
-      gen = await pipeline('text-generation', modelCfg.hfId, {
-        device: preferredDevice,
-        dtype: wantedDtype,
-        progress_callback
-      });
-    } catch (err) {
-      if (wantedDtype !== 'q4') {
+    let lastErr;
+    for (const dt of dtypeOrder) {
+      try {
         gen = await pipeline('text-generation', modelCfg.hfId, {
           device: preferredDevice,
-          dtype: 'q4',
+          dtype: dt,
           progress_callback
         });
-      } else {
-        throw err;
+        break;
+      } catch (err) {
+        lastErr = err;
       }
     }
+    if (!gen) throw lastErr || new Error(`Failed to load ${modelCfg.label}`);
     return { kind: 'pipeline', gen, device: preferredDevice };
   })();
   pipeCache.set(cacheKey, promise);
@@ -440,13 +511,40 @@ export async function streamBrowserChat({
   return acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*$/, '').trim();
 }
 
+async function resolveBestHFGguf(repo, preferredQuants, signal) {
+  const res = await fetch(`https://huggingface.co/api/models/${repo}/tree/main?recursive=true`, {
+    headers: { Accept: 'application/json' },
+    signal
+  });
+  if (!res.ok) throw new Error(`HF repo lookup failed (${res.status}) for ${repo}`);
+  const files = await res.json();
+  const candidates = (Array.isArray(files) ? files : []).filter(
+    f => f?.type === 'file' && typeof f.path === 'string' && /\.gguf$/i.test(f.path) && !/mmproj/i.test(f.path)
+  );
+  if (!candidates.length) throw new Error(`No GGUF files found in ${repo}`);
+  const firstShard = p => {
+    const m = p.match(/^(.+)-(\d{5})-of-(\d{5})\.gguf$/i);
+    if (!m) return p;
+    const s1 = `${m[1]}-00001-of-${m[3]}.gguf`;
+    return candidates.some(c => c.path === s1) ? s1 : p;
+  };
+  for (const q of preferredQuants) {
+    const hits = candidates
+      .filter(f => f.path.toUpperCase().includes(q.toUpperCase()))
+      .sort((a, b) => (a.size || Infinity) - (b.size || Infinity));
+    if (hits.length) return { file: firstShard(hits[0].path), quant: q };
+  }
+  const smallest = [...candidates].sort((a, b) => (a.size || Infinity) - (b.size || Infinity))[0];
+  return { file: firstShard(smallest.path), quant: 'smallest' };
+}
+
 export async function streamWllamaChat({
   ggufFile = 'qwen3-0.6b.gguf',
   hfRepo = null,
-  hfQuant = 'Q4_K_M',
+  hfQuant = null,
   messages,
   systemPrompt,
-  maxTokens = 480,
+  maxTokens = 380,
   temperature = 0.7,
   useWebGPU = false,
   signal,
@@ -454,16 +552,19 @@ export async function streamWllamaChat({
   onToken
 }) {
   const { Wllama } = await import('@wllama/wllama');
+  const preset = QUANT_PRESETS.find(q => q.id === getSelectedQuantPreset()) || QUANT_PRESETS[0];
+  const quantList = hfQuant && !preset.ggufQuants.includes(hfQuant)
+    ? [...preset.ggufQuants, hfQuant]
+    : preset.ggufQuants;
   const wasmUrl = resolveAssetUrl('wllama/wllama.wasm');
   const compatJsUrl = resolveAssetUrl('wllama-compat/wllama.js');
   const compatWasmUrl = resolveAssetUrl('wllama-compat/wllama.wasm');
   const ggufUrl = resolveAssetUrl(`api/waffle-ai/gguf/${ggufFile}`);
-  const targetKey = `${hfRepo ? `${hfRepo}:${hfQuant}` : ggufFile}:${useWebGPU}`;
+  const targetKey = `${hfRepo ? `${hfRepo}:${preset.id}` : ggufFile}:${useWebGPU}`;
 
   const createFreshWllama = async () => {
-    try { await wllamaInstance?.exit?.(); } catch {}
-    wllamaInstance = null;
-    wllamaLoadedFile = null;
+    await disposeBrowserModels();
+    await disposeWllama();
     const inst = new Wllama({ default: wasmUrl }, { suppressNativeLog: true, parallelDownloads: 1 });
     inst.setCompat({ worker: compatJsUrl, wasm: compatWasmUrl }, 'firefox_safari');
     wllamaInstance = inst;
@@ -471,8 +572,10 @@ export async function streamWllamaChat({
   };
 
   if (!wllamaInstance || wllamaLoadedFile !== targetKey || !wllamaInstance.isModelLoaded?.()) {
+    let activeQuantLabel = quantList[0] || 'GGUF';
     const loadParams = {
-      n_ctx: 2048,
+      n_ctx: 1024,
+      n_batch: 256,
       n_threads: 1,
       n_gpu_layers: useWebGPU ? 99 : 0,
       useCache: true,
@@ -480,7 +583,7 @@ export async function streamWllamaChat({
         if (total > 0) {
           onStatus?.({
             state: 'downloading',
-            detail: `Loading WLlama (${Math.round((loaded / total) * 100)}%)…`
+            detail: `Loading ${activeQuantLabel} (${Math.round((loaded / total) * 100)}%)…`
           });
         }
       }
@@ -490,20 +593,20 @@ export async function streamWllamaChat({
     let hfErr = null;
     if (hfRepo) {
       const inst = await createFreshWllama();
-      onStatus?.({
-        state: 'loading',
-        detail: `Loading ${hfRepo} via WLlama (${useWebGPU ? 'WebGPU' : 'WASM CPU'})…`
-      });
       try {
-        await inst.loadModelFromHF({ repo: hfRepo, quant: hfQuant }, loadParams);
+        const picked = await resolveBestHFGguf(hfRepo, quantList, signal);
+        activeQuantLabel = picked.quant;
+        onStatus?.({
+          state: 'loading',
+          detail: `Loading ${picked.quant} via WLlama (${useWebGPU ? 'WebGPU' : 'WASM CPU'})…`
+        });
+        await inst.loadModelFromHF({ repo: hfRepo, file: picked.file }, loadParams);
         wllamaLoadedFile = targetKey;
         loadedOk = true;
       } catch (err) {
         if (err.name === 'AbortError' || signal?.aborted) throw err;
         hfErr = err;
-        try { await inst.exit?.(); } catch {}
-        wllamaInstance = null;
-        wllamaLoadedFile = null;
+        await disposeWllama();
       }
     }
 
@@ -527,9 +630,7 @@ export async function streamWllamaChat({
         await inst.loadModelFromUrl(ggufUrl, loadParams);
         wllamaLoadedFile = targetKey;
       } catch (err) {
-        try { await inst.exit?.(); } catch {}
-        wllamaInstance = null;
-        wllamaLoadedFile = null;
+        await disposeWllama();
         throw err;
       }
     }

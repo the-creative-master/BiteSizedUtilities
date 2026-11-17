@@ -15,12 +15,15 @@ import { gameSlider } from './ui-kit.js';
 import {
   TEXT_MODELS,
   EXECUTION_MODES,
+  QUANT_PRESETS,
   getSelectedTextModel,
   setSelectedTextModel,
   getSelectedImageModel,
   setSelectedImageModel,
   getSelectedExecutionMode,
   setSelectedExecutionMode,
+  getSelectedQuantPreset,
+  setSelectedQuantPreset,
   getSmartPromptEnabled,
   setSmartPromptEnabled,
   getAiTemperature,
@@ -161,6 +164,8 @@ app.innerHTML = `
           <div class="waffle-pill-grid" id="settings-ai-image-list"></div>
           <div class="settings-sub-label">Fallback / Runtime Mode</div>
           <div class="waffle-pill-grid" id="settings-ai-exec-list"></div>
+          <div class="settings-sub-label">Quantization / File Size</div>
+          <div class="waffle-pill-grid" id="settings-ai-quant-list"></div>
           <div class="settings-sub-label">Temperature (Experienced Users Only)</div>
           <div id="settings-temp-wrap"></div>
         </div>
@@ -795,6 +800,24 @@ function renderSettingsModal() {
     execList.querySelectorAll('[data-set-exec]').forEach(btn => {
       btn.addEventListener('click', () => {
         setSelectedExecutionMode(btn.dataset.setExec);
+        playPop(640);
+        renderSettingsModal();
+      });
+    });
+  }
+
+  const quantList = $('#settings-ai-quant-list');
+  if (quantList) {
+    const curQuant = getSelectedQuantPreset();
+    quantList.innerHTML = QUANT_PRESETS.map(q => `
+      <button type="button" class="gbtn waffle-model-pill ${curQuant === q.id ? 'selected' : ''}" data-set-quant="${esc(q.id)}" title="${esc(q.desc)}">
+        <strong>${esc(q.label)}</strong>
+        <small>${esc(q.desc)}</small>
+      </button>
+    `).join('');
+    quantList.querySelectorAll('[data-set-quant]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        setSelectedQuantPreset(btn.dataset.setQuant);
         playPop(640);
         renderSettingsModal();
       });

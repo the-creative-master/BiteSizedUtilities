@@ -301,25 +301,44 @@ async function streamServerChat({ modelId, messages: msgList, systemPrompt, maxT
   return finalText.trim();
 }
 
-export async function streamWaffleChat({ modelId, messages: msgList, imageUrls = [], systemPrompt, maxTokens = 520, temperature = 0.7, signal, onStatus, onToken }) {
+export async function streamWaffleChat({ modelId, messages: msgList, imageUrls = [], systemPrompt, maxTokens = 520, temperature = 0.7, signal, onStatus, onToken, onRuntime }) {
   const chosenId = modelId || getSelectedTextModel();
   const cfg = TEXT_MODELS.find(m => m.id === chosenId) || TEXT_MODELS[0];
   const mode = getSelectedExecutionMode();
-  const diag = await detectDeviceDiagnostics().catch(() => ({ hasWebGPU: false }));
+  const diag = await detectDeviceDiagnostics().catch(() => ({
+    hasWebGPU: false, wllamaGpuSafe: false, wasmBudgetBytes: 0, canThread: false
+  }));
   const hasImages = Array.isArray(imageUrls) && imageUrls.length > 0;
   const serverInfo = modelState.available?.find(a => a.id === cfg.id);
   const canTryServer = modelState.serverReachable !== false && (serverInfo ? serverInfo.preCached !== false : true);
+
+  // What this device can actually hold. A static host (GitHub Pages) has no
+  // llama.cpp server and no COOP/COEP, so everything below runs in one
+  // single-threaded WASM heap unless the GPU can take the weights.
+  const budgetBytes = diag.wasmBudgetBytes || 0;
+  const estBytes = (cfg.ggufMB || 0) * 1024 ** 2;
+  const fitsOnCpu = !estBytes || !budgetBytes || estBytes <= budgetBytes;
+  const gpuOk = Boolean(diag.hasWebGPU);
+  // llama.cpp's WebGPU backend aborts the whole module without shader-f16
+  // (ngxson/wllama#241), so WLlama only gets GPU layers when it is safe.
+  const wllamaGpuOk = Boolean(diag.wllamaGpuSafe);
 
   // Build ordered automatic fallback chain preserving the selected model (never swap models unless images require Vision)
   const attempts = [];
   const pushBrowser = (dev, id = cfg.id) => {
     const m = TEXT_MODELS.find(x => x.id === id);
-    if (m?.hfId) attempts.push({ kind: 'browser', id: m.id, dev, label: m.label });
+    if (!m?.hfId) return;
+    // CPU ONNX keeps the whole model inside the wasm heap with no mmap, so it
+    // is the first thing to drop for a model that cannot fit this device.
+    if (dev === 'wasm' && !fitsOnCpu && !gpuOk) return;
+    attempts.push({ kind: 'browser', id: m.id, dev, label: m.label });
   };
   const pushWllama = (webgpu, m = cfg) => {
-    if (m.hfGgufRepo || m.ggufFile) {
-      attempts.push({ kind: 'wllama', gguf: m.ggufFile || 'qwen3-0.6b.gguf', hfRepo: m.hfGgufRepo, hfQuant: m.hfGgufQuant, webgpu, label: m.label });
-    }
+    if (webgpu && !wllamaGpuOk) return;
+    // Never invent a filename: a guessed GGUF name would quietly run a
+    // different model than the one the user picked.
+    if (!m.hfGgufRepo && !m.ggufFile) return;
+    attempts.push({ kind: 'wllama', gguf: m.ggufFile, hfRepo: m.hfGgufRepo, hfQuant: m.hfGgufQuant, webgpu, label: m.label });
   };
   const pushServer = (id = cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b') => {
     attempts.push({ kind: 'server', id, label: cfg.label });
@@ -333,30 +352,26 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
 
   if (hasImages) {
     // Images MUST go to multimodal Vision (Qwen 3.5 0.8B) — never fall back to blind text-only models
-    if (diag.hasWebGPU) attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'webgpu', vision: true });
+    if (gpuOk) attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'webgpu', vision: true });
     attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'wasm', vision: true });
   } else if (mode === 'server') {
     if (canTryServer) pushServer(cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b');
-    if (diag.hasWebGPU) {
-      pushBrowser('webgpu');
-      pushWllama(true);
-    }
+    if (gpuOk) pushBrowser('webgpu');
+    pushWllama(true);
     pushWllama(false);
     pushBrowser('wasm');
     pushChromiumSafetyNet();
   } else if (mode === 'webgpu') {
-    if (diag.hasWebGPU) {
-      pushBrowser('webgpu');
-      pushWllama(true);
-    }
+    if (gpuOk) pushBrowser('webgpu');
+    pushWllama(true);
     pushWllama(false);
     pushBrowser('wasm');
     if (canTryServer) pushServer();
     pushChromiumSafetyNet();
   } else if (mode === 'wllama') {
-    if (diag.hasWebGPU) pushWllama(true);
+    pushWllama(true);
     pushWllama(false);
-    if (diag.hasWebGPU) pushBrowser('webgpu');
+    if (gpuOk) pushBrowser('webgpu');
     pushBrowser('wasm');
     if (canTryServer) pushServer();
     pushChromiumSafetyNet();
@@ -369,27 +384,21 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     // Auto fallback chain — always try the user's chosen model on its best available runtime first
     if (cfg.kind === 'server' && canTryServer) {
       pushServer(cfg.id);
-      if (diag.hasWebGPU) {
-        pushWllama(true);
-        pushBrowser('webgpu');
-      }
+      if (gpuOk) pushBrowser('webgpu');
+      pushWllama(true);
       pushWllama(false);
       pushBrowser('wasm');
       pushChromiumSafetyNet();
     } else if (cfg.kind === 'server') {
-      if (diag.hasWebGPU) {
-        pushWllama(true);
-        pushBrowser('webgpu');
-      }
+      if (gpuOk) pushBrowser('webgpu');
+      pushWllama(true);
       pushWllama(false);
       pushBrowser('wasm');
       if (modelState.serverReachable !== false) pushServer(cfg.id);
       pushChromiumSafetyNet();
     } else {
-      if (diag.hasWebGPU) {
-        pushBrowser('webgpu');
-        pushWllama(true);
-      }
+      if (gpuOk) pushBrowser('webgpu');
+      pushWllama(true);
       pushWllama(false);
       pushBrowser('wasm');
       if (canTryServer) pushServer('qwen2.5-1.5b');
@@ -397,36 +406,62 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     }
   }
 
-  const errors = [];
+  if (!fitsOnCpu && !gpuOk && !hasImages) {
+    onStatus?.({
+      state: 'loading',
+      detail: `${cfg.label} is ~${Math.round(estBytes / 1024 ** 2)} MB but this device can only hold ~${Math.round(budgetBytes / 1024 ** 2)} MB without WebGPU — trying a smaller quant…`
+    });
+  }
+
+  const failures = [];
+  const report = (step, engine, text) => {
+    const answeredBy = step.id || cfg.id;
+    onRuntime?.({
+      modelId: answeredBy,
+      label: step.label || cfg.label,
+      engine,
+      device: step.dev || (step.webgpu ? 'webgpu' : step.kind === 'wllama' ? 'wasm' : 'server'),
+      swapped: answeredBy !== cfg.id,
+      requested: cfg.label,
+      failures
+    });
+    return text;
+  };
+
   for (let i = 0; i < attempts.length; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const step = attempts[i];
     const stepName = step.label || cfg.label;
     const stepLabel = step.kind === 'wllama'
-      ? `${stepName} WLlama (${step.webgpu ? 'WebGPU' : 'WASM'})`
+      ? `${stepName} WLlama (${step.webgpu ? 'WebGPU' : 'CPU WASM'})`
       : step.kind === 'browser'
-        ? `${stepName} (${step.dev.toUpperCase()})`
-        : 'Server';
+        ? `${stepName} ONNX (${step.dev.toUpperCase()})`
+        : 'Server llama.cpp';
     if (i > 0) {
       onStatus?.({ state: 'loading', detail: `Switching to ${stepLabel}…` });
     }
     try {
       if (step.kind === 'server') {
-        return await streamServerChat({ modelId: step.id, messages: msgList, systemPrompt, maxTokens, temperature, signal, onStatus, onToken });
+        return report(step, 'node-llama.cpp', await streamServerChat({ modelId: step.id, messages: msgList, systemPrompt, maxTokens, temperature, signal, onStatus, onToken }));
       }
       if (step.kind === 'wllama') {
-        return await streamWllamaChat({ ggufFile: step.gguf, hfRepo: step.hfRepo, hfQuant: step.hfQuant, messages: msgList, systemPrompt, maxTokens, temperature, useWebGPU: step.webgpu, signal, onStatus, onToken });
+        return report(step, 'WLlama', await streamWllamaChat({ ggufFile: step.gguf, hfRepo: step.hfRepo, hfQuant: step.hfQuant, messages: msgList, systemPrompt, maxTokens, temperature, useWebGPU: step.webgpu, signal, onStatus, onToken }));
       }
-      return await streamBrowserChat({ modelId: step.id, messages: msgList, imageUrls: step.vision ? imageUrls : [], systemPrompt, maxTokens, temperature, preferredDevice: step.dev, signal, onStatus, onToken });
+      return report(step, 'ONNX Runtime Web', await streamBrowserChat({ modelId: step.id, messages: msgList, imageUrls: step.vision ? imageUrls : [], systemPrompt, maxTokens, temperature, preferredDevice: step.dev, signal, onStatus, onToken }));
     } catch (err) {
       if (err.name === 'AbortError' || signal?.aborted) throw err;
-      errors.push(`${stepLabel}: ${err.message || err}`);
+      failures.push({ step: stepLabel, message: String(err?.message || err).slice(0, 300) });
     }
   }
   if (hasImages) {
-    throw new Error(`Image vision requires Qwen 3.5 0.8B Vision in the browser (${errors[errors.length - 1] || 'vision model unavailable'}). Text-only fallback is disabled for images so the AI won’t guess.`);
+    throw new Error(`Image vision requires Qwen 3.5 0.8B Vision in the browser (${failures.at(-1)?.message || 'vision model unavailable'}). Text-only fallback is disabled for images so the AI won’t guess.`);
   }
-  throw new Error(errors.length ? `Could not run ${cfg.label} (${errors.join(' | ')})` : 'All AI runtimes failed on this device.');
+  const diagHint = !gpuOk && !canTryServer
+    ? ' This host has no local llama.cpp server and this browser has no usable WebGPU, so only small CPU models can run — pre-cache one in Settings → AI Models.'
+    : '';
+  throw new Error(failures.length
+    ? `Could not run ${cfg.label}.${diagHint}\n\n${failures.map(f => `• ${f.step} → ${f.message}`).join('\n')}`
+    : `All AI runtimes failed on this device.${diagHint}`);
 }
 
 async function fetchStatus() {
@@ -600,11 +635,15 @@ function renderMessages() {
            <button type="button" class="waffle-mini-btn" data-md-msg="${idx}">⬇ Save .md</button>
          </div>`
       : '';
+    const runtimeNote = !isUser && m.runtimeNote
+      ? `<div class="waffle-msg-runtime">${m.runtimeNote}</div>`
+      : '';
     return `
       <div class="waffle-msg ${isUser ? 'is-user' : 'is-bot'}">
         ${isUser ? '' : `<span class="waffle-msg-avatar" aria-hidden="true">${waffleMascotSVG('waffle-mini-svg')}</span>`}
         <div class="waffle-msg-bubble">
           <div class="waffle-msg-author">${isUser ? 'You' : (m.authorLabel || 'Sir Waffle')}</div>
+          ${runtimeNote}
           ${fileNote}
           ${imgNote}
           ${webSourcesBar}
@@ -968,6 +1007,27 @@ async function sendMessage(rawText) {
       onToken(chunk, acc) {
         messages[assistantIdx].content = typeof acc === 'string' ? acc : (messages[assistantIdx].content + chunk);
         renderMessages();
+      },
+      onRuntime(rt) {
+        // Never pretend a fallback answered as the model the user picked.
+        const engineLabel = rt.engine === 'WLlama'
+          ? `WLlama · ${String(rt.device || 'wasm').toUpperCase()}`
+          : rt.engine === 'ONNX Runtime Web'
+            ? `ONNX Runtime Web · ${String(rt.device || 'wasm').toUpperCase()}`
+            : String(rt.engine || 'runtime');
+        const fails = Array.isArray(rt.failures) ? rt.failures : [];
+        const failList = fails.map(f => `<li><strong>${esc(f.step)}</strong> — ${esc(f.message)}</li>`).join('');
+        messages[assistantIdx].authorLabel = `Sir Waffle · ${rt.label}`;
+        messages[assistantIdx].runtimeNote = [
+          rt.swapped
+            ? `⚠ <strong>${esc(rt.requested)}</strong> could not run on this device — this reply came from <strong>${esc(rt.label)}</strong> (${esc(engineLabel)}).`
+            : `✅ ${esc(rt.label)} · ${esc(engineLabel)}`,
+          failList
+            ? `<details class="waffle-runtime-details"><summary>Why ${fails.length} runtime${fails.length === 1 ? '' : 's'} failed first</summary><ul>${failList}</ul></details>`
+            : ''
+        ].filter(Boolean).join('');
+        if (rt.swapped) modelState.swappedTo = rt.modelId;
+        renderMessages();
       }
     });
     modelState.loaded = true;
@@ -1011,11 +1071,11 @@ function buildOverlay() {
             <span class="waffle-ai-avatar" aria-hidden="true">${waffleMascotSVG('waffle-header-svg')}</span>
             <div>
               <h2 id="waffle-ai-title" class="waffle-ai-title">Waffle AI</h2>
-              <span id="waffle-ai-badge" class="waffle-ai-badge">Qwen 2.5 1.5B · node-llama.cpp · Pre-cached</span>
+              <span id="waffle-ai-badge" class="waffle-ai-badge">Checking runtimes…</span>
             </div>
           </div>
           <div class="waffle-ai-actions">
-            <button type="button" class="gbtn waffle-reset-btn" id="waffle-ai-models-btn" title="Open Settings to switch Chat, Image, or Fallback AI Mode">🤖 Qwen 2.5 1.5B · ⚙</button>
+            <button type="button" class="gbtn waffle-reset-btn" id="waffle-ai-models-btn" title="Open Settings to switch Chat, Image, or Fallback AI Mode">🤖 AI Models · ⚙</button>
             <button type="button" class="gbtn waffle-reset-btn" id="waffle-ai-reset" title="Start a fresh chat">New Chat</button>
             <button type="button" class="window-close-x" id="waffle-ai-close" aria-label="Close Waffle AI">✕</button>
           </div>

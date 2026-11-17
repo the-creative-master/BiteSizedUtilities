@@ -172,7 +172,7 @@ export default defineConfig({
       if (fs.existsSync(ortDist)) {
         fs.mkdirSync('dist/ort', { recursive: true });
         for (const f of fs.readdirSync(ortDist)) {
-          if (/^ort-wasm.*\.(wasm|mjs|js)$/.test(f)) {
+          if (/^ort-wasm-simd-threaded(\.asyncify)?\.(wasm|mjs)$/.test(f)) {
             fs.copyFileSync(path.join(ortDist, f), path.join('dist/ort', f));
           }
         }

@@ -185,8 +185,10 @@ test('Waffle AI chatbot, streaming code boxes, DOCX creation/parsing, single Waf
     assert.ok(fs.existsSync('.cache/waffle-ai/qwen3-0.6b.gguf'), 'Qwen 3 0.6B GGUF is pre-cached on disk');
   }
 
-  const { TEXT_MODELS, EXECUTION_MODES, AI_DISCLAIMER_TEXT } = await import('../waffle-browser-ai.js');
+  const { TEXT_MODELS, EXECUTION_MODES, QUANT_PRESETS, AI_DISCLAIMER_TEXT } = await import('../waffle-browser-ai.js');
   assert.ok(TEXT_MODELS.some(m => m.id === 'llama3.2-1b'), 'Llama 3.2 1B available');
+  assert.ok(TEXT_MODELS.some(m => m.id === 'smollm2-135m'), 'Compact SmolLM2 135M available for low-RAM Chromium');
+  assert.ok(QUANT_PRESETS.some(q => q.id === 'compact' && q.ggufQuants.includes('Q3_K_L')), 'Compact Q3_K_L quantization preset is wired');
   const browserAiSrc = fs.readFileSync('waffle-browser-ai.js', 'utf8');
   assert.ok(browserAiSrc.includes('Qwen3_5ForCausalLM') && browserAiSrc.includes('decoder_model_merged'), 'Qwen 3.5 0.8B uses Qwen3_5ForCausalLM with split ONNX dtype');
   assert.ok(TEXT_MODELS.some(m => m.id === 'qwen2.5-coder-1.5b'), 'Qwen 2.5 Coder 1.5B available');

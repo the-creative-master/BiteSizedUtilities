@@ -103,7 +103,7 @@ export function gameToggle(label, initial = false, onChange) {
 }
 
 /** Custom 2.5D pointer-draggable slider replacing default <input type="range"> */
-export function gameSlider({ label, min = 0, max = 100, step = 1, value = 50, unit = '', color = '#8fc487', onChange }) {
+export function gameSlider({ label, min = 0, max = 100, step = 1, value = 50, unit = '', format = null, color = '#8fc487', onChange }) {
   let val = Number(value);
   const badge = gEl('span', { class: 'gslider-badge' });
   const fill = gEl('div', { class: 'gslider-fill', style: { background: color } });
@@ -130,7 +130,7 @@ export function gameSlider({ label, min = 0, max = 100, step = 1, value = 50, un
     const pct = max === min ? 0 : ((val - min) / (max - min)) * 100;
     fill.style.width = `${pct}%`;
     thumb.style.left = `${pct}%`;
-    badge.textContent = `${val}${unit ? ' ' + unit : ''}`;
+    badge.textContent = format ? format(val) : `${val}${unit ? ' ' + unit : ''}`;
     track.setAttribute('aria-valuenow', String(val));
   }
 

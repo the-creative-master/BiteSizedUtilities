@@ -205,6 +205,9 @@ test('Waffle AI chatbot, streaming code boxes, DOCX creation/parsing, single Waf
   assert.ok(fileToolsSrc.includes('FlateDecode') && fileToolsSrc.includes('slides') && fileToolsSrc.includes('sharedStrings') && fileToolsSrc.includes('extractFilePayload'), 'file-tools-client supports PDF FlateDecode, PPTX, XLSX, and image payloads');
   assert.ok(browserAiSrc.includes('Qwen3_5ForConditionalGeneration') && browserAiSrc.includes('AutoProcessor') && browserAiSrc.includes('RawImage'), 'waffle-browser-ai supports multimodal image vision via Qwen3_5ForConditionalGeneration');
   assert.ok(serverSrc.includes('BEGIN FILE') && uiSrc.includes('extractFilePayload') && uiSrc.includes('waffle-msg-img'), 'Server and UI explicitly handle inline file blocks and image previews');
+  const { WAFFLE_SYSTEM_PROMPT } = await import('../waffle-ai-server.js');
+  assert.ok(!/maple syrup|crispy waffle|golden waffle/i.test(WAFFLE_SYSTEM_PROMPT), 'System prompt does not bias models with waffle/syrup roleplay');
+  assert.ok(uiSrc.includes('!m.isWelcome') && uiSrc.includes('Text-only fallback is disabled for images'), 'Welcome message is excluded from LLM history and images never fall back to blind text models');
 
   assert.ok(serverSrc.includes('/api/waffle-ai/web-search') && uiSrc.includes('waffle-ai-web-toggle'), 'Web Search Mode is wired on server and UI');
   assert.ok(appSrc.includes('english-warning-overlay') && appSrc.includes('showEnglishEntryWarning'), 'English warning appears as cupboard-entry popup');

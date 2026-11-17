@@ -348,6 +348,9 @@ export async function streamBrowserChat({
       enable_thinking: false
     });
     const inputs = await loaded.processor(promptStr, rawImgs);
+    if (!inputs?.pixel_values) {
+      throw new Error('Vision processor did not encode image pixels.');
+    }
     const out = await loaded.model.generate({
       ...inputs,
       max_new_tokens: maxTokens,

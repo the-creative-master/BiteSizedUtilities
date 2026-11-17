@@ -25,12 +25,13 @@ const STARTER_PROMPTS = [
 
 const WELCOME_MSG = {
   role: 'assistant',
+  isWelcome: true,
   content: [
     'Hey there, kitchen friend! I’m **Sir Waffle**, your **Waffle AI** assistant.',
     '',
     '- **AI Models & Fallbacks (in ⚙ Settings)**: Choose **Qwen 2.5 1.5B**, **Qwen 2.5 Coder 1.5B**, **Qwen 3 0.6B**, **Llama 3.2 1B**, **Qwen 3.5 0.8B**, **SmolLM2 360M**, **Qwen 2.5 0.5B**, or **DeepSeek R1 1.5B**',
     '- **Image Generation**: Tap **🎨 Image** (or type `/imagine ...`) with **SDXS-512 (1-Step)** or **SD-Turbo (WebGPU)**',
-    '- **Files & Markdown**: Attach `.docx` / `.txt` / `.md` / code files, or ask me to generate a downloadable `.docx`!',
+    '- **Files & Images**: Attach `.docx`, `.pdf`, `.xlsx`, `.pptx`, `.txt`, code files, or images for **Qwen 3.5 0.8B Vision**!',
     '',
     `> ⚠ **${AI_DISCLAIMER_TEXT}**`
   ].join('\n')
@@ -309,11 +310,11 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
 
   // Build ordered automatic fallback chain without surfacing internal tier names
   const attempts = [];
-  if (hasImages && mode !== 'server' && mode !== 'wllama') {
+  if (hasImages) {
+    // Images MUST go to multimodal Vision (Qwen 3.5 0.8B) — never fall back to blind text-only models
     if (diag.hasWebGPU) attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'webgpu', vision: true });
     attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'wasm', vision: true });
-  }
-  if (mode === 'server') {
+  } else if (mode === 'server') {
     attempts.push({ kind: 'server', id: cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b' });
     if (diag.hasWebGPU) attempts.push({ kind: 'browser', id: cfg.kind === 'browser' ? cfg.id : 'qwen2.5-0.5b', dev: 'webgpu' });
     attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: false });
@@ -377,6 +378,9 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
       if (err.name === 'AbortError' || signal?.aborted) throw err;
       lastErr = err;
     }
+  }
+  if (hasImages) {
+    throw new Error(`Image vision requires Qwen 3.5 0.8B Vision in the browser (${lastErr?.message || 'vision model unavailable'}). Text-only fallback is disabled for images so the AI won’t guess.`);
   }
   throw lastErr || new Error('All AI runtimes failed on this device.');
 }
@@ -795,7 +799,8 @@ async function sendMessage(rawText) {
 
   const fileNames = currentFiles.map(f => f.name);
   const imageUrls = currentFiles.map(f => f.imageUrl).filter(Boolean);
-  const fileContext = currentFiles.map(f =>
+  const nonImageFiles = currentFiles.filter(f => !f.isImage);
+  const fileContext = nonImageFiles.map(f =>
     `The user uploaded the file "${f.name}". Its extracted content/details are provided directly below — read and use them directly:\n--- BEGIN FILE: ${f.name} ---\n${f.text}\n--- END FILE: ${f.name} ---`
   ).join('\n\n');
   const tCfg = activeTextCfg();
@@ -806,7 +811,7 @@ async function sendMessage(rawText) {
     displayContent: text || `Analyze ${fileNames.join(', ')}`,
     fileNames,
     imageUrls,
-    content: [fileContext, cleanQuery || 'Please read and summarize the attached file(s).'].filter(Boolean).join('\n\n')
+    content: [fileContext, cleanQuery || (imageUrls.length ? 'Describe what is actually shown in the attached image(s).' : 'Please read and summarize the attached file(s).')].filter(Boolean).join('\n\n')
   });
   messages.push({
     role: 'assistant',
@@ -847,20 +852,27 @@ async function sendMessage(rawText) {
   const finalUserContent = [
     fileContext,
     webContext ? `Use these live web search results to answer accurately and cite sources:\n--- WEB SEARCH RESULTS ---\n${webContext}\n--- END WEB SEARCH RESULTS ---` : '',
-    cleanQuery || 'Please read and summarize the attached file(s).'
+    cleanQuery || (imageUrls.length ? 'Describe what is actually shown in the attached image(s).' : 'Please read and summarize the attached file(s).')
   ].filter(Boolean).join('\n\n');
   messages[assistantIdx - 1].content = finalUserContent;
 
-  const historyPayload = messages.slice(0, assistantIdx).map(m => ({ role: m.role, content: m.content }));
+  const historyPayload = messages
+    .slice(0, assistantIdx)
+    .filter(m => !m.isWelcome)
+    .map(m => ({ role: m.role, content: m.content }));
+
+  const effectiveSystemPrompt = imageUrls.length
+    ? 'You are a helpful, accurate vision assistant. Describe and answer strictly based on what is actually visible in the attached image(s). Do not guess or invent objects that are not clearly shown.'
+    : (tCfg.kind === 'browser'
+      ? 'You are a helpful, accurate assistant. Answer clearly in Markdown. If a file is included between --- BEGIN FILE --- and --- END FILE ---, read and use its exact contents directly.'
+      : undefined);
 
   try {
     const finalText = await streamWaffleChat({
       modelId: tCfg.id,
       messages: historyPayload,
       imageUrls,
-      systemPrompt: tCfg.kind === 'browser'
-        ? 'You are Sir Waffle, the cheerful, helpful mascot of BiteSizedUtilities. Uploaded file contents are already extracted inside --- BEGIN FILE --- and --- END FILE --- in the user message; read them directly and answer clearly in Markdown.'
-        : undefined,
+      systemPrompt: effectiveSystemPrompt,
       maxTokens: tCfg.kind === 'browser' ? 560 : 680,
       temperature: getAiTemperature(),
       signal: activeAbort.signal,

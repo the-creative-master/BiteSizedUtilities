@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"><script src="offline-storage.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hangman</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <h1>🪢 Hangman</h1>
+      <p class="tagline">Guess the hidden word before the gallows is complete.</p>
+    </header>
+
+    <section class="hud" aria-label="Game statistics">
+      <div class="stat"><span class="stat-label">Wrong</span><span class="stat-value" id="wrong">0</span></div>
+      <div class="stat"><span class="stat-label">Max</span><span class="stat-value" id="max">6</span></div>
+      <div class="stat"><span class="stat-label">Won</span><span class="stat-value" id="won">0</span></div>
+    </section>
+
+    <div class="stage">
+      <canvas id="game" width="480" height="320"></canvas>
+      <p class="message" id="message">Pick a letter to guess.</p>
+    </div>
+
+    <footer class="controls" id="keys"></footer>
+    <footer class="controls">
+      <button class="btn" id="new">New Word</button>
+    </footer>
+  </main>
+
+  <script src="game.js"></script>
+</body>
+</html>

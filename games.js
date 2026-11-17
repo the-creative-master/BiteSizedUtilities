@@ -1,4 +1,4 @@
-/** 2.5D Offline Arcade Heaven — Flash Classics, Impossible Quizzes, Fancade 2.5D & 100+ Games */
+/** 2.5D Offline Arcade — 100% Real Open-Source Games Fetched from GitHub */
 import { gamePropSVG } from './icons-25d.js';
 import { playPop, playSquish, playSparkle } from './sfx.js';
 
@@ -25,30 +25,25 @@ export async function mountGames(root) {
   const searchWrap = make('div', '', 'gfield-tray arcade-search-tray');
   const search = make('input', '', 'gfield-input');
   search.type = 'text';
-  search.placeholder = 'Search Impossible Quiz, Drive Mad, Tetris, Waffleria…';
+  search.placeholder = 'Search Dino, Floppy Bird, Hextris, OutRun, Pac-Man, Pinball…';
   search.setAttribute('aria-label', 'Search games');
   searchWrap.append(search);
 
   const random = make('button', '✦ Surprise Game', 'gbtn gbtn-primary');
   random.type = 'button';
-  const archive = make('a', '↓ All Originals ZIP', 'gbtn gbtn-chip');
-  archive.href = assetURL('games/zips/original-games.zip');
-  archive.download = 'bitesized-original-arcade.zip';
-  topBar.append(searchWrap, random, archive);
+  topBar.append(searchWrap, random);
 
-  // Genre Filter Chips
   const filterBar = make('div', '', 'gtabs arcade-filters');
-  const status = make('p', 'Loading offline arcade shelves…', 'arcade-status');
+  const status = make('p', 'Loading real GitHub games…', 'arcade-status');
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
 
-  // Floating 2.5D Wooden Game Player Window
   const player = make('section', '', 'tool-window-card arcade-player-window');
   player.hidden = true;
   player.setAttribute('aria-label', 'Game player');
 
   const shelvesHost = make('div', '', 'arcade-shelves-host');
-  const credits = make('a', 'Licenses & offline attribution', 'gbtn gbtn-chip');
+  const credits = make('a', 'Open-source licenses & attribution', 'gbtn gbtn-chip');
   credits.href = assetURL('games/ATTRIBUTION.md');
 
   shell.append(topBar, filterBar, status, player, shelvesHost, credits);
@@ -59,17 +54,16 @@ export async function mountGames(root) {
   let activeCard = null;
   let render = () => {};
 
-  const genres = ['All', 'Flash & Quizzes', 'Fancade 2.5D', 'Puzzles', 'Arcade', 'Driving', 'Strategy', 'Cozy'];
+  const genres = ['All', 'Arcade', 'Puzzles', 'Driving', 'Strategy', 'Quiz & Words', 'Cozy'];
 
   function genre(game) {
-    if (game.category) return game.category;
-    if (game.origin !== 'first-party') return 'Arcade';
-    const m = game.mechanic;
-    if (m === 'drive') return 'Driving';
-    if (['number-path', 'anagram', 'cipher', 'merge', 'mosaic', 'maze', 'ladder'].includes(m)) return m === 'anagram' || m === 'ladder' ? 'Puzzles' : 'Puzzles';
-    if (['life', 'ecosystem', 'market', 'fishing'].includes(m)) return 'Cozy';
-    if (['defense', 'tactics', 'deck'].includes(m)) return 'Strategy';
-    if (m === 'quiz') return 'Flash & Quizzes';
+    if (game.category && genres.includes(game.category)) return game.category;
+    const t = `${game.id} ${game.title}`.toLowerCase();
+    if (t.includes('racer') || t.includes('racing')) return 'Driving';
+    if (t.includes('2048') || t.includes('tetris') || t.includes('block') || t.includes('puzzle') || t.includes('match') || t.includes('hex') || t.includes('mines') || t.includes('sweep') || t.includes('solitaire') || t.includes('nonogram') || t.includes('flood') || t.includes('memory') || t.includes('maze')) return 'Puzzles';
+    if (t.includes('quiz') || t.includes('math') || t.includes('hangman') || t.includes('guess') || t.includes('color-match')) return 'Quiz & Words';
+    if (t.includes('connect') || t.includes('checker') || t.includes('gomoku') || t.includes('dots') || t.includes('snakes') || t.includes('dark')) return 'Strategy';
+    if (t.includes('fruit')) return 'Cozy';
     return 'Arcade';
   }
 
@@ -118,7 +112,7 @@ export async function mountGames(root) {
     const iconBox = make('span', '', 'window-tool-icon');
     iconBox.innerHTML = gamePropSVG(game, genre(game));
     const titleText = document.createElement('div');
-    const kicker = make('span', genre(game).toUpperCase(), 'window-kicker');
+    const kicker = make('span', `${genre(game).toUpperCase()} · ${game.license}`, 'window-kicker');
     const h3 = make('h2', game.title);
     titleText.append(kicker, h3);
     titleGroup.append(iconBox, titleText);
@@ -140,7 +134,7 @@ export async function mountGames(root) {
     header.append(grab, headRow);
 
     const body = make('div', '', 'tool-window-body');
-    const controlsNote = make('p', `HOW TO PLAY: ${game.controls || game.keyboard || 'Tap or use arrow keys.'}`, 'arcade-player-controls');
+    const controlsNote = make('p', `HOW TO PLAY: ${game.controls || game.keyboard || 'Use keyboard or touch controls.'} · Source: ${game.repo}`, 'arcade-player-controls');
     const frame = document.createElement('iframe');
     frame.className = 'arcade-iframe';
     frame.title = `${game.title} — offline game`;
@@ -223,26 +217,24 @@ export async function mountGames(root) {
     render = () => {
       const query = search.value.trim().toLocaleLowerCase();
       const shown = valid.filter(g => (selectedGenre === 'All' || genre(g) === selectedGenre)
-        && [g.title, g.description, g.mechanic, g.category, g.controls, g.id].join(' ').toLocaleLowerCase().includes(query));
+        && [g.title, g.description, g.category, g.controls, g.repo, g.id].join(' ').toLocaleLowerCase().includes(query));
       visibleGames = shown;
       shelvesHost.replaceChildren();
       renderFilters();
 
-      const featured = shown.filter(g => g.featured || g.origin === 'arcade-hit');
-      const classics = shown.filter(g => g.origin === 'github');
-      const originals = shown.filter(g => g.origin === 'first-party');
+      const featured = shown.filter(g => g.featured);
+      const rest = shown.filter(g => !g.featured);
 
-      if (featured.length) shelvesHost.append(renderShelfSection('★ FEATURED FLASH, IMPOSSIBLE QUIZ & FANCADE HITS', featured));
-      if (classics.length) shelvesHost.append(renderShelfSection('✦ OPEN-SOURCE ARCADE CLASSICS', classics));
-      if (originals.length) shelvesHost.append(renderShelfSection('◈ 75 COZY MINI-WORLDS', originals));
+      if (featured.length) shelvesHost.append(renderShelfSection('★ POPULAR OPEN-SOURCE HITS FROM GITHUB', featured));
+      if (rest.length) shelvesHost.append(renderShelfSection('✦ MORE REAL GITHUB ARCADE & PUZZLE GAMES', rest));
 
       if (!shown.length) {
         const empty = make('div', '', 'empty-shelf');
-        empty.textContent = 'No games matched that search! Try "Impossible", "Truck", or "Tetris".';
+        empty.textContent = 'No games matched that search! Try "Dino", "Pac-Man", "OutRun", or "2048".';
         shelvesHost.append(empty);
       }
 
-      status.textContent = `${shown.length} playable offline games ready · Zero internet required!`;
+      status.textContent = `${shown.length} real open-source games fetched from ${new Set(valid.map(g => g.repo)).size} GitHub repositories`;
     };
 
     search.addEventListener('input', render);

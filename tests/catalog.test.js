@@ -56,18 +56,14 @@ test('all utility identifiers have implementation dispatch cases', () => {
   }
 });
 
-test('offline arcade catalog includes 115 games including Flash, Impossible Quiz & Fancade hits with valid entrypoints and ZIPs', () => {
+test('all games in catalog are real open-source games fetched from GitHub with valid entrypoints and ZIPs', () => {
   const games = JSON.parse(fs.readFileSync('games/catalog.json', 'utf8'));
-  assert.equal(games.length, 115);
-  const first = games.filter(g => g.origin === 'first-party');
-  const hits = games.filter(g => g.origin === 'arcade-hit');
-  assert.equal(first.length, 75);
-  assert.equal(hits.length, 15);
-  assert.ok(hits.some(g => g.id === 'impossible-quiz'));
-  assert.ok(hits.some(g => g.id === 'drive-mad-wobble'));
-  assert.ok(hits.some(g => g.id === 'papa-waffleria'));
-  assert.ok(hits.some(g => g.id === 'henry-kitchen-heist'));
+  assert.equal(games.length, 68);
+  assert.ok(!fs.existsSync('games/arcade'));
+  assert.ok(!fs.existsSync('games/original'));
   for (const g of games) {
+    assert.equal(g.origin, 'github', g.id + ' must come from GitHub');
+    assert.ok(g.repo.startsWith('https://github.com/'), g.id + ' repo URL');
     assert.ok(g.title);
     assert.ok(g.license);
     assert.ok(fs.existsSync(g.entrypoint), g.id + ' entrypoint exists');

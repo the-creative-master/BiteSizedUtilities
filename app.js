@@ -20,7 +20,7 @@ const WAFFLE_QUIPS = [
   'Boing! Sweet math!',
   'Tap a cupboard door!',
   'Freshly baked utilities!',
-  '115 offline games inside!',
+  '68 real GitHub games inside!',
   'Waffle power!',
   'Pick a toy off the shelf!'
 ];
@@ -34,12 +34,12 @@ const CUPBOARD_THEME = {
   text:    { color: '#a595c4', trim: '#756495', doodles: ['Aa', '✎'], tagline: 'A PLACE FOR EVERY WORD.' },
   art:     { color: '#e895bf', trim: '#b8638e', doodles: ['✿', '◈'], tagline: 'MAKE A COLORFUL MESS.' },
   science: { color: '#94c496', trim: '#609362', doodles: ['⚛', '⚖'], tagline: 'FEED YOUR CURIOSITY.' },
-  games:   { color: '#d7b5eb', trim: '#9875b4', doodles: ['★', '♧'], tagline: 'FLASH, FANCADE & ARCADE HEAVEN!' }
+  games:   { color: '#d7b5eb', trim: '#9875b4', doodles: ['★', '♧'], tagline: 'REAL OPEN-SOURCE GAMES FROM GITHUB' }
 };
 
 const ALL_CUPBOARDS = [
   ...cupboards,
-  { id: 'games', name: 'Games & Fun', short: '115 offline arcade worlds', icon: '♧', color: '#d7b5eb', trim: '#9875b4', star: 'games', tools: [] }
+  { id: 'games', name: 'Games & Fun', short: '68 real open-source games', icon: '♧', color: '#d7b5eb', trim: '#9875b4', star: 'games', tools: [] }
 ];
 
 const app = $('#app');
@@ -167,7 +167,7 @@ function woodenSignboardHTML({ kicker, title, leftDoodle = '', rightDoodle = '',
 
 function cupboardCard(c) {
   const theme = CUPBOARD_THEME[c.id] || { color: c.color, trim: c.trim };
-  const countText = c.id === 'games' ? '115 GAMES' : `${c.tools.length} UTILITIES`;
+  const countText = c.id === 'games' ? '68 GAMES' : `${c.tools.length} UTILITIES`;
   return `
     <article class="cupboard-card" style="--cup:${theme.color};--trim:${theme.trim}" data-cupboard="${c.id}">
       <div class="cupboard-crown" aria-hidden="true"></div>
@@ -297,7 +297,7 @@ async function collection(id) {
         <div class="cabinet-bookcase arcade-bookcase">
           <div class="cabinet-crown" aria-hidden="true"></div>
           <div class="cabinet-interior" id="game-root">
-            <p class="empty-msg">Loading 115 offline games…</p>
+            <p class="empty-msg">Loading 68 real open-source games…</p>
           </div>
         </div>
       </section>

@@ -196,33 +196,32 @@ const TOOL_SVGS = {
   constants: wrapTile(C.teal, `<rect x="18" y="18" width="60" height="60" rx="14" fill="#fff9ec" stroke="${INK}" stroke-width="4.5"/><text x="48" y="61" text-anchor="middle" font-family="Georgia,serif" font-weight="700" font-size="38" fill="${INK}">π</text>`)
 };
 
-// Bespoke game box illustrations for Featured Flash/Fancade hits + genres
+// Bespoke game box illustrations for fetched real GitHub games + genres
 const GAME_SVGS = {
-  'impossible-quiz': wrapTile(C.coral, `<circle cx="48" cy="54" r="20" fill="#4f2f23"/><path d="M48 34 C48 22 60 22 64 16" stroke="${INK}" stroke-width="4" stroke-linecap="round"/><circle cx="66" cy="15" r="5" fill="#ffe17d" stroke="${INK}" stroke-width="2.5"/><text x="48" y="62" text-anchor="middle" font-family="Fredoka,sans-serif" font-weight="700" font-size="24" fill="#ffe17d">?!</text>`),
-  'impossible-quiz-2': wrapTile(C.lilac, `<rect x="20" y="22" width="56" height="52" rx="14" fill="#f7c46c" stroke="${INK}" stroke-width="4.5"/><text x="48" y="57" text-anchor="middle" font-family="Fredoka,sans-serif" font-weight="700" font-size="26" fill="${INK}">Q2</text>`),
-  'drive-mad-wobble': wrapTile(C.sky, `<rect x="20" y="34" width="56" height="22" rx="7" fill="#e78167" stroke="${INK}" stroke-width="4"/><rect x="34" y="22" width="26" height="14" rx="5" fill="#fff9ec" stroke="${INK}" stroke-width="3.5"/><circle cx="32" cy="60" r="11" fill="#574036" stroke="${INK}" stroke-width="4"/><circle cx="64" cy="60" r="11" fill="#574036" stroke="${INK}" stroke-width="4"/>`),
-  'fancade-stack-3d': wrapTile(C.honey, `<rect x="22" y="56" width="52" height="16" rx="4" fill="#82bbb6" stroke="${INK}" stroke-width="3.5"/><rect x="26" y="40" width="44" height="16" rx="4" fill="#f0ba50" stroke="${INK}" stroke-width="3.5"/><rect x="32" y="24" width="32" height="16" rx="4" fill="#e78167" stroke="${INK}" stroke-width="3.5"/>`),
-  'tiny-golf-putt': wrapTile(C.sage, `<line x1="56" y1="20" x2="56" y2="66" stroke="${INK}" stroke-width="4"/><path d="M56 20 L76 28 L56 36 Z" fill="#e78167" stroke="${INK}" stroke-width="3"/><ellipse cx="56" cy="68" rx="12" ry="5" fill="${INK}"/><circle cx="30" cy="64" r="9" fill="#fff9ec" stroke="${INK}" stroke-width="3.5"/>`),
-  'fancy-parkour': wrapTile(C.peach, `<circle cx="48" cy="28" r="9" fill="#fff9ec" stroke="${INK}" stroke-width="3.5"/><path d="M42 20 L50 12 L56 20" stroke="#e78167" stroke-width="4" stroke-linecap="round"/><rect x="38" y="46" width="20" height="22" rx="5" fill="#e78167" stroke="${INK}" stroke-width="3.5"/><line x1="48" y1="37" x2="48" y2="46" stroke="${INK}" stroke-width="4"/>`),
-  'line-sled-rider': wrapTile(C.sky, `<path d="M16 64 Q42 74 78 44" stroke="${INK}" stroke-width="5" stroke-linecap="round"/><path d="M36 52 L54 44" stroke="${INK}" stroke-width="4"/><circle cx="46" cy="36" r="7" fill="#e78167" stroke="${INK}" stroke-width="3"/>`),
-  'bloon-dart-pop': wrapTile(C.sage, `<ellipse cx="40" cy="42" rx="14" ry="18" fill="#ff8075" stroke="${INK}" stroke-width="4"/><ellipse cx="58" cy="52" rx="13" ry="16" fill="#7ec3d4" stroke="${INK}" stroke-width="4"/>`),
-  'tunnel-heli': wrapTile(C.honey, `<rect x="26" y="40" width="44" height="24" rx="10" fill="#ffe17d" stroke="${INK}" stroke-width="4"/><line x1="20" y1="32" x2="76" y2="32" stroke="${INK}" stroke-width="5" stroke-linecap="round"/><circle cx="56" cy="50" r="5" fill="#bfe0f7" stroke="${INK}" stroke-width="2.5"/>`),
-  'ninja-wall-jump': wrapTile(C.lilac, `<rect x="34" y="30" width="28" height="36" rx="8" fill="#4f2f23"/><rect x="32" y="36" width="32" height="8" fill="#e78167"/><circle cx="42" cy="48" r="3" fill="#fff"/><circle cx="54" cy="48" r="3" fill="#fff"/>`),
-  'papa-waffleria': wrapTile(C.peach, `<rect x="26" y="32" width="44" height="36" rx="10" fill="#f7c46c" stroke="${INK}" stroke-width="4.5"/><circle cx="48" cy="48" r="8" fill="#ff8b80" stroke="${INK}" stroke-width="3"/>`),
-  'henry-kitchen-heist': wrapTile(C.cream, `<circle cx="48" cy="34" r="14" fill="#fff9ec" stroke="${INK}" stroke-width="4.5"/><path d="M48 48 V74 M32 58 L48 52 L64 58" stroke="${INK}" stroke-width="4.5" stroke-linecap="round"/>`),
-  'odd-bot-push': wrapTile(C.teal, `<rect x="26" y="30" width="24" height="32" rx="7" fill="#7ec3d4" stroke="${INK}" stroke-width="4"/><rect x="52" y="42" width="24" height="24" rx="6" fill="#e78167" stroke="${INK}" stroke-width="4"/>`),
-  'crossy-kitchen-hop': wrapTile(C.sage, `<rect x="28" y="30" width="40" height="40" rx="10" fill="#ffe17d" stroke="${INK}" stroke-width="4.5"/><circle cx="40" cy="44" r="3.5" fill="${INK}"/><circle cx="56" cy="44" r="3.5" fill="${INK}"/><rect x="42" y="52" width="12" height="7" rx="3" fill="#e78167" stroke="${INK}" stroke-width="2.5"/>`),
-  'recoil-bounce': wrapTile(C.lilac, `<circle cx="38" cy="54" r="16" fill="#7ec3d4" stroke="${INK}" stroke-width="4"/><circle cx="64" cy="30" r="10" fill="#ff8b80" stroke="${INK}" stroke-width="3.5"/>`)
+  't-rex-runner': wrapTile(C.sage, `<rect x="34" y="24" width="28" height="22" rx="6" fill="#7ec47f" stroke="${INK}" stroke-width="4"/><rect x="28" y="42" width="22" height="24" rx="5" fill="#7ec47f" stroke="${INK}" stroke-width="4"/><circle cx="52" cy="32" r="3" fill="${INK}"/><line x1="22" y1="70" x2="74" y2="70" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>`),
+  floppybird: wrapTile(C.sky, `<ellipse cx="46" cy="50" rx="18" ry="14" fill="#ffe17d" stroke="${INK}" stroke-width="4"/><circle cx="54" cy="44" r="5" fill="#fff"/><circle cx="55" cy="44" r="2.2" fill="${INK}"/><path d="M62 49 H74 L62 55 Z" fill="#e78167" stroke="${INK}" stroke-width="3"/>`),
+  hextris: wrapTile(C.lilac, `<polygon points="48,18 72,33 72,63 48,78 24,63 24,33" fill="#ffe17d" stroke="${INK}" stroke-width="4.5"/><polygon points="48,30 62,39 62,57 48,66 34,57 34,39" fill="#e78167" stroke="${INK}" stroke-width="3.5"/>`),
+  'javascript-racer': wrapTile(C.coral, `<rect x="20" y="44" width="56" height="18" rx="7" fill="#e78167" stroke="${INK}" stroke-width="4"/><rect x="30" y="32" width="36" height="14" rx="6" fill="#fff9ec" stroke="${INK}" stroke-width="3.5"/><circle cx="32" cy="64" r="8" fill="#4f2f23"/><circle cx="64" cy="64" r="8" fill="#4f2f23"/>`),
+  adarkroom: wrapTile(C.cream, `<path d="M48 20 C60 36 66 50 58 64 C52 72 40 72 36 62 C30 50 40 34 48 20 Z" fill="#e78167" stroke="${INK}" stroke-width="4"/><path d="M48 36 C54 46 56 56 50 64 C44 64 41 56 48 36 Z" fill="#ffe17d"/>`),
+  'tower-game': wrapTile(C.honey, `<rect x="26" y="56" width="44" height="16" rx="4" fill="#82bbb6" stroke="${INK}" stroke-width="3.5"/><rect x="28" y="40" width="40" height="16" rx="4" fill="#f0ba50" stroke="${INK}" stroke-width="3.5"/><rect x="30" y="24" width="36" height="16" rx="4" fill="#e78167" stroke="${INK}" stroke-width="3.5"/>`),
+  astray: wrapTile(C.teal, `<rect x="20" y="20" width="56" height="56" rx="10" fill="#fff9ec" stroke="${INK}" stroke-width="4.5"/><path d="M20 40 H54 M42 56 H76 M54 20 V40" stroke="${INK}" stroke-width="4"/><circle cx="34" cy="62" r="8" fill="#e78167" stroke="${INK}" stroke-width="3"/>`),
+  'pacman-mumuy': wrapTile(C.honey, `<path d="M48 48 L72 34 A28 28 0 1 0 72 62 Z" fill="#ffe17d" stroke="${INK}" stroke-width="4.5" stroke-linejoin="round"/><circle cx="52" cy="34" r="3.5" fill="${INK}"/>`),
+  'cupcakes-2048': wrapTile(C.peach, `<path d="M30 52 H66 L60 72 H36 Z" fill="#c98550" stroke="${INK}" stroke-width="4"/><path d="M26 52 C26 36 70 36 70 52 Z" fill="#f5b8c8" stroke="${INK}" stroke-width="4"/><circle cx="48" cy="30" r="6" fill="#e78167" stroke="${INK}" stroke-width="3"/>`),
+  'gl-pinball': wrapTile(C.coral, `<rect x="24" y="16" width="48" height="64" rx="12" fill="#82bbb6" stroke="${INK}" stroke-width="4.5"/><circle cx="48" cy="38" r="10" fill="#ffe17d" stroke="${INK}" stroke-width="3.5"/><path d="M30 66 L44 72 M66 66 L52 72" stroke="${INK}" stroke-width="5" stroke-linecap="round"/>`),
+  'gl-mini-golf': wrapTile(C.sage, `<line x1="56" y1="20" x2="56" y2="66" stroke="${INK}" stroke-width="4"/><path d="M56 20 L76 28 L56 36 Z" fill="#e78167" stroke="${INK}" stroke-width="3"/><ellipse cx="56" cy="68" rx="12" ry="5" fill="${INK}"/><circle cx="30" cy="64" r="9" fill="#fff9ec" stroke="${INK}" stroke-width="3.5"/>`),
+  'gl-math-master': wrapTile(C.honey, `<rect x="20" y="20" width="56" height="56" rx="14" fill="#fff9ec" stroke="${INK}" stroke-width="4.5"/><text x="48" y="57" text-anchor="middle" font-family="Fredoka,sans-serif" font-weight="700" font-size="24" fill="${INK}">2+2</text>`),
+  'gl-air-hockey': wrapTile(C.sky, `<rect x="18" y="24" width="60" height="48" rx="12" fill="#fff9ec" stroke="${INK}" stroke-width="4.5"/><line x1="48" y1="24" x2="48" y2="72" stroke="#e78167" stroke-width="3"/><circle cx="34" cy="48" r="9" fill="#e78167" stroke="${INK}" stroke-width="3"/><circle cx="62" cy="48" r="9" fill="#82bbb6" stroke="${INK}" stroke-width="3"/>`),
+  'gl-connect-four': wrapTile(C.sky, `<rect x="18" y="24" width="60" height="48" rx="10" fill="#4f7eb3" stroke="${INK}" stroke-width="4.5"/><circle cx="33" cy="40" r="7" fill="#ffe17d" stroke="${INK}" stroke-width="2.5"/><circle cx="48" cy="40" r="7" fill="#e78167" stroke="${INK}" stroke-width="2.5"/><circle cx="63" cy="56" r="7" fill="#ffe17d" stroke="${INK}" stroke-width="2.5"/>`),
+  'star-battle': wrapTile(C.lilac, `<path d="M48 20 L66 68 L48 58 L30 68 Z" fill="#ffe17d" stroke="${INK}" stroke-width="4" stroke-linejoin="round"/>`),
+  'html5-asteroids': wrapTile(C.cream, `<polygon points="48,22 64,66 48,58 32,66" fill="#bfe0f7" stroke="${INK}" stroke-width="4" stroke-linejoin="round"/>`)
 };
 
 const GENRE_SVGS = {
-  'Flash & Quizzes': GAME_SVGS['impossible-quiz'],
-  'Fancade 2.5D': GAME_SVGS['fancade-stack-3d'],
   'Puzzles': TOOL_SVGS['sequence-playground'],
-  'Driving': GAME_SVGS['drive-mad-wobble'],
-  'Strategy': GAME_SVGS['bloon-dart-pop'],
-  'Quiz & Words': GAME_SVGS['henry-kitchen-heist'],
-  'Cozy': GAME_SVGS['papa-waffleria'],
+  'Driving': GAME_SVGS['javascript-racer'],
+  'Strategy': GAME_SVGS['gl-connect-four'],
+  'Quiz & Words': GAME_SVGS['gl-math-master'],
+  'Cozy': GAME_SVGS['cupcakes-2048'],
   'Arcade': wrapTile(C.lilac, `<rect x="22" y="24" width="52" height="48" rx="12" fill="#c7b2ea" stroke="${INK}" stroke-width="4.5"/><circle cx="39" cy="48" r="6" fill="#ffe17d" stroke="${INK}" stroke-width="3"/><circle cx="57" cy="48" r="6" fill="#e78167" stroke="${INK}" stroke-width="3"/>`)
 };
 
@@ -232,10 +231,11 @@ export function toolPropSVG(id) {
 
 export function gamePropSVG(game, genreName) {
   if (GAME_SVGS[game.id]) return GAME_SVGS[game.id];
-  if (game.id.includes('tetris') || game.id === 'blockrain') return GAME_SVGS['fancade-stack-3d'];
-  if (game.id.includes('snake')) return GAME_SVGS['crossy-kitchen-hop'];
-  if (game.id.includes('2048')) return TOOL_SVGS['number-base'];
-  if (game.id.includes('solitaire') || game.id.includes('mines') || game.id.includes('sweep')) return GAME_SVGS['odd-bot-push'];
+  if (game.id.includes('tetris') || game.id === 'blockrain' || game.id.includes('block')) return GAME_SVGS['tower-game'];
+  if (game.id.includes('2048')) return GAME_SVGS['cupcakes-2048'];
+  if (game.id.includes('pacman')) return GAME_SVGS['pacman-mumuy'];
+  if (game.id.includes('flappy')) return GAME_SVGS.floppybird;
+  if (game.id.includes('asteroid')) return GAME_SVGS['html5-asteroids'];
   return GENRE_SVGS[genreName] || GENRE_SVGS.Arcade;
 }
 

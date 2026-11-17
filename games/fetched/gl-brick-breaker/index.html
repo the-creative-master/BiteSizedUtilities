@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"><script src="offline-storage.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brick Breaker</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <h1>🧱 Brick Breaker</h1>
+      <p class="tagline">Break every brick and survive as long as you can.</p>
+    </header>
+
+    <section class="hud" aria-label="Game statistics">
+      <div class="stat"><span class="stat-label">Score</span><span class="stat-value" id="score">0</span></div>
+      <div class="stat"><span class="stat-label">Lives</span><span class="stat-value" id="lives">3</span></div>
+      <div class="stat"><span class="stat-label">Level</span><span class="stat-value" id="level">1</span></div>
+      <div class="stat"><span class="stat-label">Best</span><span class="stat-value" id="best">0</span></div>
+    </section>
+
+    <div class="stage">
+      <canvas id="game" width="640" height="480"></canvas>
+      <p class="message" id="message">Press Start (or Space) to play.</p>
+    </div>
+
+    <footer class="controls">
+      <button id="start" class="btn">Start Game</button>
+    </footer>
+  </main>
+
+  <script src="game.js"></script>
+</body>
+</html>

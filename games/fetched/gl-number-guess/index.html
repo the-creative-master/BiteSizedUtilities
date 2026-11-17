@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"><script src="offline-storage.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="description" content="🔢 Number Guess — a modern, dependency-free HTML5 guessing game with difficulty levels, narrowing hints, and stats." />
+  <meta name="theme-color" content="#0b0b1a" />
+  <title>🔢 Number Guess</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <canvas id="bg-canvas" aria-hidden="true"></canvas>
+
+  <main class="stage">
+    <section class="panel" aria-label="Number Guess game">
+      <header class="topbar">
+        <h1 class="title">🔢 Number Guess</h1>
+        <p class="tagline">I'm thinking of a number. Guess it in as few tries as you can.</p>
+      </header>
+
+      <div class="difficulty" id="difficulty" role="group" aria-label="Difficulty">
+        <button class="diff-btn" type="button" data-diff="easy">Easy · 1–50</button>
+        <button class="diff-btn" type="button" data-diff="medium">Medium · 1–100</button>
+        <button class="diff-btn" type="button" data-diff="hard">Hard · 1–500</button>
+        <button class="diff-btn" type="button" data-diff="expert">Expert · 1–1000</button>
+      </div>
+
+      <div class="hud" role="status" aria-live="polite">
+        <div class="stat">
+          <span class="stat-label">Tries</span>
+          <span class="stat-value" id="tries">0</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Best</span>
+          <span class="stat-value" id="best">—</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Games</span>
+          <span class="stat-value" id="games">0</span>
+        </div>
+      </div>
+
+      <div class="range" aria-label="Possible range">
+        <div class="range-meta">
+          <span id="range-lo">1</span>
+          <span class="range-hint" id="range-hint">Hidden number is somewhere here</span>
+          <span id="range-hi">100</span>
+        </div>
+        <div class="range-track" id="range-track">
+          <div class="range-dead range-dead-left" id="dead-left"></div>
+          <div class="range-live" id="range-live"></div>
+          <div class="range-dead range-dead-right" id="dead-right"></div>
+          <div class="range-marker" id="range-marker" aria-hidden="true"></div>
+        </div>
+      </div>
+
+      <div class="guess-row">
+        <input
+          class="guess-input"
+          id="guess-input"
+          type="number"
+          inputmode="numeric"
+          autocomplete="off"
+          placeholder="Your guess…"
+          aria-label="Your guess" />
+        <button class="btn btn-guess" id="guess-btn" type="button">Guess</button>
+      </div>
+
+      <p class="feedback" id="feedback" role="status" aria-live="polite">Pick a difficulty to start.</p>
+
+      <div class="history" id="history" aria-label="Previous guesses"></div>
+
+      <div class="overlay" id="overlay">
+        <div class="overlay-card">
+          <h2 class="overlay-title" id="overlay-title">Ready?</h2>
+          <p class="overlay-text" id="overlay-text">Choose a difficulty and start guessing. I'll tell you if you're too high or too low.</p>
+          <button class="btn" id="overlay-btn" type="button">Play</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="game.js"></script>
+</body>
+</html>

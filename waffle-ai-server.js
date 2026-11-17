@@ -5,10 +5,12 @@ export const WAFFLE_MODEL_PATH = process.env.WAFFLE_AI_MODEL_PATH || path.resolv
 
 export const WAFFLE_SYSTEM_PROMPT = [
   'You are Sir Waffle, the cheerful, warm-hearted 2.5D waffle mascot of BiteSizedUtilities.',
-  'Speak with cozy kitchen charm (occasional maple syrup, butter, or crispy waffle puns are welcome, but keep answers super clear, accurate, and concise).',
+  'Speak with cozy kitchen charm (occasional maple syrup, butter, or crispy waffle puns are welcome, but keep answers clear, accurate, and well-formatted in Markdown).',
   'Never say "As an AI language model" — stay in character as Sir Waffle.',
-  'You live in the BiteSizedUtilities kitchen, which has 5 cupboards (70 offline tools: Math & Numbers, Coding & Dev, Text & Files, Art & Coloring, Science & Physics) plus a 45-game arcade (including Fancade hit Roper!).',
-  'Help the user with math, coding, writing, science, puzzles, game recommendations, or friendly chat.'
+  'You live in the BiteSizedUtilities kitchen, which has 6 utility cupboards (85 tools: Math & Numbers, Coding & Developing, Text & Files, Art & Coloring, Science & Physics, and English & Languages with Waffle Translate & Sentence Corrector) plus a 45-game arcade (including Fancade hit Roper!).',
+  'When writing code, always use standard fenced code blocks with the language name (like ```python).',
+  'When the user asks you to make, create, or generate a downloadable file (such as .docx, .md, .txt, .csv, .json, .html, .py, .js), wrap the full file contents inside a fenced block whose tag is file:filename.ext (for example ```file:waffle-guide.docx with clean Markdown headings/lists/paragraphs inside, or ```file:hello.py).',
+  'Users can also attach/upload .docx, .txt, .md, .csv, and code files for you to read, summarize, translate, edit, or turn into new files.'
 ].join(' ');
 
 let llamaInstance = null;
@@ -56,7 +58,7 @@ export async function ensureWaffleSession() {
     const { getLlama, LlamaChatSession } = await import('node-llama-cpp');
     llamaInstance = await getLlama();
     modelInstance = await llamaInstance.loadModel({ modelPath: WAFFLE_MODEL_PATH });
-    contextInstance = await modelInstance.createContext({ contextSize: 2048, threads: 2 });
+    contextInstance = await modelInstance.createContext({ contextSize: 3072, threads: 2 });
     sessionInstance = new LlamaChatSession({
       contextSequence: contextInstance.getSequence(),
       systemPrompt: WAFFLE_SYSTEM_PROMPT
@@ -96,7 +98,7 @@ export async function disposeWaffleAI() {
   try { await l?.dispose?.(); } catch {}
 }
 
-function buildChatHistory(messages) {
+function buildChatHistory(messages, customSystemPrompt) {
   const cleaned = (Array.isArray(messages) ? messages : [])
     .filter(m => m && typeof m.content === 'string' && m.content.trim())
     .slice(-12);
@@ -111,8 +113,11 @@ function buildChatHistory(messages) {
   }
   if (lastUserIdx < 0) return { history: [], userText: '' };
 
+  const sysText = (typeof customSystemPrompt === 'string' && customSystemPrompt.trim())
+    ? customSystemPrompt.trim().slice(0, 1500)
+    : WAFFLE_SYSTEM_PROMPT;
   const userText = cleaned[lastUserIdx].content.trim();
-  const history = [{ type: 'system', text: WAFFLE_SYSTEM_PROMPT }];
+  const history = [{ type: 'system', text: sysText }];
   for (let i = 0; i < lastUserIdx; i++) {
     const m = cleaned[i];
     if (m.role === 'user') history.push({ type: 'user', text: m.content.trim() });
@@ -121,7 +126,7 @@ function buildChatHistory(messages) {
   return { history, userText };
 }
 
-function readJsonBody(req, maxBytes = 256 * 1024) {
+function readJsonBody(req, maxBytes = 512 * 1024) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let total = 0;
@@ -190,6 +195,46 @@ export function attachWaffleAiMiddleware(middlewares) {
       }
     }
 
+    if (pathname === '/api/waffle-ai/wall-quip' && (req.method === 'POST' || req.method === 'GET')) {
+      const themes = [
+        'bouncy waffle walls', 'maple syrup physics', 'crispy waffle pockets',
+        'Roper and the arcade', 'learning new languages', 'painting in Art Studio',
+        'fresh math puzzles', 'writing clean code', 'science experiments', 'melted butter'
+      ];
+      const theme = themes[Math.floor(Math.random() * themes.length)];
+      const abortController = new AbortController();
+      req.on('close', () => { if (!res.writableEnded) abortController.abort(); });
+
+      const runQuip = async () => {
+        if (abortController.signal.aborted) return;
+        const session = await ensureWaffleSession();
+        if (abortController.signal.aborted) return;
+        session.setChatHistory([{
+          type: 'system',
+          text: 'You are Sir Waffle, a cheerful 2.5D waffle mascot. Reply with ONE playful, short reaction (max 10 words, no quotes, no markdown) when someone pokes your bouncy waffle kitchen wall.'
+        }]);
+        const reply = await session.prompt(`The user just bounced the waffle wall! Make a cute 1-line quip inspired by: ${theme}.`, {
+          maxTokens: 28,
+          temperature: 0.95,
+          signal: abortController.signal,
+          stopOnAbortSignal: true
+        });
+        const quip = (reply || 'Boing! Crispy waffle vibes!').replace(/["*\n\r]+/g, ' ').trim().slice(0, 72);
+        sendJson(res, 200, { quip, model: 'Qwen 2.5 1.5B', engine: 'node-llama.cpp' });
+      };
+
+      const queued = chatQueue.then(runQuip, runQuip);
+      chatQueue = queued.catch(() => {});
+      try {
+        await queued;
+      } catch (err) {
+        if (!abortController.signal.aborted && !res.writableEnded) {
+          sendJson(res, 500, { error: err.message || 'Quip failed' });
+        }
+      }
+      return;
+    }
+
     if (pathname === '/api/waffle-ai/chat' && req.method === 'POST') {
       let body;
       try {
@@ -198,13 +243,13 @@ export function attachWaffleAiMiddleware(middlewares) {
         return sendJson(res, err.statusCode || 400, { error: err.message });
       }
 
-      const { history, userText } = buildChatHistory(body.messages);
+      const { history, userText } = buildChatHistory(body.messages, body.systemPrompt);
       if (!userText) {
         return sendJson(res, 400, { error: 'A user message is required.' });
       }
 
       const stream = body.stream !== false;
-      const maxTokens = Math.min(Math.max(Number(body.maxTokens) || 360, 16), 768);
+      const maxTokens = Math.min(Math.max(Number(body.maxTokens) || 520, 16), 1200);
       const temperature = Math.min(Math.max(Number(body.temperature ?? 0.7), 0), 1.5);
       const abortController = new AbortController();
 

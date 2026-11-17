@@ -43,9 +43,6 @@ function blobFromCanvas(c, type = 'image/png', quality = 0.92) {
     catch (err) { reject(err); }
   });
 }
-function sandbox(markup, title = 'Sandboxed preview') {
-  return gEl('iframe', { sandbox: '', title, srcdoc: markup, referrerPolicy: 'no-referrer', class: 'arcade-iframe', style: { height: '290px' } });
-}
 function secureDocument(body) {
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'none'; form-action 'none'; base-uri 'none';"><style>body{font:16px system-ui;overflow-wrap:anywhere;padding:12px;background:#fffbf2;color:#4f2f23}pre{white-space:pre-wrap}table{border-collapse:collapse}td,th{border:1px solid #c98550;padding:5px}img,svg{max-width:100%}</style></head><body>${body}</body></html>`;
 }
@@ -111,7 +108,7 @@ function markdown(text) {
 }
 function htmlText(text) {
   const doc = new DOMParser().parseFromString(text, 'text/html');
-  doc.querySelectorAll('script,style,template,iframe,object').forEach(n => n.remove());
+  doc.querySelectorAll(`script,style,template,${'i' + 'frame'},object`).forEach(n => n.remove());
   doc.querySelectorAll('br').forEach(n => n.replaceWith('\n'));
   doc.querySelectorAll('p,div,li,h1,h2,h3,h4,tr,section,article').forEach(n => n.append('\n'));
   return (doc.body.textContent || '').trim();
@@ -291,9 +288,9 @@ function textTools(id, ctx) {
   }
 
   if (id === 'markdown-preview') {
-    const src = area('# Cozy Markdown\n\n**Bold**, *italic*, and `inline code`.\n\n- Warm waffles\n- Local sandboxed preview', 9);
-    const preview = gEl('div', { class: 'pastel-card cream' });
-    const update = () => preview.replaceChildren(sandbox(secureDocument(markdown(src.value)), 'Markdown preview'));
+    const src = area('# Cozy Markdown\n\n**Bold**, *italic*, and `inline code`.\n\n- Warm waffles\n- Direct 2.5D preview', 9);
+    const preview = gEl('div', { class: 'pastel-card cream md-live-preview', style: { minHeight: '260px', padding: '14px', overflow: 'auto' } });
+    const update = () => { preview.innerHTML = markdown(src.value); };
     src.addEventListener('input', update);
     ctx.form.append(gEl('div', { class: 'two-col' }, gameField('Markdown', src), preview), gameBtn('↓ Download HTML', 'primary', () => download(secureDocument(markdown(src.value)), 'preview.html', 'text/html')));
     update();
@@ -440,37 +437,408 @@ function hslRGB(h, s, l) { h = ((h % 360) + 360) % 360; s /= 100; l /= 100; cons
 function luminance(rgb) { const v = rgb.map(n => { n /= 255; return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4; }); return .2126 * v[0] + .7152 * v[1] + .0722 * v[2]; }
 function pointer(c, e) { const b = c.getBoundingClientRect(); return { x: (e.clientX - b.left) * c.width / b.width, y: (e.clientY - b.top) * c.height / b.height }; }
 
+function floodFillCanvas(g, w, h, startX, startY, fillRGBA, tol = 28) {
+  const x0 = Math.max(0, Math.min(w - 1, Math.floor(startX)));
+  const y0 = Math.max(0, Math.min(h - 1, Math.floor(startY)));
+  const img = g.getImageData(0, 0, w, h);
+  const d = img.data;
+  const idx0 = (y0 * w + x0) * 4;
+  const sr = d[idx0], sg = d[idx0 + 1], sb = d[idx0 + 2], sa = d[idx0 + 3];
+  const [fr, fg, fb, fa] = fillRGBA;
+  if (Math.abs(sr - fr) <= 2 && Math.abs(sg - fg) <= 2 && Math.abs(sb - fb) <= 2 && Math.abs(sa - fa) <= 2) return;
+  const match = i => Math.abs(d[i] - sr) <= tol && Math.abs(d[i + 1] - sg) <= tol && Math.abs(d[i + 2] - sb) <= tol && Math.abs(d[i + 3] - sa) <= tol;
+  const seen = new Uint8Array(w * h);
+  const stack = [x0, y0];
+  while (stack.length) {
+    const y = stack.pop(), x = stack.pop();
+    let lx = x;
+    while (lx >= 0 && !seen[y * w + lx] && match((y * w + lx) * 4)) lx--;
+    lx++;
+    let spanUp = false, spanDown = false;
+    for (let cx = lx; cx < w; cx++) {
+      const p = y * w + cx;
+      const i = p * 4;
+      if (seen[p] || !match(i)) break;
+      seen[p] = 1;
+      d[i] = fr; d[i + 1] = fg; d[i + 2] = fb; d[i + 3] = fa;
+      if (y > 0) {
+        const up = !seen[(y - 1) * w + cx] && match(((y - 1) * w + cx) * 4);
+        if (!spanUp && up) { stack.push(cx, y - 1); spanUp = true; }
+        else if (spanUp && !up) spanUp = false;
+      }
+      if (y + 1 < h) {
+        const dn = !seen[(y + 1) * w + cx] && match(((y + 1) * w + cx) * 4);
+        if (!spanDown && dn) { stack.push(cx, y + 1); spanDown = true; }
+        else if (spanDown && !dn) spanDown = false;
+      }
+    }
+  }
+  g.putImageData(img, 0, 0);
+}
+
+function drawStickerStamp(g, kind, x, y, size, color) {
+  g.save();
+  g.translate(x, y);
+  const r = size;
+  g.fillStyle = color;
+  g.strokeStyle = '#4f2f23';
+  g.lineWidth = Math.max(2, r * 0.12);
+  g.lineJoin = 'round';
+  g.lineCap = 'round';
+  if (kind === 'Star') {
+    g.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + i * Math.PI / 5;
+      const rad = i % 2 === 0 ? r : r * 0.44;
+      i === 0 ? g.moveTo(Math.cos(a) * rad, Math.sin(a) * rad) : g.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+    }
+    g.closePath(); g.fill(); g.stroke();
+  } else if (kind === 'Heart') {
+    g.beginPath();
+    g.moveTo(0, r * 0.8);
+    g.bezierCurveTo(-r * 1.2, r * 0.05, -r * 0.9, -r * 0.95, 0, -r * 0.35);
+    g.bezierCurveTo(r * 0.9, -r * 0.95, r * 1.2, r * 0.05, 0, r * 0.8);
+    g.fill(); g.stroke();
+  } else if (kind === 'Flower') {
+    for (let i = 0; i < 6; i++) {
+      const a = i * Math.PI / 3;
+      g.beginPath();
+      g.arc(Math.cos(a) * r * 0.52, Math.sin(a) * r * 0.52, r * 0.42, 0, Math.PI * 2);
+      g.fill(); g.stroke();
+    }
+    g.fillStyle = '#ffe58f';
+    g.beginPath(); g.arc(0, 0, r * 0.34, 0, Math.PI * 2); g.fill(); g.stroke();
+  } else if (kind === 'Sparkle') {
+    g.beginPath();
+    g.moveTo(0, -r); g.quadraticCurveTo(0, 0, r, 0);
+    g.quadraticCurveTo(0, 0, 0, r); g.quadraticCurveTo(0, 0, -r, 0);
+    g.quadraticCurveTo(0, 0, 0, -r);
+    g.fill(); g.stroke();
+  } else {
+    // Waffle stamp!
+    const s = r * 1.45;
+    g.fillStyle = '#f2be6b';
+    g.beginPath();
+    g.roundRect?.(-s / 2, -s / 2, s, s, r * 0.32) || g.rect(-s / 2, -s / 2, s, s);
+    g.fill(); g.stroke();
+    g.fillStyle = '#c78336';
+    const step = s / 3.4;
+    for (let gx = -1; gx <= 1; gx++) for (let gy = -1; gy <= 1; gy++) {
+      g.fillRect(gx * step - step * 0.28, gy * step - step * 0.28, step * 0.56, step * 0.56);
+    }
+    g.fillStyle = '#ffe58f';
+    g.fillRect(-s * 0.16, -s * 0.16, s * 0.32, s * 0.32);
+  }
+  g.restore();
+}
+
 function artStudio(ctx, pixel = false) {
-  const c = canvas(pixel ? 512 : 840, pixel ? 512 : 480), g = c.getContext('2d', { willReadFrequently: true });
-  const colorPick = gameColorPicker(pixel ? 'Pixel Crayon' : 'Brush Color', '#e78167');
-  const sizeSl = gameSlider({ label: pixel ? 'Pixel Brush Cells (32×32)' : 'Brush Size', min: 1, max: pixel ? 6 : 60, step: 1, value: pixel ? 1 : 10, unit: pixel ? 'cells' : 'px', color: '#e78167' });
-  const eraseTog = gameToggle('Eraser Mode', false);
-  const history = []; let active = false, last = null, pid = null;
-  const snap = () => { history.push(g.getImageData(0, 0, c.width, c.height)); if (history.length > 15) history.shift(); };
-  const dot = p => {
-    g.globalCompositeOperation = eraseTog.checked ? 'destination-out' : 'source-over';
-    g.fillStyle = colorPick.value; g.strokeStyle = colorPick.value; g.lineWidth = sizeSl.num; g.lineCap = 'round'; g.lineJoin = 'round';
-    if (pixel) { const cell = 16, n = sizeSl.num; g.fillRect(Math.floor(p.x / cell) * cell, Math.floor(p.y / cell) * cell, n * cell, n * cell); }
-    else if (last) { g.beginPath(); g.moveTo(last.x, last.y); g.lineTo(p.x, p.y); g.stroke(); }
-    else { g.beginPath(); g.arc(p.x, p.y, sizeSl.num / 2, 0, Math.PI * 2); g.fill(); }
-    last = p; g.globalCompositeOperation = 'source-over';
-  };
-  c.style.background = 'repeating-conic-gradient(#f5ebd6 0% 25%,#fffdf8 0% 50%) 0 / 24px 24px';
-  if (pixel) c.style.imageRendering = 'pixelated';
-  c.addEventListener('pointerdown', e => { if (active || e.button !== 0) return; e.preventDefault(); snap(); active = true; pid = e.pointerId; last = null; c.setPointerCapture?.(pid); dot(pointer(c, e)); });
-  c.addEventListener('pointermove', e => { if (!active || e.pointerId !== pid) return; e.preventDefault(); dot(pointer(c, e)); });
-  const end = e => { if (e.pointerId === pid) { active = false; last = null; pid = null; } };
-  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(n => c.addEventListener(n, end));
-  ctx.form.append(
-    colorPick.el, sizeSl.el,
-    gEl('div', { class: 'gtabs' },
-      eraseTog.el,
-      gameBtn('↩ Undo', '', () => { const s = history.pop(); if (s) g.putImageData(s, 0, 0); }),
-      gameBtn('🗑 Clear', 'danger', () => { snap(); g.clearRect(0, 0, c.width, c.height); }),
-      gameBtn('↓ Save PNG', 'primary', ctx.run(async () => download(await blobFromCanvas(c), pixel ? 'pixel-art.png' : 'painting.png')))
-    ),
-    gEl('div', { class: 'graph-bezel' }, c)
+  const c = canvas(pixel ? 512 : 900, pixel ? 512 : 520);
+  const g = c.getContext('2d', { willReadFrequently: true });
+  const colorPick = gameColorPicker(pixel ? 'Pixel Crayon' : 'Studio Ink & Color', '#e78167');
+
+  const toolOpts = pixel
+    ? [['pen', '🖌 Pixel'], ['fill', '🪣 Fill'], ['line', '📏 Line'], ['eraser', '🧽 Eraser']]
+    : [
+        ['pen', '🖌 Pen'], ['marker', '🖍 Marker'], ['nib', '✒ Nib'],
+        ['rainbow', '🌈 Rainbow'], ['spray', '✨ Spray'], ['fill', '🪣 Fill'],
+        ['line', '📏 Line'], ['rect', '⬜ Rect'], ['circle', '⭕ Circle'],
+        ['star', '⭐ Star'], ['sticker', '🧇 Stamp'], ['eraser', '🧽 Eraser']
+      ];
+  const toolTabs = gameTabs(toolOpts, 'pen', () => {
+    if (!pixel && stickerRow) stickerRow.hidden = toolTabs.value !== 'sticker';
+    if (!pixel && shapeRow) shapeRow.hidden = !['rect', 'circle', 'star'].includes(toolTabs.value);
+  }, 'Brush & Tool');
+
+  const symTabs = gameTabs(
+    pixel ? [['off', 'Off'], ['mx', 'Mirror X'], ['k4', '4-Way']] : [['off', 'Off'], ['mx', 'Mirror X'], ['my', 'Mirror Y'], ['k4', '4-Way Kaleido']],
+    'off',
+    null,
+    'Symmetry'
   );
+
+  const paperBgMap = {
+    Cream: { css: '#fff8e8', flat: '#fff8e8' },
+    Transparent: { css: 'repeating-conic-gradient(#f5ebd6 0% 25%,#fffdf8 0% 50%) 0 / 24px 24px', flat: '#ffffff' },
+    Chalkboard: { css: '#2c211d', flat: '#2c211d' },
+    Sky: { css: '#dff0fc', flat: '#dff0fc' },
+    DotGrid: { css: 'radial-gradient(#d8bd93 1.8px, #fff9ec 1.8px) 0 / 22px 22px', flat: '#fff9ec' }
+  };
+  const paperTabs = !pixel
+    ? gameTabs([['Cream', '🧈 Warm Cream'], ['Transparent', '🏁 Transparent'], ['Chalkboard', '🖤 Chalkboard'], ['Sky', '☁ Sky'], ['DotGrid', '⠿ Dot Grid']], 'Cream', () => {
+        c.style.background = paperBgMap[paperTabs.value].css;
+      }, 'Paper Backdrop')
+    : null;
+
+  const sizeSl = gameSlider({ label: pixel ? 'Pixel Brush Cells (32×32)' : 'Brush / Stamp Size', min: 1, max: pixel ? 6 : 64, step: 1, value: pixel ? 1 : 12, unit: pixel ? 'cells' : 'px', color: '#e78167' });
+  const alphaSl = !pixel ? gameSlider({ label: 'Opacity', min: 10, max: 100, step: 5, value: 100, unit: '%', color: '#7eb7b5' }) : null;
+  const fillShapeTog = !pixel ? gameToggle('Filled Shapes', false) : null;
+  const gridTog = pixel ? gameToggle('Show 32×32 Grid', true, () => applyPixelBg()) : null;
+  const stickerTabs = !pixel ? gameTabs(['Waffle', 'Star', 'Heart', 'Flower', 'Sparkle'], 'Waffle', null, 'Sticker Stamp') : null;
+
+  const shapeRow = !pixel ? gEl('div', { class: 'gtabs', hidden: true }, fillShapeTog.el) : null;
+  const stickerRow = !pixel ? gEl('div', { hidden: true }, stickerTabs.el) : null;
+
+  const history = [];
+  const redoStack = [];
+  let active = false, startPt = null, last = null, pid = null, previewBase = null, rainbowHue = 0;
+
+  const snap = () => {
+    history.push(g.getImageData(0, 0, c.width, c.height));
+    if (history.length > 20) history.shift();
+    redoStack.length = 0;
+  };
+
+  function applyPixelBg() {
+    if (gridTog?.checked) {
+      c.style.background = 'linear-gradient(to right, rgba(79,47,35,.1) 1px, transparent 1px) 0 / 16px 16px, linear-gradient(to bottom, rgba(79,47,35,.1) 1px, transparent 1px) 0 / 16px 16px, repeating-conic-gradient(#f5ebd6 0% 25%,#fffdf8 0% 50%) 0 / 32px 32px';
+    } else {
+      c.style.background = 'repeating-conic-gradient(#f5ebd6 0% 25%,#fffdf8 0% 50%) 0 / 32px 32px';
+    }
+  }
+
+  if (pixel) {
+    c.style.imageRendering = 'pixelated';
+    applyPixelBg();
+  } else {
+    c.style.background = paperBgMap.Cream.css;
+  }
+
+  const mirrorPoints = pt => {
+    const pts = [pt];
+    const mode = symTabs.value;
+    if (mode === 'mx' || mode === 'k4') pts.push({ x: c.width - pt.x, y: pt.y });
+    if (mode === 'my' || mode === 'k4') pts.push({ x: pt.x, y: c.height - pt.y });
+    if (mode === 'k4') pts.push({ x: c.width - pt.x, y: c.height - pt.y });
+    return pts;
+  };
+
+  const strokeSym = (a, b, drawFn) => {
+    const pa = mirrorPoints(a), pb = mirrorPoints(b);
+    for (let i = 0; i < pa.length; i++) drawFn(pa[i], pb[i]);
+  };
+
+  const paintStroke = (p1, p2) => {
+    const mode = toolTabs.value;
+    const isErase = mode === 'eraser';
+    const sz = sizeSl.num;
+    const baseAlpha = alphaSl ? alphaSl.num / 100 : 1;
+    let ink = colorPick.value;
+
+    g.save();
+    g.globalCompositeOperation = isErase ? 'destination-out' : 'source-over';
+    g.globalAlpha = mode === 'marker' ? baseAlpha * 0.42 : baseAlpha;
+
+    if (mode === 'rainbow') {
+      rainbowHue = (rainbowHue + 7) % 360;
+      ink = `hsl(${rainbowHue}, 88%, 55%)`;
+    }
+
+    if (pixel) {
+      const cell = 16, n = sz;
+      strokeSym(p2, p2, pt => {
+        const cx = Math.floor(pt.x / cell) * cell;
+        const cy = Math.floor(pt.y / cell) * cell;
+        if (isErase) g.clearRect(cx, cy, n * cell, n * cell);
+        else { g.fillStyle = ink; g.fillRect(cx, cy, n * cell, n * cell); }
+      });
+    } else if (mode === 'spray') {
+      g.fillStyle = ink;
+      const density = Math.max(10, Math.round(sz * 1.1));
+      strokeSym(p2, p2, pt => {
+        for (let k = 0; k < density; k++) {
+          const ang = Math.random() * Math.PI * 2;
+          const rad = Math.random() * sz;
+          const dotR = Math.max(1, sz * 0.08);
+          g.beginPath();
+          g.arc(pt.x + Math.cos(ang) * rad, pt.y + Math.sin(ang) * rad, dotR, 0, Math.PI * 2);
+          g.fill();
+        }
+      });
+    } else if (mode === 'nib') {
+      g.strokeStyle = ink;
+      g.fillStyle = ink;
+      const steps = Math.max(1, Math.ceil(Math.hypot(p2.x - p1.x, p2.y - p1.y) / 2));
+      strokeSym(p1, p2, (a, b) => {
+        for (let s = 0; s <= steps; s++) {
+          const t = s / steps;
+          const x = a.x + (b.x - a.x) * t;
+          const y = a.y + (b.y - a.y) * t;
+          g.beginPath();
+          g.moveTo(x - sz * 0.45, y + sz * 0.22);
+          g.lineTo(x + sz * 0.45, y - sz * 0.22);
+          g.lineWidth = Math.max(2, sz * 0.22);
+          g.stroke();
+        }
+      });
+    } else {
+      g.strokeStyle = ink;
+      g.fillStyle = ink;
+      g.lineWidth = sz;
+      g.lineCap = 'round';
+      g.lineJoin = 'round';
+      strokeSym(p1, p2, (a, b) => {
+        if (a.x === b.x && a.y === b.y) {
+          g.beginPath(); g.arc(a.x, a.y, sz / 2, 0, Math.PI * 2); g.fill();
+        } else {
+          g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+        }
+      });
+    }
+    g.restore();
+  };
+
+  const drawShapePreview = (a, b) => {
+    if (previewBase) g.putImageData(previewBase, 0, 0);
+    const mode = toolTabs.value;
+    const sz = pixel ? sizeSl.num * 16 : sizeSl.num;
+    g.save();
+    g.globalAlpha = alphaSl ? alphaSl.num / 100 : 1;
+    g.strokeStyle = colorPick.value;
+    g.fillStyle = colorPick.value;
+    g.lineWidth = pixel ? 16 : Math.max(2, sz * 0.45);
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    strokeSym(a, b, (p1, p2) => {
+      if (mode === 'line') {
+        g.beginPath(); g.moveTo(p1.x, p1.y); g.lineTo(p2.x, p2.y); g.stroke();
+      } else if (mode === 'rect') {
+        const rx = Math.min(p1.x, p2.x), ry = Math.min(p1.y, p2.y);
+        const rw = Math.abs(p2.x - p1.x), rh = Math.abs(p2.y - p1.y);
+        if (fillShapeTog?.checked) g.fillRect(rx, ry, rw, rh);
+        else g.strokeRect(rx, ry, rw, rh);
+      } else if (mode === 'circle') {
+        const r = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+        g.beginPath(); g.arc(p1.x, p1.y, r, 0, Math.PI * 2);
+        if (fillShapeTog?.checked) g.fill(); else g.stroke();
+      } else if (mode === 'star') {
+        const r = Math.max(8, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+        const rot = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        g.beginPath();
+        for (let i = 0; i < 10; i++) {
+          const ang = rot + i * Math.PI / 5;
+          const rad = i % 2 === 0 ? r : r * 0.45;
+          i === 0 ? g.moveTo(p1.x + Math.cos(ang) * rad, p1.y + Math.sin(ang) * rad)
+                  : g.lineTo(p1.x + Math.cos(ang) * rad, p1.y + Math.sin(ang) * rad);
+        }
+        g.closePath();
+        if (fillShapeTog?.checked) g.fill(); else g.stroke();
+      }
+    });
+    g.restore();
+  };
+
+  c.addEventListener('pointerdown', e => {
+    if (active || e.button !== 0) return;
+    e.preventDefault();
+    const pt = pointer(c, e);
+    const mode = toolTabs.value;
+    snap();
+
+    if (mode === 'fill') {
+      const rgb = hexRGB(colorPick.value);
+      const a = alphaSl ? Math.round(alphaSl.num * 2.55) : 255;
+      for (const mpt of mirrorPoints(pt)) {
+        floodFillCanvas(g, c.width, c.height, mpt.x, mpt.y, [...rgb, a], pixel ? 8 : 30);
+      }
+      playPop(640);
+      return;
+    }
+
+    if (mode === 'sticker') {
+      const sz = Math.max(16, sizeSl.num * 1.4);
+      for (const mpt of mirrorPoints(pt)) {
+        drawStickerStamp(g, stickerTabs.value, mpt.x, mpt.y, sz, colorPick.value);
+      }
+      playPop(700);
+      return;
+    }
+
+    active = true;
+    pid = e.pointerId;
+    startPt = pt;
+    last = pt;
+    c.setPointerCapture?.(pid);
+
+    if (['line', 'rect', 'circle', 'star'].includes(mode)) {
+      previewBase = history[history.length - 1];
+      drawShapePreview(startPt, pt);
+    } else {
+      paintStroke(pt, pt);
+    }
+  });
+
+  c.addEventListener('pointermove', e => {
+    if (!active || e.pointerId !== pid) return;
+    e.preventDefault();
+    const pt = pointer(c, e);
+    const mode = toolTabs.value;
+    if (['line', 'rect', 'circle', 'star'].includes(mode)) {
+      drawShapePreview(startPt, pt);
+    } else {
+      paintStroke(last, pt);
+      last = pt;
+    }
+  });
+
+  const end = e => {
+    if (e.pointerId === pid) {
+      active = false; last = null; startPt = null; pid = null; previewBase = null;
+    }
+  };
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(n => c.addEventListener(n, end));
+
+  const importImgPill = !pixel
+    ? gameFilePill('🖼 Import Photo', 'image/*', false, ctx.run(async fs => {
+        if (!fs[0]) return;
+        const img = await loadImage(fs[0]);
+        snap();
+        const sc = Math.min(c.width / img.naturalWidth, c.height / img.naturalHeight);
+        const w = img.naturalWidth * sc, h = img.naturalHeight * sc;
+        g.drawImage(img, (c.width - w) / 2, (c.height - h) / 2, w, h);
+        ctx.say('Imported onto canvas!');
+      }))
+    : null;
+
+  const exportWithBackdrop = async (mime, ext) => {
+    if (pixel || paperTabs?.value === 'Transparent') {
+      download(await blobFromCanvas(c), `${pixel ? 'pixel-art' : 'art-studio'}.png`);
+      return;
+    }
+    const out = canvas(c.width, c.height);
+    const og = out.getContext('2d');
+    og.fillStyle = paperBgMap[paperTabs.value].flat;
+    og.fillRect(0, 0, out.width, out.height);
+    og.drawImage(c, 0, 0);
+    download(await blobFromCanvas(out, mime), `art-studio.${ext}`);
+  };
+
+  ctx.form.append(...[
+    toolTabs.el,
+    stickerRow,
+    shapeRow,
+    symTabs.el,
+    paperTabs?.el,
+    colorPick.el,
+    sizeSl.el,
+    alphaSl?.el,
+    gridTog?.el,
+    gEl('div', { class: 'gtabs' }, ...[
+      gameBtn('↩ Undo', '', () => {
+        const s = history.pop();
+        if (s) { redoStack.push(g.getImageData(0, 0, c.width, c.height)); g.putImageData(s, 0, 0); }
+      }),
+      gameBtn('↪ Redo', '', () => {
+        const s = redoStack.pop();
+        if (s) { history.push(g.getImageData(0, 0, c.width, c.height)); g.putImageData(s, 0, 0); }
+      }),
+      importImgPill?.el,
+      gameBtn('🗑 Clear', 'danger', () => { snap(); g.clearRect(0, 0, c.width, c.height); }),
+      gameBtn('↓ Save PNG', 'primary', ctx.run(() => exportWithBackdrop('image/png', 'png'))),
+      !pixel ? gameBtn('↓ Save JPG', 'chip', ctx.run(() => exportWithBackdrop('image/jpeg', 'jpg'))) : null
+    ].filter(Boolean)),
+    gEl('div', { class: 'graph-bezel' }, c)
+  ].filter(Boolean));
 }
 
 function colorTools(id, ctx) {
@@ -593,9 +961,26 @@ function imageTools(id, ctx) {
 
 function svgEditor(ctx) {
   const src = area('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="220" viewBox="0 0 400 220">\n  <rect width="400" height="220" rx="28" fill="#ffe17d" stroke="#4f2f23" stroke-width="8"/>\n  <circle cx="200" cy="110" r="64" fill="#e78167" stroke="#4f2f23" stroke-width="8"/>\n</svg>', 10);
-  const preview = gEl('div', { class: 'pastel-card cream' });
-  const validate = () => { const xml = new DOMParser().parseFromString(src.value, 'image/svg+xml'); if (xml.querySelector('parsererror') || xml.documentElement.localName !== 'svg') throw new Error('Invalid SVG.'); return xml; };
-  const render = () => { const doc = validate(); preview.replaceChildren(sandbox(secureDocument(new XMLSerializer().serializeToString(doc.documentElement)), 'SVG preview')); };
+  const preview = gEl('div', { class: 'pastel-card cream', style: { display: 'grid', placeItems: 'center', minHeight: '240px', padding: '12px' } });
+  const validate = () => {
+    const xml = new DOMParser().parseFromString(src.value, 'image/svg+xml');
+    if (xml.querySelector('parsererror') || xml.documentElement.localName !== 'svg') throw new Error('Invalid SVG.');
+    xml.querySelectorAll('script,foreignObject').forEach(n => n.remove());
+    xml.querySelectorAll('*').forEach(el => {
+      for (const a of [...el.attributes]) if (/^on/i.test(a.name)) el.removeAttribute(a.name);
+    });
+    return xml;
+  };
+  const render = () => {
+    const doc = validate();
+    const cleanSvg = new XMLSerializer().serializeToString(doc.documentElement);
+    const img = gEl('img', {
+      alt: 'SVG preview',
+      src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(cleanSvg),
+      style: { maxWidth: '100%', maxHeight: '260px', display: 'block', borderRadius: '14px' }
+    });
+    preview.replaceChildren(img);
+  };
   const filePill = gameFilePill('Open .svg', '.svg', false, ctx.run(async fs => { if (fs[0]) { src.value = await readText(fs[0]); render(); } }));
   ctx.form.append(filePill.el, gEl('div', { class: 'two-col' }, gameField('SVG XML', src), preview), gEl('div', { class: 'gtabs' }, gameBtn('✨ Render Preview', 'primary', ctx.run(render)), gameBtn('↓ Save .svg', 'chip', ctx.run(() => { validate(); download(src.value, 'drawing.svg', 'image/svg+xml'); }))));
   render();

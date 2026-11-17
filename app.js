@@ -5,6 +5,7 @@ import { isMuted, toggleMute, playPop, playBoing, playCupboardOpen, playSquish }
 import { mountMathScience } from './tools-math-science.js';
 import { mountCode } from './tools-code.js';
 import { mountTextArt } from './tools-text-art.js';
+import { mountEnglish } from './tools-english.js';
 import { mountGames } from './games.js';
 import { openWaffleAI, warmupWaffleAI } from './waffle-ai.js';
 
@@ -20,16 +21,7 @@ let active = 'all';
 let view = 0;
 let toolCleanup = null;
 let searchQuery = '';
-
-const WAFFLE_QUIPS = [
-  'Ask Waffle AI anything!',
-  'Boing! Touch me to chat!',
-  'Powered by Qwen 2.5 1.5B!',
-  '45 Arcade & Fancade hits ready!',
-  'Waffle AI is ready!',
-  'Touch me for Waffle AI!'
-];
-let quipIndex = 0;
+let wallQuipAbort = null;
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -39,6 +31,7 @@ const CUPBOARD_THEME = {
   text:    { color: '#a595c4', trim: '#756495', doodles: ['Aa', '✎'], tagline: 'A PLACE FOR EVERY WORD.' },
   art:     { color: '#e895bf', trim: '#b8638e', doodles: ['✿', '◈'], tagline: 'MAKE A COLORFUL MESS.' },
   science: { color: '#94c496', trim: '#609362', doodles: ['⚛', '⚖'], tagline: 'FEED YOUR CURIOSITY.' },
+  english: { color: '#f3be72', trim: '#b87d32', doodles: ['Aa', '文'], tagline: 'AI-POWERED ENGLISH & LANGUAGES.' },
   games:   { color: '#d7b5eb', trim: '#9875b4', doodles: ['★', '♧'], tagline: '45 GAMES + ROPER FANCADE' }
 };
 
@@ -71,10 +64,6 @@ app.innerHTML = `
           <span class="gnav-icon">${uiIconSVG('clock')}</span>
           <span class="gnav-label">Recent</span>
         </button>
-        <button type="button" class="gbtn gnav-btn waffle-hud-btn" id="waffle-hud-btn" aria-label="Open Waffle AI chatbot">
-          <span class="gnav-icon">${waffleMascotSVG('waffle-hud-svg')}</span>
-          <span class="gnav-label">Waffle AI</span>
-        </button>
         <button type="button" class="gbtn gnav-btn sound-btn" id="sound-toggle" aria-label="Toggle sound effects" aria-pressed="${!isMuted()}">
           <span class="gnav-icon" id="sound-icon">${uiIconSVG(isMuted() ? 'soundOff' : 'soundOn')}</span>
         </button>
@@ -83,10 +72,10 @@ app.innerHTML = `
 
     <main id="main" class="kitchen-stage"></main>
 
-    <aside class="waffle-corner" aria-label="Sir Waffle Mascot & Waffle AI">
+    <aside class="waffle-corner" aria-label="Waffle AI Button">
       <div class="counter-plate-wrap">
         <button type="button" class="waffle-speech" id="waffle-speech" aria-label="Open Waffle AI chatbot">Touch me for Waffle AI!</button>
-        <button type="button" class="waffle-mascot-btn" id="waffle-mascot" aria-label="Touch Sir Waffle to open Waffle AI chatbot" title="Touch Sir Waffle to chat with Waffle AI!">
+        <button type="button" class="waffle-mascot-btn" id="waffle-mascot" aria-label="Open Waffle AI chatbot" title="Open Waffle AI!">
           ${waffleMascotSVG()}
           <span class="waffle-ai-tag" aria-hidden="true">Waffle AI</span>
         </button>
@@ -96,27 +85,14 @@ app.innerHTML = `
   <div id="toast" role="status" aria-live="polite"></div>
 `;
 
-function triggerWaffleBounce(clientX, clientY, fromMascot = false) {
+async function triggerWallBounce(clientX, clientY) {
   playBoing();
   const grid = $('#waffle-grid');
-  const mascot = $('#waffle-mascot');
   const speech = $('#waffle-speech');
 
   grid.classList.remove('is-bouncing');
   void grid.offsetWidth;
   grid.classList.add('is-bouncing');
-
-  mascot.classList.remove('is-bouncing');
-  void mascot.offsetWidth;
-  mascot.classList.add('is-bouncing');
-
-  if (fromMascot || Math.random() < 0.7) {
-    quipIndex = (quipIndex + 1) % WAFFLE_QUIPS.length;
-    speech.textContent = WAFFLE_QUIPS[quipIndex];
-    speech.classList.remove('pop-in');
-    void speech.offsetWidth;
-    speech.classList.add('pop-in');
-  }
 
   if (typeof clientX === 'number' && typeof clientY === 'number') {
     const pops = $('#waffle-pops');
@@ -127,19 +103,41 @@ function triggerWaffleBounce(clientX, clientY, fromMascot = false) {
     pops.append(pop);
     setTimeout(() => pop.remove(), 650);
   }
+
+  if (wallQuipAbort) wallQuipAbort.abort();
+  const ac = new AbortController();
+  wallQuipAbort = ac;
+
+  speech.textContent = '✨ Thinking…';
+  speech.classList.remove('pop-in');
+  void speech.offsetWidth;
+  speech.classList.add('pop-in');
+
+  try {
+    const res = await fetch('./api/waffle-ai/wall-quip', { method: 'POST', signal: ac.signal });
+    if (!res.ok) throw new Error('Quip error');
+    const data = await res.json();
+    if (!ac.signal.aborted && data.quip) {
+      speech.textContent = data.quip;
+      speech.classList.remove('pop-in');
+      void speech.offsetWidth;
+      speech.classList.add('pop-in');
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      speech.textContent = 'Boing! Touch me for Waffle AI!';
+    }
+  }
 }
 
-function handleTouchWaffle(e) {
+function handleOpenWaffleAI(e) {
   e.stopPropagation();
-  const target = $('#waffle-mascot') || e.currentTarget;
-  const rect = target.getBoundingClientRect();
-  triggerWaffleBounce(rect.left + rect.width / 2, rect.top + rect.height / 2, true);
+  playPop(620);
   openWaffleAI();
 }
 
-$('#waffle-mascot').addEventListener('click', handleTouchWaffle);
-$('#waffle-speech').addEventListener('click', handleTouchWaffle);
-$('#waffle-hud-btn').addEventListener('click', handleTouchWaffle);
+$('#waffle-mascot').addEventListener('click', handleOpenWaffleAI);
+$('#waffle-speech').addEventListener('click', handleOpenWaffleAI);
 
 $('#sound-toggle').addEventListener('click', () => {
   const nowMuted = toggleMute();
@@ -148,10 +146,10 @@ $('#sound-toggle').addEventListener('click', () => {
   toast(nowMuted ? 'Kitchen sounds muted' : 'Kitchen sounds ON!');
 });
 
-// Tapping anywhere on the waffle wall bounces the waffle background & Sir Waffle
+// Tapping anywhere on the waffle wall bounces the waffle background & triggers an AI-powered quip!
 document.addEventListener('click', e => {
   if (e.target.closest('button, a, input, textarea, select, canvas, .gslider-track, .tool-window-card, .cupboard-card, .cabinet-bookcase, .game-hud, .kitchen-search-pill, .waffle-ai-dialog, .waffle-ai-overlay')) return;
-  triggerWaffleBounce(e.clientX, e.clientY, false);
+  triggerWallBounce(e.clientX, e.clientY);
 });
 
 function updateNav() {
@@ -306,7 +304,6 @@ async function collection(id) {
   const theme = CUPBOARD_THEME[id] || { color: '#ffe5a8', trim: '#d4a65a', doodles: ['★', '★'], tagline: 'YOUR KITCHEN SHELF' };
 
   if (id === 'games') {
-    $('#waffle-speech').textContent = 'SchoolGames arcade!';
     $('#main').innerHTML = `
       <section class="open-cupboard-scene" style="--cup:${theme.color};--trim:${theme.trim}">
         ${woodenSignboardHTML({ kicker: theme.tagline, title: 'Games & Fun', leftDoodle: theme.doodles[0], rightDoodle: theme.doodles[1] })}
@@ -339,8 +336,6 @@ async function collection(id) {
     : id === 'favorites'
       ? allTools.filter(t => favorites.has(t.id))
       : recent.map(rid => allTools.find(t => t.id === rid)).filter(Boolean);
-
-  $('#waffle-speech').textContent = c ? `${c.name}!` : 'Your shelf!';
 
   // 2 per shelf on mobile & Math (clean 5-shelf wooden cabinet!), 3 per shelf on wider 15-tool cupboards
   const perShelf = (window.innerWidth <= 640 || id === 'math') ? 2 : 3;
@@ -381,7 +376,6 @@ function openTool(id) {
   recent = [id, ...recent.filter(x => x !== id)].slice(0, 20);
   storage.set('bite-recent', recent);
   updateNav();
-  $('#waffle-speech').textContent = t.name + '!';
 
   const cup = cupboards.find(c => c.id === t.cupboard);
   const isFav = favorites.has(id);
@@ -422,7 +416,9 @@ function openTool(id) {
       ? mountMathScience(id, rootEl)
       : t.cupboard === 'code'
         ? mountCode(id, rootEl)
-        : mountTextArt(id, rootEl);
+        : t.cupboard === 'english'
+          ? mountEnglish(id, rootEl)
+          : mountTextArt(id, rootEl);
     if (typeof result === 'function') toolCleanup = result;
     if (!result) rootEl.textContent = 'This toy could not be opened.';
   } catch (e) {

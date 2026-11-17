@@ -183,9 +183,9 @@ export function mountCode(id, root) {
 
     const result = outConsole();
     const preview = gEl('div', { class: 'pastel-card cream', hidden: true });
-    let frame = null, frameTimer = null, runId = 0;
+    let stage = null, stageTimer = null, runId = 0;
 
-    const clearFrame = () => { clearTimeout(frameTimer); frame?.remove(); frame = null; preview.replaceChildren(); preview.hidden = true; };
+    const clearFrame = () => { clearTimeout(stageTimer); stage?.remove(); stage = null; preview.replaceChildren(); preview.hidden = true; };
     cleanups.push(clearFrame);
     const stop = () => { runId++; for (const c of [...scope.jobs]) c(); clearFrame(); };
 
@@ -223,16 +223,36 @@ export function mountCode(id, root) {
         if (l.id === 'web') {
           ensure(htmlIn.value); ensure(cssIn.value); ensure(jsIn.value);
           preview.hidden = false;
-          frame = gEl('iframe', { class: 'arcade-iframe', title: 'HTML CSS JS sandbox preview', sandbox: 'allow-scripts', referrerPolicy: 'no-referrer' });
-          frame.style.height = '280px';
-          const nonce = crypto.randomUUID(), channel = crypto.randomUUID();
-          frame.dataset.channel = channel;
-          const bridge = `(()=>{const ch=${JSON.stringify(channel)};const send=t=>parent.postMessage({channel:ch,text:String(t)},'*');const fmt=v=>{try{return typeof v==='string'?v:JSON.stringify(v)}catch{return String(v)}};for(const lvl of['log','info','warn','error'])console[lvl]=(...a)=>send(lvl+': '+a.map(fmt).join(' '));addEventListener('error',e=>send('Error: '+e.message));})();`;
-          const safeJS = jsIn.value.replace(/<\/script/gi, '<\\/script');
-          frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' blob:; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; font-src data:; frame-src 'none'; form-action 'none'; base-uri 'none'"><script nonce="${nonce}">${bridge}<\/script><style>${cssIn.value.replace(/<\/style/gi, '<\\/style')}</style></head><body>${htmlIn.value}<script nonce="${nonce}">${safeJS}<\/script></body></html>`;
-          preview.replaceChildren(frame);
-          frameTimer = setTimeout(() => { if (runId === token) { clearFrame(); result.textContent += '\nPreview expired (15s).'; } }, 15000);
-          result.textContent = 'Sandbox preview running:';
+          stage = gEl('div', { class: 'web-preview-stage' });
+          const shadow = stage.attachShadow({ mode: 'open' });
+          const doc = new DOMParser().parseFromString(htmlIn.value, 'text/html');
+          doc.querySelectorAll('script,object,embed').forEach(n => n.remove());
+          const styleEl = document.createElement('style');
+          styleEl.textContent = `:host{display:block;font-family:system-ui,sans-serif;color:#4f2f23;}` + cssIn.value.replace(/body\b/gi, '.web-root');
+          const rootWrap = document.createElement('div');
+          rootWrap.className = 'web-root';
+          rootWrap.append(...doc.body.childNodes);
+          shadow.append(styleEl, rootWrap);
+          preview.replaceChildren(stage);
+          result.textContent = 'Live Shadow DOM preview running:';
+          const fmt = v => { try { return typeof v === 'string' ? v : JSON.stringify(v); } catch { return String(v); } };
+          const logFn = lvl => (...a) => {
+            if (runId === token && result.textContent.length < 100000) result.textContent += `\n${lvl}: ${a.map(fmt).join(' ')}`;
+          };
+          const scopedConsole = { log: logFn('log'), info: logFn('info'), warn: logFn('warn'), error: logFn('error') };
+          const scopedDoc = {
+            querySelector: sel => shadow.querySelector(sel),
+            querySelectorAll: sel => shadow.querySelectorAll(sel),
+            getElementById: id => shadow.getElementById(id),
+            createElement: tag => document.createElement(tag),
+            body: rootWrap
+          };
+          try {
+            new Function('document', 'console', jsIn.value)(scopedDoc, scopedConsole);
+          } catch (err) {
+            scopedConsole.error(err.message);
+          }
+          stageTimer = setTimeout(() => { if (runId === token) result.textContent += '\nPreview session idle.'; }, 15000);
         } else {
           assert(l.status !== 'editor-only', 'No local compiler installed for this language (editing only).');
           const slowWasm = new Set(['python', 'haskell', 'php', 'luau', 'jq', 'sass']);
@@ -270,11 +290,6 @@ export function mountCode(id, root) {
     }
 
     filterIn.addEventListener('input', () => buildMoreChips(filterIn.value), { signal });
-    window.addEventListener('message', e => {
-      if (frame && e.source === frame.contentWindow && e.data?.channel === frame.dataset.channel) {
-        if (result.textContent.length < 100000) result.textContent += '\n' + String(e.data.text).slice(0, 10000);
-      }
-    }, { signal });
 
     panel.append(
       langChips.el,

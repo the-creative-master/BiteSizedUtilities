@@ -4,6 +4,7 @@ import { cupboards, allTools } from '../catalog.js';
 import { mountMathScience } from '../tools-math-science.js';
 import { mountCode } from '../tools-code.js';
 import { mountTextArt } from '../tools-text-art.js';
+import { mountEnglish } from '../tools-english.js';
 
 function makeDOMShim() {
   class FakeEvent {
@@ -128,6 +129,7 @@ function makeDOMShim() {
     parseFromString() {
       return {
         querySelector: () => null,
+        querySelectorAll: () => [],
         documentElement: { localName: 'svg', namespaceURI: 'http://www.w3.org/2000/svg' },
         body: { textContent: '', querySelectorAll: () => [] }
       };
@@ -139,15 +141,16 @@ function makeDOMShim() {
   return { FakeElement };
 }
 
-test('all 70 utilities across all 5 cupboards render with cozy 2.5D game UI and zero default HTML select/range/checkbox/color controls', () => {
+test('all 85 utilities across all 6 cupboards render with cozy 2.5D game UI and zero default HTML select/range/checkbox/color controls', () => {
   const { FakeElement } = makeDOMShim();
-  assert.equal(allTools.length, 70);
+  assert.equal(allTools.length, 85);
 
   for (const t of allTools) {
     const root = new FakeElement('div');
     let ok = false;
     if (t.cupboard === 'math' || t.cupboard === 'science') ok = mountMathScience(t.id, root);
     else if (t.cupboard === 'code') ok = mountCode(t.id, root);
+    else if (t.cupboard === 'english') ok = mountEnglish(t.id, root);
     else ok = mountTextArt(t.id, root);
 
     assert.ok(ok, `${t.cupboard}/${t.id} should mount cleanly`);

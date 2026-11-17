@@ -556,17 +556,6 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   pointer-events: none;
 }
 
-.waffle-hud-btn {
-  background: linear-gradient(180deg, #fff1b8 0%, #ffd972 100%);
-  box-shadow: 0 5px 0 #c78b33, 0 8px 12px rgba(79, 47, 35, 0.16);
-}
-
-.waffle-hud-svg {
-  width: 24px;
-  height: 24px;
-  display: block;
-}
-
 .counter-plate-wrap {
   position: relative;
   display: inline-flex;
@@ -1912,6 +1901,232 @@ body.waffle-modal-open {
   background: #f7b8c4;
   box-shadow: 0 4px 0 #b85c6e;
 }
+
+.waffle-attach-btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: 16px;
+  background: var(--butter);
+  border: var(--outline-thin);
+  box-shadow: 0 4px 0 #c79e3b;
+  font-size: 18px;
+}
+
+.waffle-ai-dialog.is-drag {
+  outline: 4px dashed #d96b43;
+  outline-offset: -8px;
+}
+
+.waffle-ai-files, .waffle-msg-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.waffle-ai-files {
+  padding: 8px 14px;
+  background: #fff4d9;
+  border-top: 2.5px dashed #d3b27e;
+}
+
+.waffle-attach-pill, .waffle-msg-file-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--cream);
+  border: 2px solid var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.waffle-msg-files { margin-bottom: 6px; }
+
+.waffle-attach-x {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffd2c9;
+  border: 2px solid var(--ink);
+  font-size: 11px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+}
+
+/* Markdown & Live Streaming Code/File Boxes inside Waffle AI + English Tools */
+.waffle-md-h {
+  margin: 8px 0 4px;
+  font-family: var(--display);
+  color: var(--ink);
+  line-height: 1.2;
+}
+.waffle-md-h1 { font-size: 18px; }
+.waffle-md-h2 { font-size: 16px; }
+.waffle-md-h3 { font-size: 14.5px; }
+.waffle-md-p { margin: 4px 0; }
+.waffle-md-list { margin: 6px 0; padding-left: 20px; }
+.waffle-md-list li { margin: 2px 0; }
+.waffle-md-quote {
+  margin: 6px 0;
+  padding: 6px 10px;
+  border-left: 4px solid #d98245;
+  background: #fff3da;
+  border-radius: 0 10px 10px 0;
+}
+.waffle-md-hr {
+  border: 0;
+  border-top: 2px dashed #c9a16b;
+  margin: 8px 0;
+}
+.waffle-md-link { color: #b54f2b; text-decoration: underline; }
+.waffle-md-table-wrap { overflow-x: auto; margin: 8px 0; }
+.waffle-md-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fffdf7;
+  border: 2px solid var(--ink);
+  font-size: 13px;
+}
+.waffle-md-table th, .waffle-md-table td {
+  border: 2px solid #c9a16b;
+  padding: 5px 8px;
+  text-align: left;
+}
+.waffle-md-table th { background: #ffe7ad; font-family: var(--display); }
+
+.waffle-code-box, .waffle-file-box {
+  margin: 8px 0;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #2f1d14;
+  box-shadow: 0 4px 0 #7a4623;
+}
+
+.waffle-file-box {
+  background: #fff9ec;
+}
+
+.waffle-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #4f2f23;
+  color: #fff6e0;
+  border-bottom: 2.5px solid #2b1810;
+}
+
+.waffle-file-box .waffle-code-head {
+  background: #f3bd75;
+  color: var(--ink);
+  border-bottom: 2.5px solid var(--ink);
+}
+
+.waffle-code-lang {
+  font-family: var(--display);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.waffle-code-btns {
+  display: flex;
+  gap: 6px;
+}
+
+.waffle-mini-btn {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--cream);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  font-family: var(--display);
+  font-size: 11.5px;
+  box-shadow: 0 2px 0 #b87a3d;
+}
+.waffle-mini-btn.is-primary {
+  background: #bfe6b3;
+}
+
+.waffle-code-pre {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #fff6e0;
+  white-space: pre;
+}
+
+.waffle-file-box .waffle-code-pre {
+  color: var(--ink);
+  max-height: 220px;
+}
+
+.waffle-msg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 2px dashed #e2c598;
+}
+
+/* English & Languages AI Tools */
+.eng-ai-banner { margin-bottom: 6px; }
+.eng-output-card { padding: 14px; }
+.eng-output-body { font-size: 14.5px; line-height: 1.52; }
+.eng-out-actions { margin-top: 10px; }
+
+.flashcard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.flashcard-tile {
+  min-height: 116px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 3px solid var(--ink);
+  background: #fff9ec;
+  box-shadow: 0 5px 0 #c7a471;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  transition: transform 0.14s ease;
+}
+.flashcard-tile:active { transform: translateY(3px); }
+.flashcard-tile.is-flipped { background: #dff4d8; box-shadow: 0 5px 0 #7eb679; }
+.flashcard-tile .fc-kicker { font-family: var(--display); font-size: 10.5px; color: var(--ink-soft); letter-spacing: 0.05em; }
+.flashcard-tile strong { font-family: var(--display); font-size: 17px; }
+.flashcard-tile small { font-size: 12px; color: var(--ink-soft); }
+
+.eng-chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.eng-turn {
+  padding: 8px 12px;
+  border-radius: 14px;
+  border: 2.5px solid var(--ink);
+  background: var(--cream);
+}
+.eng-turn.is-user { background: #ffe8a3; align-self: flex-end; max-width: 88%; }
+.eng-turn.is-bot { background: #fffdf7; align-self: flex-start; max-width: 88%; }
 
 /* ==========================================================================
    MOBILE-FIRST RESPONSIVE RULES (2x3 cupboards, large buttons, no overflow)

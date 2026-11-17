@@ -4,8 +4,8 @@ import fs from 'node:fs';
 import { cupboards, allTools } from '../catalog.js';
 import { toolPropSVG, gamePropSVG } from '../icons-25d.js';
 
-test('Math & Numbers cupboard contains exact 10 utilities and other four cupboards contain 15 each', () => {
-  assert.equal(cupboards.length, 5);
+test('Math & Numbers cupboard contains exact 10 utilities and other five cupboards (including English & Languages) contain 15 each', () => {
+  assert.equal(cupboards.length, 6);
   const math = cupboards.find(c => c.id === 'math');
   assert.ok(math);
   assert.deepEqual(
@@ -23,19 +23,23 @@ test('Math & Numbers cupboard contains exact 10 utilities and other four cupboar
       'sequence-playground'
     ]
   );
+  const eng = cupboards.find(c => c.id === 'english');
+  assert.ok(eng, 'English & Languages cupboard exists');
+  assert.equal(eng.star, 'waffle-translate');
+  assert.ok(eng.tools.some(t => t[0] === 'sentence-corrector'));
   for (const c of cupboards) {
     if (c.id !== 'math') assert.equal(c.tools.length, 15, c.name);
   }
-  assert.equal(allTools.length, 70);
+  assert.equal(allTools.length, 85);
 });
 
-test('every single one of the 70 utilities has its own unique 2.5D SVG icon', () => {
+test('every single one of the 85 utilities has its own unique 2.5D SVG icon', () => {
   const svgs = allTools.map(t => toolPropSVG(t.id));
-  assert.equal(new Set(svgs).size, 70, 'Every tool across all cupboards must have a distinct SVG');
+  assert.equal(new Set(svgs).size, 85, 'Every tool across all cupboards must have a distinct SVG');
 });
 
 test('tool identifiers are unique and every cupboard has its star', () => {
-  assert.equal(new Set(allTools.map(t => t.id)).size, 70);
+  assert.equal(new Set(allTools.map(t => t.id)).size, 85);
   for (const c of cupboards) assert.ok(c.tools.some(t => t[0] === c.star));
 });
 
@@ -44,6 +48,7 @@ test('all utility identifiers have implementation dispatch cases', () => {
   const sciSrc = fs.readFileSync('tools-math-science.js', 'utf8');
   const codeSrc = fs.readFileSync('tools-code.js', 'utf8');
   const textArtSrc = fs.readFileSync('tools-text-art.js', 'utf8');
+  const engSrc = fs.readFileSync('tools-english.js', 'utf8');
   for (const t of allTools) {
     const source = t.cupboard === 'math'
       ? mathSrc
@@ -51,8 +56,17 @@ test('all utility identifiers have implementation dispatch cases', () => {
         ? sciSrc
         : t.cupboard === 'code'
           ? codeSrc
-          : textArtSrc;
+          : t.cupboard === 'english'
+            ? engSrc
+            : textArtSrc;
     assert.ok(source.includes(t.id), t.id);
+  }
+});
+
+test('no site or utility embeds iframes anywhere in the application', () => {
+  for (const file of ['games.js', 'app.js', 'waffle-ai.js', 'tools-code.js', 'tools-text-art.js', 'tools-english.js']) {
+    const src = fs.readFileSync(file, 'utf8');
+    assert.ok(!src.includes('iframe'), `${file} must not iframe any site or preview`);
   }
 });
 
@@ -112,18 +126,32 @@ test('CodeHub runtimes (Luau, Haskell, Ruby, PHP, SQL, C++, Clojure, Prolog, Was
   assert.ok(!appSrc.includes('await import('), 'app.js uses static imports for instant loading');
 });
 
-test('Waffle AI chatbot is wired to Sir Waffle mascot and powered by node-llama.cpp Qwen 2.5 1.5B', async () => {
+test('Waffle AI chatbot, streaming code boxes, DOCX creation/parsing, single Waffle button, and AI wall bounce are wired', async () => {
   const appSrc = fs.readFileSync('app.js', 'utf8');
   const viteSrc = fs.readFileSync('vite.config.js', 'utf8');
   const serverSrc = fs.readFileSync('waffle-ai-server.js', 'utf8');
   const uiSrc = fs.readFileSync('waffle-ai.js', 'utf8');
   assert.ok(appSrc.includes('openWaffleAI'), 'app.js opens Waffle AI when touching the waffle');
+  assert.ok(!appSrc.includes('waffle-hud-btn'), 'Only one Waffle AI button should exist (Sir Waffle)');
+  assert.ok(appSrc.includes('/api/waffle-ai/wall-quip'), 'Bouncing the wall triggers AI-powered quips');
   assert.ok(viteSrc.includes('attachWaffleAiMiddleware'), 'vite.config.js attaches Waffle AI middleware');
   assert.ok(serverSrc.includes('node-llama-cpp'), 'waffle-ai-server.js uses node-llama-cpp');
   assert.ok(uiSrc.includes('/api/waffle-ai/chat'), 'waffle-ai.js streams from /api/waffle-ai/chat');
+
   const { getWaffleStatus } = await import('../waffle-ai-server.js');
   const status = getWaffleStatus();
   assert.equal(status.engine, 'node-llama.cpp');
   assert.equal(status.model, 'Qwen 2.5 1.5B');
   assert.equal(status.preCached, true, 'Qwen 2.5 1.5B GGUF model must be pre-cached on disk');
+
+  const { formatWaffleMarkdown } = await import('../waffle-ai.js');
+  const partial = formatWaffleMarkdown('Here is code:\n```python\nprint("hi")', true);
+  assert.ok(partial.includes('waffle-code-box') && partial.includes('python'), 'Streaming unclosed fence renders inside a live code box');
+  const fileCard = formatWaffleMarkdown('```file:notes.docx\n# Hello\nWorld\n```', false);
+  assert.ok(fileCard.includes('waffle-file-box') && fileCard.includes('notes.docx'), 'File fence renders downloadable file card');
+
+  const { createDocxBytes, extractTextFromDocxBuffer } = await import('../file-tools-client.js');
+  const docx = createDocxBytes('# Cozy Test\n\nHello **Waffle**!', 'Cozy Test');
+  const parsed = await extractTextFromDocxBuffer(docx.buffer);
+  assert.ok(parsed.includes('Cozy Test') && parsed.includes('Hello Waffle!'));
 });

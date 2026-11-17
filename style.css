@@ -316,8 +316,19 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   box-shadow: 0 4px 0 #c7a471;
 }
 
-.kitchen-search-pill {
+.kitchen-search-row {
   width: 100%;
+  max-width: 700px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.kitchen-search-pill {
+  flex: 1 1 320px;
   max-width: 520px;
   display: flex;
   align-items: center;
@@ -326,8 +337,14 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   border: var(--outline-thin);
   border-radius: 999px;
   padding: 5px 16px;
-  margin-bottom: 20px;
   box-shadow: 0 5px 0 #c7a471, 0 8px 14px rgba(79, 47, 35, 0.14);
+}
+
+.kitchen-surprise-btn {
+  min-height: 48px;
+  border-radius: 999px;
+  padding: 8px 18px;
+  white-space: nowrap;
 }
 
 .search-svg {
@@ -2143,6 +2160,54 @@ body.waffle-modal-open {
 .codehub-ai-actions {
   justify-content: flex-start;
 }
+.waffle-burst {
+  position: fixed;
+  font-size: 20px;
+  line-height: 1;
+  margin-left: -10px;
+  margin-top: -10px;
+  pointer-events: none;
+  animation: waffleBurst 0.72s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes waffleBurst {
+  0% { transform: translate(0, 0) scale(0.5) rotate(-12deg); opacity: 1; }
+  100% { transform: translate(var(--dx, 0px), var(--dy, -40px)) scale(1.25) rotate(18deg); opacity: 0; }
+}
+
+html[data-kitchen-theme="matcha"] {
+  --waffle-base: #c8dfc0;
+}
+html[data-kitchen-theme="matcha"] .waffle-grid-layer {
+  background-color: #c8dfc0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' fill='%23c8dfc0'/%3E%3Cg stroke='%239ec693' stroke-width='6'%3E%3Cline x1='-24' y1='48' x2='48' y2='-24'/%3E%3Cline x1='0' y1='96' x2='96' y2='0'/%3E%3Cline x1='48' y1='120' x2='120' y2='48'/%3E%3Cline x1='-24' y1='48' x2='48' y2='120'/%3E%3Cline x1='0' y1='0' x2='96' y2='96'/%3E%3Cline x1='48' y1='-24' x2='120' y2='48'/%3E%3C/g%3E%3Crect x='22' y='22' width='52' height='52' rx='16' fill='none' stroke='%23a8ce9e' stroke-width='3' opacity='0.55'/%3E%3C/svg%3E");
+}
+
+html[data-kitchen-theme="berry"] {
+  --waffle-base: #f2c9d0;
+}
+html[data-kitchen-theme="berry"] .waffle-grid-layer {
+  background-color: #f2c9d0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' fill='%23f2c9d0'/%3E%3Cg stroke='%23df9aa6' stroke-width='6'%3E%3Cline x1='-24' y1='48' x2='48' y2='-24'/%3E%3Cline x1='0' y1='96' x2='96' y2='0'/%3E%3Cline x1='48' y1='120' x2='120' y2='48'/%3E%3Cline x1='-24' y1='48' x2='48' y2='120'/%3E%3Cline x1='0' y1='0' x2='96' y2='96'/%3E%3Cline x1='48' y1='-24' x2='120' y2='48'/%3E%3C/g%3E%3Crect x='22' y='22' width='52' height='52' rx='16' fill='none' stroke='%23e5a7b2' stroke-width='3' opacity='0.55'/%3E%3C/svg%3E");
+}
+
+html[data-kitchen-theme="midnight"] {
+  --waffle-base: #3e2720;
+}
+html[data-kitchen-theme="midnight"] .waffle-grid-layer {
+  background-color: #3e2720;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' fill='%233e2720'/%3E%3Cg stroke='%2356372c' stroke-width='6'%3E%3Cline x1='-24' y1='48' x2='48' y2='-24'/%3E%3Cline x1='0' y1='96' x2='96' y2='0'/%3E%3Cline x1='48' y1='120' x2='120' y2='48'/%3E%3Cline x1='-24' y1='48' x2='48' y2='120'/%3E%3Cline x1='0' y1='0' x2='96' y2='96'/%3E%3Cline x1='48' y1='-24' x2='120' y2='48'/%3E%3C/g%3E%3Crect x='22' y='22' width='52' height='52' rx='16' fill='none' stroke='%236b4537' stroke-width='3' opacity='0.55'/%3E%3C/svg%3E");
+}
+html[data-kitchen-theme="midnight"] .waffle-speech,
+html[data-kitchen-theme="midnight"] .english-device-note {
+  box-shadow: 0 5px 0 #1f120d;
+}
+
+.settings-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .settings-overlay[hidden] { display: none; }
 .settings-card {
   width: min(480px, 100%);

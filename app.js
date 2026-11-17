@@ -1,7 +1,7 @@
 import './style.css';
 import { cupboards, allTools } from './catalog.js';
 import { waffleMascotSVG, cupboardIconSVG, toolPropSVG, uiIconSVG } from './icons-25d.js';
-import { isMuted, toggleMute, playPop, playBoing, playCupboardOpen, playSquish } from './sfx.js';
+import { isMuted, toggleMute, playPop, playBoing, playCupboardOpen, playSquish, playSparkle } from './sfx.js';
 import { mountMathScience } from './tools-math-science.js';
 import { mountCode } from './tools-code.js';
 import { mountTextArt } from './tools-text-art.js';
@@ -23,6 +23,18 @@ let view = 0;
 let toolCleanup = null;
 let searchQuery = '';
 let wallQuipAbort = null;
+let bounceStreak = 0;
+let bounceTimer = null;
+
+const KITCHEN_THEMES = [
+  { id: 'butter', label: '🧇 Butter Waffle' },
+  { id: 'matcha', label: '🍵 Matcha Pantry' },
+  { id: 'berry', label: '🍓 Berry Bakery' },
+  { id: 'midnight', label: '🌙 Midnight Snack' }
+];
+let kitchenTheme = storage.get('bite-kitchen-theme', 'butter');
+if (!KITCHEN_THEMES.some(t => t.id === kitchenTheme)) kitchenTheme = 'butter';
+document.documentElement.dataset.kitchenTheme = kitchenTheme;
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -97,6 +109,10 @@ app.innerHTML = `
           </div>
         </div>
         <div class="gfield">
+          <span class="gfield-label">Kitchen Mood</span>
+          <div class="gtabs settings-theme-grid" id="settings-theme-list"></div>
+        </div>
+        <div class="gfield">
           <span class="gfield-label">Language</span>
           <div class="gtabs settings-lang-grid" id="settings-lang-list"></div>
         </div>
@@ -133,6 +149,29 @@ async function triggerWallBounce(clientX, clientY) {
     pop.style.top = `${clientY}px`;
     pops.append(pop);
     setTimeout(() => pop.remove(), 650);
+
+    const bits = ['🧇', '🧈', '🍯', '✨', '★'];
+    for (let i = 0; i < 5; i++) {
+      const sp = document.createElement('span');
+      sp.className = 'waffle-burst';
+      sp.textContent = bits[(i + bounceStreak) % bits.length];
+      const ang = (Math.PI * 2 * i) / 5 + Math.random() * 0.6;
+      const dist = 34 + Math.random() * 34;
+      sp.style.left = `${clientX}px`;
+      sp.style.top = `${clientY}px`;
+      sp.style.setProperty('--dx', `${Math.cos(ang) * dist}px`);
+      sp.style.setProperty('--dy', `${Math.sin(ang) * dist - 18}px`);
+      pops.append(sp);
+      setTimeout(() => sp.remove(), 750);
+    }
+  }
+
+  bounceStreak++;
+  clearTimeout(bounceTimer);
+  bounceTimer = setTimeout(() => { bounceStreak = 0; }, 1600);
+  if (bounceStreak === 5 || bounceStreak === 10) {
+    playSparkle();
+    toast(bounceStreak === 10 ? '🍯 ×10 Syrup Frenzy!' : '✨ ×5 Waffle Combo!');
   }
 
   if (wallQuipAbort) wallQuipAbort.abort();
@@ -300,9 +339,12 @@ function home() {
       <div class="choose-pill-wrap">
         <span class="choose-pill">CHOOSE A CUPBOARD</span>
       </div>
-      <div class="kitchen-search-pill">
-        <span class="search-svg">${uiIconSVG('search')}</span>
-        <input id="kitchen-search" type="text" value="${esc(searchQuery)}" placeholder='Search for a utility… try "calculator", "roman", "json"' aria-label="Search utilities">
+      <div class="kitchen-search-row">
+        <div class="kitchen-search-pill">
+          <span class="search-svg">${uiIconSVG('search')}</span>
+          <input id="kitchen-search" type="text" value="${esc(searchQuery)}" placeholder='Search for a utility… try "calculator", "roman", "json"' aria-label="Search utilities">
+        </div>
+        <button type="button" class="gbtn gbtn-primary kitchen-surprise-btn" id="surprise-tool-btn">🎲 Surprise Toy!</button>
       </div>
       <div class="cupboard-grid" id="home-cupboard-grid">
         ${ALL_CUPBOARDS.map(cupboardCard).join('')}
@@ -318,6 +360,13 @@ function home() {
   searchInput.addEventListener('input', () => {
     searchQuery = searchInput.value;
     renderSearchMatches();
+  });
+  $('#surprise-tool-btn')?.addEventListener('click', () => {
+    const pick = allTools[Math.floor(Math.random() * allTools.length)];
+    if (!pick) return;
+    playSparkle();
+    toast(`🎲 ${pick.name}!`);
+    location.hash = `tool/${pick.id}`;
   });
   bindActions();
   if (searchQuery.trim()) renderSearchMatches();
@@ -540,6 +589,23 @@ function syncSoundUI() {
 
 function renderSettingsModal() {
   syncSoundUI();
+  const themeList = $('#settings-theme-list');
+  if (themeList) {
+    themeList.innerHTML = KITCHEN_THEMES.map(t => `
+      <button type="button" class="gbtn gtab ${t.id === kitchenTheme ? 'is-active' : ''}" data-pick-theme="${t.id}">
+        <span>${esc(t.label)}</span>
+      </button>
+    `).join('');
+    themeList.querySelectorAll('[data-pick-theme]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        kitchenTheme = btn.dataset.pickTheme;
+        document.documentElement.dataset.kitchenTheme = kitchenTheme;
+        storage.set('bite-kitchen-theme', kitchenTheme);
+        playSparkle();
+        renderSettingsModal();
+      });
+    });
+  }
   const list = $('#settings-lang-list');
   if (!list) return;
   const cur = getAppLanguage();

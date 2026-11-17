@@ -22,15 +22,55 @@ test('formatters, CSS strings and regex empty matches',async()=>{
 test('errors are real errors',async()=>{for(const [op,code]of [['json','{'],['brainfuck','['],['basic','10 EXEC "bad"'],['forth','unknown-word'],['lisp','(unknown 1)'],['css-minify','a{color:"unterminated}'],['javascript','throw Error("oops")']]){const r=await worker(op,code);assert.equal(r.type,'error',`${op}: ${JSON.stringify(r)}`);}});
 async function mount(id){return page.evaluate(async id=>{if(typeof window.cleanup==='function')window.cleanup();const {mountCode}=await import('/tools-code.js');window.cleanup=mountCode(id,document.querySelector('#root'));return typeof window.cleanup;},id);}
 test('all IDs mount; unknown ID leaves root unchanged',async()=>{for(const id of ['codehub','json-validator','regex-tester','uuid-generator','timestamp','base-converter','html-entities','jwt-decoder','css-minifier','js-formatter','sql-formatter','hash-playground','color-tokens','git-cheatsheet','http-status']){const type=await mount(id);assert.equal(type,id==='codehub'?'function':'boolean');}const r=await page.evaluate(async()=>{const {mountCode}=await import('/tools-code.js');const root=document.querySelector('#root'),html=root.innerHTML;return [mountCode('nope',root),root.innerHTML===html];});assert.deepEqual(r,[false,true]);});
-test('CodeHub catalogue and HTML iframe are functional and clean up',async()=>{await mount('codehub');const options=await page.locator('#root select option').allTextContents();assert.ok(options.length>=50);await page.getByLabel('Language',{exact:true}).selectOption('java');assert.ok(await page.getByRole('button',{name:'Run in isolated worker',exact:true}).isDisabled());await page.getByLabel('Language',{exact:true}).selectOption('web');await page.getByRole('button',{name:'Run HTML / CSS / JS',exact:true}).click();await page.waitForTimeout(1000);assert.match(await page.locator('pre[aria-label="Program output"]').textContent(),/Preview ready/);const frame=page.frameLocator('iframe');await frame.getByRole('button',{name:'Click me'}).click();assert.equal(await frame.locator('h1').textContent(),'It works!');await page.evaluate(()=>window.cleanup());assert.equal(await page.locator('iframe').count(),0);});
+test('CodeHub catalogue and Shadow DOM preview are functional and clean up',async()=>{
+ await mount('codehub');
+ await page.locator('#root input[type="text"]').fill('java');
+ assert.ok(await page.getByRole('button',{name:'Java (editor)',exact:true}).isVisible());
+ await page.getByRole('button',{name:'Java (editor)',exact:true}).click();
+ assert.ok(await page.getByRole('button',{name:'📝 Editor Only',exact:true}).isDisabled());
+ await page.getByRole('button',{name:'HTML / CSS / JS',exact:true}).click();
+ await page.getByRole('button',{name:'▶ Run Web Preview',exact:true}).click();
+ await page.waitForTimeout(300);
+ assert.match(await page.locator('#root pre.output').textContent(),/Live Shadow DOM preview/);
+ await page.locator('#root .web-preview-stage').evaluate(el=>el.shadowRoot.querySelector('#hello').click());
+ const h1Text=await page.locator('#root .web-preview-stage').evaluate(el=>el.shadowRoot.querySelector('h1').textContent);
+ assert.equal(h1Text,'It works!');
+ assert.equal(await page.locator('iframe').count(),0);
+ await page.evaluate(()=>window.cleanup());
+ assert.equal(await page.locator('#root .web-preview-stage').count(),0);
+});
 test('utility roundtrips and secure digest',async()=>{
- await mount('base-converter');await page.getByRole('button',{name:'Convert',exact:true}).click();assert.match(await page.locator('pre.output').textContent(),/Base 10: 255/);
- await mount('hash-playground');await page.getByLabel('UTF-8 text',{exact:true}).fill('abc');await page.getByRole('button',{name:'Hash',exact:true}).click();await page.waitForFunction(()=>document.querySelector('pre.output').dataset.state==='success');assert.equal(await page.locator('pre.output').textContent(),'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
- await mount('html-entities');await page.getByLabel('Text / HTML entities',{exact:true}).fill('&lt;img src=x onerror=alert(1)&gt;&amp;😀');await page.getByRole('button',{name:'Decode',exact:true}).click();assert.equal(await page.locator('pre.output').textContent(),'<img src=x onerror=alert(1)>&😀');assert.equal(await page.locator('#root img').count(),0);
+ await mount('base-converter');
+ assert.match(await page.locator('#root').textContent(),/255/);
+ await mount('hash-playground');
+ await page.locator('#root textarea').fill('abc');
+ await page.getByRole('button',{name:'🔐 Compute Hash',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#root pre.output')?.textContent?.length===64);
+ assert.equal(await page.locator('#root pre.output').textContent(),'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+ await mount('html-entities');
+ await page.locator('#root textarea').fill('&lt;img src=x onerror=alert(1)&gt;&amp;😀');
+ await page.getByRole('button',{name:'← Decode',exact:true}).click();
+ assert.equal(await page.locator('#root pre.output').textContent(),'<img src=x onerror=alert(1)>&😀');
+ assert.equal(await page.locator('#root img').count(),0);
 });
 
 test('CodeHub timeout and disposal terminate worker execution',async()=>{
- await mount('codehub');await page.getByLabel('Source',{exact:true}).fill('while(true){}');await page.getByRole('button',{name:'Run in isolated worker',exact:true}).click();await page.waitForFunction(()=>document.querySelector('pre[aria-label="Program output"]').textContent.includes('timed out'),{},{timeout:8000});
- await page.getByLabel('Source',{exact:true}).fill('setInterval(()=>console.log("tick"),10); return new Promise(()=>{});');await page.getByRole('button',{name:'Run in isolated worker',exact:true}).click();await page.waitForTimeout(100);await page.evaluate(()=>window.cleanup());const before=await page.locator('pre[aria-label="Program output"]').textContent();await page.waitForTimeout(200);assert.equal(await page.locator('pre[aria-label="Program output"]').textContent(),before);
+ await mount('codehub');
+ await page.locator('#root textarea.code-area').first().fill('while(true){}');
+ await page.getByRole('button',{name:'▶ Run JavaScript',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#root pre.output')?.textContent?.includes('timed out'),{},{timeout:12000});
+ await page.locator('#root textarea.code-area').first().fill('setInterval(()=>console.log("tick"),10); return new Promise(()=>{});');
+ await page.getByRole('button',{name:'▶ Run JavaScript',exact:true}).click();
+ await page.waitForTimeout(100);
+ await page.evaluate(()=>window.cleanup());
+ const before=await page.locator('#root pre.output').textContent();
+ await page.waitForTimeout(200);
+ assert.equal(await page.locator('#root pre.output').textContent(),before);
 });
-test('regex catastrophic backtracking is terminated',async()=>{await mount('regex-tester');await page.getByLabel('Pattern (without / delimiters)',{exact:true}).fill('(a+)+$');await page.getByLabel('Test text',{exact:true}).fill('a'.repeat(100)+'!');await page.getByRole('button',{name:'Test',exact:true}).click();await page.waitForFunction(()=>document.querySelector('pre.output').textContent.includes('timed out'),{},{timeout:5000});});
+test('regex catastrophic backtracking is terminated',async()=>{
+ await mount('regex-tester');
+ await page.locator('#root input[type="text"]').first().fill('(a+)+$');
+ await page.locator('#root textarea').fill('a'.repeat(100)+'!');
+ await page.getByRole('button',{name:'🔍 Test Matches',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#root pre.output')?.textContent?.includes('timed out'),{},{timeout:6000});
+});

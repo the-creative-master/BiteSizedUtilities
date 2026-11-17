@@ -1,6 +1,6 @@
 # Offline game sources, licenses and audit
 
-68 real playable open-source HTML5 games fetched directly from GitHub repositories (zero custom or synthetic games).
+72 real playable open-source HTML5 & Flash-player entries fetched directly from GitHub repositories (zero custom or synthetic games).
 
 ## Redistribution scope
 
@@ -67,6 +67,10 @@ SMOKE-TEST.json records startup and basic interaction checks, not complete playt
 
 | Game | Source | License | Notes |
 | --- | --- | --- | --- |
+| Flash Arcade (.swf Player) | [ruffle-rs/ruffle](https://github.com/ruffle-rs/ruffle) | MIT / Apache-2.0 | Fetched from https://github.com/ruffle-rs/ruffle (MIT / Apache-2.0). |
+| Infinite Mario HTML5 | [robertkleffner/mariohtml5](https://github.com/robertkleffner/mariohtml5) | Unlicense | Fetched from https://github.com/robertkleffner/mariohtml5 (Unlicense). |
+| 3D Crossy Road | [GeekBoySupreme/crossy-road](https://github.com/GeekBoySupreme/crossy-road) | MIT | Fetched from https://github.com/GeekBoySupreme/crossy-road (MIT). |
+| Fruit Slice Ninja | [pctroll/webninja](https://github.com/pctroll/webninja) | MIT | Fetched from https://github.com/pctroll/webninja (MIT). |
 | Chrome Dino Runner | [wayou/t-rex-runner](https://github.com/wayou/t-rex-runner) | BSD-3-Clause | Fetched directly from https://github.com/wayou/t-rex-runner (BSD-3-Clause). Runs offline in sandboxed iframe. |
 | Floppy Bird | [nebez/floppybird](https://github.com/nebez/floppybird) | Apache-2.0 | Fetched directly from https://github.com/nebez/floppybird (Apache-2.0). Runs offline in sandboxed iframe. |
 | Hextris | [Hextris/hextris](https://github.com/Hextris/hextris) | GPL-3.0 | Fetched directly from https://github.com/Hextris/hextris (GPL-3.0). Runs offline in sandboxed iframe. |

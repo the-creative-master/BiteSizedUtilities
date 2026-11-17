@@ -61,6 +61,7 @@ export default defineConfig({
             return;
           }
           if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return next();
+          res.setHeader('Access-Control-Allow-Origin', '*');
           res.setHeader('Content-Type', MIME[path.extname(file).toLowerCase()] || 'application/octet-stream');
           fs.createReadStream(file).on('error', () => {
             res.statusCode = 500;

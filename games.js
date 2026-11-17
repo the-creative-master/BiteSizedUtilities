@@ -25,7 +25,7 @@ export async function mountGames(root) {
   const searchWrap = make('div', '', 'gfield-tray arcade-search-tray');
   const search = make('input', '', 'gfield-input');
   search.type = 'text';
-  search.placeholder = 'Search Dino, Floppy Bird, Hextris, OutRun, Pac-Man, Pinball…';
+  search.placeholder = 'Search Mario, Crossy Road, Fruit Ninja, Flash (.swf), Dino, Hextris, OutRun…';
   search.setAttribute('aria-label', 'Search games');
   searchWrap.append(search);
 

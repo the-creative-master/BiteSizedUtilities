@@ -58,7 +58,7 @@ test('all utility identifiers have implementation dispatch cases', () => {
 
 test('all games in catalog are real open-source games fetched from GitHub with valid entrypoints and ZIPs', () => {
   const games = JSON.parse(fs.readFileSync('games/catalog.json', 'utf8'));
-  assert.equal(games.length, 68);
+  assert.equal(games.length, 72);
   assert.ok(!fs.existsSync('games/arcade'));
   assert.ok(!fs.existsSync('games/original'));
   for (const g of games) {

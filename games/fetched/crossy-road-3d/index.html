@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en" >
+<head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"><script src="offline-storage.js"></script>
+  <meta charset="UTF-8">
+  <title>Crossy Road</title>
+  <link rel="stylesheet" href="./style.css">
+  <link rel="icon" href="./favicon.ico">
+
+  
+
+</head>
+<body>
+<div id="counter">0</div>
+    
+<div id="controls">
+  <div>
+    <button id="forward">
+      <svg width="30" height="30" viewBox="0 0 10 10">
+        <g transform="rotate(0, 5,5)">
+          <path d="M5,4 L7,6 L3,6 L5,4" />
+        </g>
+      </svg>
+    </button>
+    <button id="left">
+      <svg width="30" height="30" viewBox="0 0 10 10">
+        <g transform="rotate(-90, 5,5)">
+          <path d="M5,4 L7,6 L3,6 L5,4" />
+        </g>
+      </svg>
+    </button>
+    <button id="backward">
+      <svg width="30" height="30" viewBox="0 0 10 10">
+        <g transform="rotate(180, 5,5)">
+          <path d="M5,4 L7,6 L3,6 L5,4" />
+        </g>
+      </svg>
+    </button>
+    <button id="right">
+      <svg width="30" height="30" viewBox="0 0 10 10">
+        <g transform="rotate(90, 5,5)">
+          <path d="M5,4 L7,6 L3,6 L5,4" />
+        </g>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<div id="end">
+  <button id="retry">Retry</button>
+</div>
+
+<div class= "credits">
+  Made with ❤️ & 🐓
+</div>
+
+  <script src="three.min.js"></script>
+  <script  src="./script.js"></script>
+
+</body>
+</html>

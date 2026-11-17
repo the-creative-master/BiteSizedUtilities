@@ -301,12 +301,31 @@ function parsePdfOperators(chunk) {
   const decodePdfStr = s => s
     .replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')
     .replace(/\\\(/g, '(').replace(/\\\)/g, ')').replace(/\\\\/g, '\\');
+  const decodePdfHex = hex => {
+    const clean = hex.replace(/\s+/g, '');
+    if (clean.length < 2 || clean.length % 2 !== 0) return '';
+    const bytes = [];
+    for (let i = 0; i < clean.length; i += 2) bytes.push(parseInt(clean.slice(i, i + 2), 16));
+    if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+      let s = '';
+      for (let i = 2; i + 1 < bytes.length; i += 2) s += String.fromCharCode((bytes[i] << 8) | bytes[i + 1]);
+      return s;
+    }
+    const ascii = bytes.map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : b === 0 ? '' : ' ').join('');
+    return /[a-zA-Z0-9]/.test(ascii) ? ascii : '';
+  };
   for (const m of chunk.matchAll(/\(((?:\\.|[^\\)])*)\)\s*Tj/g)) {
     pieces.push(decodePdfStr(m[1]));
   }
+  for (const m of chunk.matchAll(/<([0-9a-fA-F\s]+)>\s*Tj/g)) {
+    const h = decodePdfHex(m[1]);
+    if (h) pieces.push(h);
+  }
   for (const m of chunk.matchAll(/\[((?:[^[\]]|\((?:\\.|[^\\)])*\))*)\]\s*TJ/g)) {
     const sub = [];
-    for (const p of m[1].matchAll(/\(((?:\\.|[^\\)])*)\)/g)) sub.push(decodePdfStr(p[1]));
+    for (const p of m[1].matchAll(/\(((?:\\.|[^\\)])*)\)|<([0-9a-fA-F\s]+)>/g)) {
+      sub.push(p[1] !== undefined ? decodePdfStr(p[1]) : decodePdfHex(p[2]));
+    }
     if (sub.length) pieces.push(sub.join(''));
   }
   return pieces.join(' ').replace(/\s+/g, ' ').trim();
@@ -352,39 +371,103 @@ async function extractTextFromPdfBuffer(arrayBuffer) {
   return printable.slice(0, 8000) || '(PDF contains scanned images or unsupported font encoding)';
 }
 
-export async function extractTextFromUpload(file) {
+async function inspectImageFile(file) {
+  const fallbackText = `[Image file: ${file.name}, ${Math.max(1, Math.round(file.size / 1024))} KB, type: ${file.type || 'image'}]`;
+  if (typeof document === 'undefined' || typeof Image === 'undefined') {
+    return { text: fallbackText, imageUrl: null, isImage: true };
+  }
+  try {
+    const objUrl = URL.createObjectURL(file);
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = objUrl;
+    });
+    const w = img.naturalWidth || img.width || 1;
+    const h = img.naturalHeight || img.height || 1;
+    const maxDim = 448;
+    const scale = Math.min(1, maxDim / Math.max(w, h));
+    const cw = Math.max(1, Math.round(w * scale));
+    const ch = Math.max(1, Math.round(h * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, cw, ch);
+    URL.revokeObjectURL(objUrl);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.86);
+
+    const px = ctx.getImageData(0, 0, cw, ch).data;
+    let rSum = 0, gSum = 0, bSum = 0, lumSum = 0, count = 0;
+    const buckets = new Map();
+    for (let i = 0; i < px.length; i += 16) {
+      const r = px[i], g = px[i + 1], b = px[i + 2];
+      rSum += r; gSum += g; bSum += b;
+      lumSum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      count++;
+      const key = `${Math.round(r / 51) * 51},${Math.round(g / 51) * 51},${Math.round(b / 51) * 51}`;
+      buckets.set(key, (buckets.get(key) || 0) + 1);
+    }
+    const topColors = [...buckets.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([rgb]) => {
+        const [r, g, b] = rgb.split(',').map(Number);
+        return '#' + [r, g, b].map(x => Math.min(255, x).toString(16).padStart(2, '0')).join('');
+      });
+    const avgLum = Math.round(lumSum / Math.max(1, count));
+    const tone = avgLum > 175 ? 'bright / light' : avgLum < 80 ? 'dark' : 'medium-lit';
+    const orient = w > h * 1.15 ? 'landscape' : h > w * 1.15 ? 'portrait' : 'square';
+    const text = `[Image attached: ${file.name} (${w}×${h} px, ${orient}, ${Math.max(1, Math.round(file.size / 1024))} KB), overall tone: ${tone}, dominant colors: ${topColors.join(', ')}.]`;
+    return { text, imageUrl: dataUrl, isImage: true };
+  } catch {
+    return { text: fallbackText, imageUrl: null, isImage: true };
+  }
+}
+
+export async function extractFilePayload(file) {
   if (!file) throw new Error('No file selected.');
   if (file.size > 15 * 1024 * 1024) throw new Error('Files are limited to 15 MB.');
   const ext = (file.name.split('.').pop() || '').toLowerCase();
   if (ext === 'docx') {
     const text = await extractTextFromDocxBuffer(await file.arrayBuffer());
-    return text || '(Empty DOCX document)';
+    return { text: text || '(Empty DOCX document)', imageUrl: null, isImage: false };
   }
   if (ext === 'pptx') {
     const slides = await readZipEntries(await file.arrayBuffer(), n => /^ppt\/slides\/slide\d+\.xml$/i.test(n));
     slides.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     const text = slides.map((s, i) => `Slide ${i + 1}:\n${xmlToText(s.text, 't')}`).join('\n\n').trim();
-    return text || '(Empty PPTX presentation)';
+    return { text: text || '(Empty PPTX presentation)', imageUrl: null, isImage: false };
   }
   if (ext === 'xlsx') {
-    const sheets = await readZipEntries(await file.arrayBuffer(), n => /^xl\/sharedStrings\.xml$/i.test(n));
-    const text = sheets.map(s => xmlToText(s.text, 't')).join('\n').trim();
-    return text || '(Empty XLSX spreadsheet)';
+    const buf = await file.arrayBuffer();
+    const shared = await readZipEntries(buf, n => /^xl\/sharedStrings\.xml$/i.test(n));
+    const sheets = await readZipEntries(buf, n => /^xl\/worksheets\/sheet\d+\.xml$/i.test(n));
+    const sharedText = shared.map(s => xmlToText(s.text, 't')).join('\n').trim();
+    const cellText = sheets.map((s, i) => `Sheet ${i + 1}:\n${xmlToText(s.text, 'v')}`).join('\n\n').trim();
+    const text = [sharedText, cellText].filter(Boolean).join('\n\n').trim();
+    return { text: text || '(Empty XLSX spreadsheet)', imageUrl: null, isImage: false };
   }
   if (ext === 'pdf') {
-    return await extractTextFromPdfBuffer(await file.arrayBuffer());
+    return { text: await extractTextFromPdfBuffer(await file.arrayBuffer()), imageUrl: null, isImage: false };
   }
   if (ext === 'doc') {
     const buf = new Uint8Array(await file.arrayBuffer());
     const raw = new TextDecoder('latin1').decode(buf);
     const printable = raw.replace(/[^\x20-\x7E\r\n\t]+/g, ' ').replace(/\s{3,}/g, '\n').trim();
-    return printable.slice(0, 12000) || '(Binary .doc — convert to .docx or .txt for full text extraction)';
+    return { text: printable.slice(0, 12000) || '(Binary .doc — convert to .docx or .txt for full text extraction)', imageUrl: null, isImage: false };
   }
   if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'ico'].includes(ext)) {
-    return `[Image file: ${file.name}, ${Math.max(1, Math.round(file.size / 1024))} KB, type: ${file.type || ext}]`;
+    return await inspectImageFile(file);
   }
   const text = await file.text();
-  return text.replace(/\u0000/g, '');
+  return { text: text.replace(/\u0000/g, ''), imageUrl: null, isImage: false };
+}
+
+export async function extractTextFromUpload(file) {
+  const payload = await extractFilePayload(file);
+  return payload.text;
 }
 
 export function triggerFileDownload(contentOrBlob, filename, mime = 'text/plain;charset=utf-8') {

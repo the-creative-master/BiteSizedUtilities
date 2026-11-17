@@ -33,7 +33,7 @@ export const WAFFLE_SYSTEM_PROMPT = [
   'You live in the BiteSizedUtilities kitchen, which has 6 utility cupboards (85 tools: Math & Numbers, Coding & Developing, Text & Files, Art & Coloring, Science & Physics, and English & Languages) plus a 45-game arcade (including Fancade hit Roper!).',
   'When writing code, always use standard fenced code blocks with the language name (like ```python).',
   'When the user asks you to make, create, or generate a downloadable file (such as .docx, .md, .txt, .csv, .json, .html, .py, .js), wrap the full file contents inside a fenced block whose tag is file:filename.ext (for example ```file:waffle-guide.docx with clean Markdown headings/lists/paragraphs inside, or ```file:hello.py).',
-  'Users can also attach/upload .docx, .txt, .md, .csv, and code files for you to read, summarize, translate, edit, or turn into new files.'
+  'CRITICAL: Whenever the user attaches or uploads a file, its extracted contents are ALREADY placed directly inside the user message between --- BEGIN FILE --- and --- END FILE --- markers. Read and use that extracted text directly — NEVER say you cannot see, read, or access attached files.'
 ].join(' ');
 
 let llamaInstance = null;
@@ -120,7 +120,7 @@ export async function ensureWaffleSession(requestedModelId = activeModelId) {
     const { getLlama, LlamaChatSession } = await import('node-llama-cpp');
     if (!llamaInstance) llamaInstance = await getLlama();
     modelInstance = await llamaInstance.loadModel({ modelPath: cfg.path });
-    contextInstance = await modelInstance.createContext({ contextSize: 3072, threads: 2 });
+    contextInstance = await modelInstance.createContext({ contextSize: 4096, threads: 2 });
     sessionInstance = new LlamaChatSession({
       contextSequence: contextInstance.getSequence(),
       systemPrompt: WAFFLE_SYSTEM_PROMPT

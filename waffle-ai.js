@@ -1,7 +1,7 @@
 import { waffleMascotSVG } from './icons-25d.js';
 import { playPop, playBoing, playSquish, playSparkle } from './sfx.js';
 import { copyToClipboard } from './ui-kit.js';
-import { createDocxBlob, extractTextFromUpload, triggerFileDownload } from './file-tools-client.js';
+import { createDocxBlob, extractFilePayload, triggerFileDownload } from './file-tools-client.js';
 import {
   TEXT_MODELS,
   streamBrowserChat,
@@ -300,14 +300,19 @@ async function streamServerChat({ modelId, messages: msgList, systemPrompt, maxT
   return finalText.trim();
 }
 
-export async function streamWaffleChat({ modelId, messages: msgList, systemPrompt, maxTokens = 520, temperature = 0.7, signal, onStatus, onToken }) {
+export async function streamWaffleChat({ modelId, messages: msgList, imageUrls = [], systemPrompt, maxTokens = 520, temperature = 0.7, signal, onStatus, onToken }) {
   const chosenId = modelId || getSelectedTextModel();
   const cfg = TEXT_MODELS.find(m => m.id === chosenId) || TEXT_MODELS[0];
   const mode = getSelectedExecutionMode();
   const diag = await detectDeviceDiagnostics().catch(() => ({ hasWebGPU: false }));
+  const hasImages = Array.isArray(imageUrls) && imageUrls.length > 0;
 
   // Build ordered automatic fallback chain without surfacing internal tier names
   const attempts = [];
+  if (hasImages && mode !== 'server' && mode !== 'wllama') {
+    if (diag.hasWebGPU) attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'webgpu', vision: true });
+    attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'wasm', vision: true });
+  }
   if (mode === 'server') {
     attempts.push({ kind: 'server', id: cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b' });
     if (diag.hasWebGPU) attempts.push({ kind: 'browser', id: cfg.kind === 'browser' ? cfg.id : 'qwen2.5-0.5b', dev: 'webgpu' });
@@ -367,7 +372,7 @@ export async function streamWaffleChat({ modelId, messages: msgList, systemPromp
       if (step.kind === 'wllama') {
         return await streamWllamaChat({ ggufFile: step.gguf, hfRepo: step.hfRepo, hfQuant: step.hfQuant, messages: msgList, systemPrompt, maxTokens, temperature, useWebGPU: step.webgpu, signal, onStatus, onToken });
       }
-      return await streamBrowserChat({ modelId: step.id, messages: msgList, systemPrompt, maxTokens, temperature, preferredDevice: step.dev, signal, onStatus, onToken });
+      return await streamBrowserChat({ modelId: step.id, messages: msgList, imageUrls: step.vision ? imageUrls : [], systemPrompt, maxTokens, temperature, preferredDevice: step.dev, signal, onStatus, onToken });
     } catch (err) {
       if (err.name === 'AbortError' || signal?.aborted) throw err;
       lastErr = err;
@@ -459,7 +464,8 @@ function renderAttachments() {
   shelf.hidden = attachments.length === 0;
   shelf.innerHTML = attachments.map((f, idx) => `
     <span class="waffle-attach-pill">
-      <span>📎 ${esc(f.name)} (${Math.max(1, Math.round(f.text.length / 1024))} KB)</span>
+      ${f.imageUrl ? `<img class="waffle-attach-thumb" src="${f.imageUrl}" alt="">` : ''}
+      <span>${f.imageUrl ? '🖼' : '📎'} ${esc(f.name)} (${Math.max(1, Math.round(f.text.length / 1024))} KB)</span>
       <button type="button" class="waffle-attach-x" data-rm-file="${idx}" aria-label="Remove ${esc(f.name)}">✕</button>
     </span>
   `).join('');
@@ -485,6 +491,9 @@ function renderMessages() {
     const streamingCursor = streamingNow && !m.imageProgress ? '<span class="waffle-cursor" aria-hidden="true">▌</span>' : '';
     const fileNote = isUser && m.fileNames?.length
       ? `<div class="waffle-msg-files">${m.fileNames.map(n => `<span class="waffle-msg-file-tag">📎 ${esc(n)}</span>`).join('')}</div>`
+      : '';
+    const imgNote = isUser && m.imageUrls?.length
+      ? `<div class="waffle-msg-images">${m.imageUrls.map(u => `<img class="waffle-msg-img" src="${u}" alt="Uploaded image">`).join('')}</div>`
       : '';
 
     let bodyHtml = '';
@@ -538,6 +547,7 @@ function renderMessages() {
         <div class="waffle-msg-bubble">
           <div class="waffle-msg-author">${isUser ? 'You' : (m.authorLabel || 'Sir Waffle')}</div>
           ${fileNote}
+          ${imgNote}
           ${webSourcesBar}
           <div class="waffle-msg-body">${bodyHtml}${streamingCursor}</div>
           ${exportBar}
@@ -664,10 +674,10 @@ function syncComposerState() {
 async function handleFilesSelected(fileList) {
   for (const file of [...fileList].slice(0, 4)) {
     try {
-      const extracted = await extractTextFromUpload(file);
-      const clipped = String(extracted || '').trim().slice(0, 5200);
+      const payload = await extractFilePayload(file);
+      const clipped = String(payload.text || '').trim().slice(0, 5200);
       if (!clipped) throw new Error('No readable text found inside this file.');
-      attachments.push({ name: file.name, text: clipped });
+      attachments.push({ name: file.name, text: clipped, imageUrl: payload.imageUrl || null, isImage: Boolean(payload.isImage) });
       playPop(620);
     } catch (err) {
       alert(`Could not read ${file.name}: ${err.message}`);
@@ -784,8 +794,9 @@ async function sendMessage(rawText) {
   const cleanQuery = text.replace(/^\/search\s*/i, '').trim();
 
   const fileNames = currentFiles.map(f => f.name);
+  const imageUrls = currentFiles.map(f => f.imageUrl).filter(Boolean);
   const fileContext = currentFiles.map(f =>
-    `The user uploaded the file "${f.name}". Read its exact contents carefully and use it to answer:\n--- BEGIN FILE: ${f.name} ---\n${f.text}\n--- END FILE: ${f.name} ---`
+    `The user uploaded the file "${f.name}". Its extracted content/details are provided directly below — read and use them directly:\n--- BEGIN FILE: ${f.name} ---\n${f.text}\n--- END FILE: ${f.name} ---`
   ).join('\n\n');
   const tCfg = activeTextCfg();
 
@@ -794,6 +805,7 @@ async function sendMessage(rawText) {
     role: 'user',
     displayContent: text || `Analyze ${fileNames.join(', ')}`,
     fileNames,
+    imageUrls,
     content: [fileContext, cleanQuery || 'Please read and summarize the attached file(s).'].filter(Boolean).join('\n\n')
   });
   messages.push({
@@ -845,8 +857,9 @@ async function sendMessage(rawText) {
     const finalText = await streamWaffleChat({
       modelId: tCfg.id,
       messages: historyPayload,
+      imageUrls,
       systemPrompt: tCfg.kind === 'browser'
-        ? 'You are Sir Waffle, the cheerful, helpful mascot of BiteSizedUtilities. Answer clearly in Markdown.'
+        ? 'You are Sir Waffle, the cheerful, helpful mascot of BiteSizedUtilities. Uploaded file contents are already extracted inside --- BEGIN FILE --- and --- END FILE --- in the user message; read them directly and answer clearly in Markdown.'
         : undefined,
       maxTokens: tCfg.kind === 'browser' ? 560 : 680,
       temperature: getAiTemperature(),

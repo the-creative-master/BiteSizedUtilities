@@ -210,13 +210,13 @@ async function getTransformers() {
   return mod;
 }
 
-async function getBrowserGenerator(modelCfg, preferredDevice, onStatus) {
-  const cacheKey = `${modelCfg.id}:${preferredDevice}`;
+async function getBrowserGenerator(modelCfg, preferredDevice, onStatus, withVision = false) {
+  const cacheKey = `${modelCfg.id}:${withVision ? 'vision:' : ''}${preferredDevice}`;
   if (pipeCache.has(cacheKey)) return pipeCache.get(cacheKey);
   const promise = (async () => {
     const mod = await getTransformers();
-    const { pipeline, AutoTokenizer, Qwen3_5ForCausalLM } = mod;
-    onStatus?.({ state: 'loading', detail: `Loading ${modelCfg.label} (${preferredDevice.toUpperCase()})…` });
+    const { pipeline, AutoTokenizer, AutoProcessor, Qwen3_5ForCausalLM, Qwen3_5ForConditionalGeneration } = mod;
+    onStatus?.({ state: 'loading', detail: `Loading ${modelCfg.label}${withVision ? ' Vision' : ''} (${preferredDevice.toUpperCase()})…` });
 
     const progress_callback = p => {
       if (p?.status === 'progress' && typeof p.progress === 'number') {
@@ -228,9 +228,18 @@ async function getBrowserGenerator(modelCfg, preferredDevice, onStatus) {
     };
 
     if (modelCfg.loader === 'qwen3_5') {
+      if (withVision && Qwen3_5ForConditionalGeneration && AutoProcessor) {
+        const processor = await AutoProcessor.from_pretrained(modelCfg.hfId, { progress_callback });
+        const model = await Qwen3_5ForConditionalGeneration.from_pretrained(modelCfg.hfId, {
+          device: preferredDevice,
+          dtype: { embed_tokens: 'q4', vision_encoder: 'q4', decoder_model_merged: 'q4' },
+          progress_callback
+        });
+        return { kind: 'qwen3_5_vision', processor, tokenizer: processor.tokenizer, model, device: preferredDevice };
+      }
       const tokenizer = await AutoTokenizer.from_pretrained(modelCfg.hfId, { progress_callback })
         .catch(async () => {
-          const proc = await mod.AutoProcessor.from_pretrained(modelCfg.hfId, { progress_callback });
+          const proc = await AutoProcessor.from_pretrained(modelCfg.hfId, { progress_callback });
           return proc.tokenizer || proc;
         });
       const dtypeMap = typeof modelCfg.dtype === 'object'
@@ -277,6 +286,7 @@ async function getBrowserGenerator(modelCfg, preferredDevice, onStatus) {
 export async function streamBrowserChat({
   modelId,
   messages,
+  imageUrls = [],
   systemPrompt,
   maxTokens = 520,
   temperature = 0.7,
@@ -290,22 +300,36 @@ export async function streamBrowserChat({
 
   const diag = await detectDeviceDiagnostics();
   const device = preferredDevice || (diag.hasWebGPU ? 'webgpu' : 'wasm');
-  const loaded = await getBrowserGenerator(cfg, device, onStatus);
+  const useVision = cfg.loader === 'qwen3_5' && Array.isArray(imageUrls) && imageUrls.length > 0;
+  const loaded = await getBrowserGenerator(cfg, device, onStatus, useVision);
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-  const { TextStreamer } = await getTransformers();
-  onStatus?.({ state: 'generating', detail: `${cfg.label} · ${loaded.device.toUpperCase()}` });
+  const { TextStreamer, RawImage } = await getTransformers();
+  onStatus?.({ state: 'generating', detail: `${cfg.label}${useVision ? ' Vision' : ''} · ${loaded.device.toUpperCase()}` });
 
   const chat = [];
   if (systemPrompt) chat.push({ role: 'system', content: systemPrompt });
-  for (const m of messages.slice(-8)) {
-    if (m?.role && typeof m.content === 'string') {
+  const recent = messages.slice(-8);
+  for (let i = 0; i < recent.length; i++) {
+    const m = recent[i];
+    if (!m?.role || typeof m.content !== 'string') continue;
+    if (loaded.kind === 'qwen3_5_vision' && i === recent.length - 1 && m.role === 'user') {
+      chat.push({
+        role: 'user',
+        content: [
+          ...imageUrls.map(() => ({ type: 'image' })),
+          { type: 'text', text: m.content }
+        ]
+      });
+    } else {
       chat.push({ role: m.role, content: m.content });
     }
   }
 
   let acc = '';
-  const tokenizer = loaded.kind === 'qwen3_5' ? loaded.tokenizer : loaded.gen.tokenizer;
+  const tokenizer = (loaded.kind === 'qwen3_5' || loaded.kind === 'qwen3_5_vision')
+    ? loaded.tokenizer
+    : loaded.gen.tokenizer;
   const streamer = new TextStreamer(tokenizer, {
     skip_prompt: true,
     skip_special_tokens: true,
@@ -315,6 +339,30 @@ export async function streamBrowserChat({
       onToken?.(text, acc);
     }
   });
+
+  if (loaded.kind === 'qwen3_5_vision') {
+    const rawImgs = await Promise.all(imageUrls.map(u => RawImage.fromURL(u)));
+    const promptStr = loaded.processor.apply_chat_template(chat, {
+      tokenize: false,
+      add_generation_prompt: true,
+      enable_thinking: false
+    });
+    const inputs = await loaded.processor(promptStr, rawImgs);
+    const out = await loaded.model.generate({
+      ...inputs,
+      max_new_tokens: maxTokens,
+      temperature: Math.max(0.1, temperature),
+      do_sample: temperature > 0.15,
+      streamer
+    });
+    if (!acc && out) {
+      const inputLen = inputs.input_ids?.dims?.[1] || 0;
+      const decoded = loaded.processor.batch_decode(out.slice(null, [inputLen, null]), { skip_special_tokens: true })?.[0] || '';
+      acc = decoded;
+      onToken?.(decoded, acc);
+    }
+    return acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
+  }
 
   if (loaded.kind === 'qwen3_5') {
     const promptStr = tokenizer.apply_chat_template(chat, {

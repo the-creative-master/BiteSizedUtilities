@@ -202,7 +202,9 @@ test('Waffle AI chatbot, streaming code boxes, DOCX creation/parsing, single Waf
   }
 
   const fileToolsSrc = fs.readFileSync('file-tools-client.js', 'utf8');
-  assert.ok(fileToolsSrc.includes('FlateDecode') && fileToolsSrc.includes('slides') && fileToolsSrc.includes('sharedStrings'), 'file-tools-client supports PDF FlateDecode, PPTX, and XLSX extraction');
+  assert.ok(fileToolsSrc.includes('FlateDecode') && fileToolsSrc.includes('slides') && fileToolsSrc.includes('sharedStrings') && fileToolsSrc.includes('extractFilePayload'), 'file-tools-client supports PDF FlateDecode, PPTX, XLSX, and image payloads');
+  assert.ok(browserAiSrc.includes('Qwen3_5ForConditionalGeneration') && browserAiSrc.includes('AutoProcessor') && browserAiSrc.includes('RawImage'), 'waffle-browser-ai supports multimodal image vision via Qwen3_5ForConditionalGeneration');
+  assert.ok(serverSrc.includes('BEGIN FILE') && uiSrc.includes('extractFilePayload') && uiSrc.includes('waffle-msg-img'), 'Server and UI explicitly handle inline file blocks and image previews');
 
   assert.ok(serverSrc.includes('/api/waffle-ai/web-search') && uiSrc.includes('waffle-ai-web-toggle'), 'Web Search Mode is wired on server and UI');
   assert.ok(appSrc.includes('english-warning-overlay') && appSrc.includes('showEnglishEntryWarning'), 'English warning appears as cupboard-entry popup');

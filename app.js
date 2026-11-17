@@ -172,14 +172,13 @@ $('#waffle-speech').addEventListener('click', handleOpenWaffleAI);
 
 $('#sound-toggle').addEventListener('click', () => {
   const nowMuted = toggleMute();
-  $('#sound-toggle').setAttribute('aria-pressed', String(!nowMuted));
-  $('#sound-icon').innerHTML = uiIconSVG(nowMuted ? 'soundOff' : 'soundOn');
+  syncSoundUI();
   toast(nowMuted ? 'Kitchen sounds muted' : 'Kitchen sounds ON!');
 });
 
 // Tapping anywhere on the waffle wall bounces the waffle background & triggers an AI-powered quip!
 document.addEventListener('click', e => {
-  if (e.target.closest('button, a, input, textarea, select, canvas, .gslider-track, .tool-window-card, .cupboard-card, .cabinet-bookcase, .game-hud, .kitchen-search-pill, .waffle-ai-dialog, .waffle-ai-overlay')) return;
+  if (e.target.closest('button, a, input, textarea, select, canvas, .gslider-track, .tool-window-card, .cupboard-card, .cabinet-bookcase, .game-hud, .kitchen-search-pill, .waffle-ai-dialog, .waffle-ai-overlay, .settings-card, .settings-overlay')) return;
   triggerWallBounce(e.clientX, e.clientY);
 });
 

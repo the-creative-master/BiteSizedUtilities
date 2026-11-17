@@ -193,4 +193,19 @@ test('Waffle AI chatbot, streaming code boxes, DOCX creation/parsing, single Waf
   assert.ok(fs.existsSync('.cache/waffle-ai/sd-models/studio-ai/models/tok/vocab.json'), 'CLIP tokenizer for SD models is pre-cached');
   assert.ok(fs.existsSync('.cache/waffle-ai/sd-models/studio-ai-hq1/unet/m.000'), 'SD-Turbo weights are pre-cached');
   assert.ok(fs.existsSync('.cache/waffle-ai/sd-models/studio-ai-t2i/t2i09/unet09/q.004'), 'SDXS-512 weights are pre-cached');
+
+  const uiKitSrc = fs.readFileSync('ui-kit.js', 'utf8');
+  assert.ok(uiKitSrc.includes('export async function copyToClipboard') && uiKitSrc.includes("execCommand('copy')"), 'copyToClipboard includes execCommand fallback for iframes');
+  for (const f of ['waffle-ai.js', 'tools-code.js', 'tools-text-art.js', 'tools-math-science.js', 'tools-english.js']) {
+    assert.ok(!fs.readFileSync(f, 'utf8').includes('navigator.clipboard?.writeText'), `${f} uses copyToClipboard instead of raw clipboard API`);
+  }
+
+  const fileToolsSrc = fs.readFileSync('file-tools-client.js', 'utf8');
+  assert.ok(fileToolsSrc.includes('FlateDecode') && fileToolsSrc.includes('slides') && fileToolsSrc.includes('sharedStrings'), 'file-tools-client supports PDF FlateDecode, PPTX, and XLSX extraction');
+
+  assert.ok(serverSrc.includes('/api/waffle-ai/web-search') && uiSrc.includes('waffle-ai-web-toggle'), 'Web Search Mode is wired on server and UI');
+  assert.ok(appSrc.includes('english-warning-overlay') && appSrc.includes('showEnglishEntryWarning'), 'English warning appears as cupboard-entry popup');
+  assert.ok(!englishSrc.includes('english-disclaimer-card'), 'Individual English tools do not show big inline disclaimer card');
+  assert.ok(appSrc.includes('exp-warning-overlay') && appSrc.includes('Experienced Users Only') && browserAiSrc.includes('getAiTemperature'), 'Temperature tweaking is gated behind Experienced Users Only popup');
+  assert.ok(['butter', 'matcha', 'berry', 'midnight', 'blueberry', 'citrus', 'lavender', 'mintchoco'].every(t => appSrc.includes(`id: '${t}'`)), 'All 8 Kitchen Mood themes exist in app.js');
 });

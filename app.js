@@ -9,6 +9,7 @@ import { mountEnglish } from './tools-english.js';
 import { mountGames } from './games.js';
 import { openWaffleAI, warmupWaffleAI } from './waffle-ai.js';
 import { APP_LANGUAGES, getAppLanguage, setAppLanguage, initAppI18n } from './i18n.js';
+import { gameSlider } from './ui-kit.js';
 import {
   TEXT_MODELS,
   EXECUTION_MODES,
@@ -20,6 +21,10 @@ import {
   setSelectedExecutionMode,
   getSmartPromptEnabled,
   setSmartPromptEnabled,
+  getAiTemperature,
+  setAiTemperature,
+  isTempUnlocked,
+  setTempUnlocked,
   detectDeviceDiagnostics,
   AI_DISCLAIMER_TEXT
 } from './waffle-browser-ai.js';
@@ -45,7 +50,11 @@ const KITCHEN_THEMES = [
   { id: 'butter', label: '🧇 Butter Waffle' },
   { id: 'matcha', label: '🍵 Matcha Pantry' },
   { id: 'berry', label: '🍓 Berry Bakery' },
-  { id: 'midnight', label: '🌙 Midnight Snack' }
+  { id: 'midnight', label: '🌙 Midnight Snack' },
+  { id: 'blueberry', label: '🫐 Blueberry Jam' },
+  { id: 'citrus', label: '🍊 Citrus Marmalade' },
+  { id: 'lavender', label: '🪻 Lavender Honey' },
+  { id: 'mintchoco', label: '🍫 Mint Choco Chip' }
 ];
 let kitchenTheme = storage.get('bite-kitchen-theme', 'butter');
 if (!KITCHEN_THEMES.some(t => t.id === kitchenTheme)) kitchenTheme = 'butter';
@@ -146,6 +155,46 @@ app.innerHTML = `
           <div class="waffle-pill-grid" id="settings-ai-image-list"></div>
           <div class="settings-sub-label">Fallback / Runtime Mode</div>
           <div class="waffle-pill-grid" id="settings-ai-exec-list"></div>
+          <div class="settings-sub-label">Temperature (Experienced Users Only)</div>
+          <div id="settings-temp-wrap"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-overlay" id="english-warning-overlay" hidden>
+      <div class="settings-card warning-popup-card" role="dialog" aria-modal="true" aria-labelledby="eng-warn-title" data-no-i18n>
+        <div class="settings-head">
+          <strong id="eng-warn-title">⚠ English &amp; Languages — Device Warning</strong>
+          <button type="button" class="window-close-x" id="eng-warn-close" aria-label="Close warning">✕</button>
+        </div>
+        <div class="waffle-disclaimer-box">
+          <div class="waffle-disclaimer-head">
+            <strong>⚠ DEVICE &amp; WEBGPU NOTICE</strong>
+            <span class="waffle-device-pill is-risk" id="eng-warn-device-pill">Checking WebGPU…</span>
+          </div>
+          <p class="waffle-disclaimer-copy">${esc(AI_DISCLAIMER_TEXT)}</p>
+          <p class="waffle-disclaimer-copy">⚠ iPhone / Mobile Warning: Devices below iOS 26 or without WebGPU (~1 in 4 phones) may crash or run slowly with local AI models. Waffle Translate uses Google Translate; the other 14 tools use AI with automatic WebGPU → WLlama → WASM CPU / Local Server fallbacks.</p>
+        </div>
+        <div class="warning-popup-actions">
+          <button type="button" class="gbtn" id="eng-warn-settings">⚙ Open AI Settings</button>
+          <button type="button" class="gbtn gbtn-primary" id="eng-warn-ok">I Understand — Continue</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-overlay" id="exp-warning-overlay" hidden>
+      <div class="settings-card warning-popup-card" role="dialog" aria-modal="true" aria-labelledby="exp-warn-title" data-no-i18n>
+        <div class="settings-head">
+          <strong id="exp-warn-title">⚠ Experienced Users Only</strong>
+          <button type="button" class="window-close-x" id="exp-warn-cancel" aria-label="Cancel">✕</button>
+        </div>
+        <div class="waffle-disclaimer-box">
+          <p class="waffle-disclaimer-copy"><strong>Changing AI Temperature is for experienced users only.</strong></p>
+          <p class="waffle-disclaimer-copy">• Higher values (1.0 – 1.5) can make small local models hallucinate, ramble, or output broken code/gibberish.<br>• Very low values (0.0 – 0.2) can make replies robotic or repetitive.<br>• Recommended default is <strong>0.70</strong>.</p>
+        </div>
+        <div class="warning-popup-actions">
+          <button type="button" class="gbtn" id="exp-warn-back">Keep Locked (0.70)</button>
+          <button type="button" class="gbtn gbtn-primary" id="exp-warn-confirm">I’m an Experienced User — Unlock</button>
         </div>
       </div>
     </div>
@@ -403,11 +452,25 @@ function home() {
   if (searchQuery.trim()) renderSearchMatches();
 }
 
+function showEnglishEntryWarning() {
+  const overlay = $('#english-warning-overlay');
+  if (!overlay) return;
+  overlay.hidden = false;
+  detectDeviceDiagnostics().then(d => {
+    const pill = $('#eng-warn-device-pill');
+    if (pill) {
+      pill.textContent = d.summaryLabel;
+      pill.className = `waffle-device-pill ${d.hasRisk ? 'is-risk' : 'is-ok'}`;
+    }
+  }).catch(() => {});
+}
+
 async function collection(id) {
   toolCleanup?.();
   toolCleanup = null;
   view++;
   const ticket = view;
+  const prevActive = active;
   active = id;
   updateNav();
 
@@ -454,16 +517,6 @@ async function collection(id) {
   $('#main').innerHTML = `
     <section class="open-cupboard-scene" style="--cup:${theme.color};--trim:${theme.trim}">
       ${woodenSignboardHTML({ kicker: tagline, title, leftDoodle: theme.doodles[0], rightDoodle: theme.doodles[1] })}
-      ${id === 'english' ? `
-        <div class="english-device-note english-disclaimer-card">
-          <div class="eng-ai-banner">
-            <strong>⚠ Uses Qwen 2.5 1.5B (Local AI) — Decent Device &amp; WebGPU Recommended</strong>
-            <button type="button" class="gbtn gbtn-chip" id="eng-cupboard-ai-settings">⚙ AI &amp; Fallback Settings</button>
-          </div>
-          <p class="english-disclaimer-copy">${esc(AI_DISCLAIMER_TEXT)}</p>
-          <p class="english-disclaimer-copy">⚠ iPhone / Mobile Warning: Devices below iOS 26 or without WebGPU (~1 in 4 phones) may crash or run slowly with local AI models. Waffle Translate uses Google Translate; the other 14 tools use AI with automatic WebGPU → WLlama → WASM CPU / Local Server fallbacks.</p>
-        </div>
-      ` : ''}
       <div class="cabinet-bookcase ${perShelf === 2 ? 'cabinet-compact' : ''}">
         <div class="cabinet-crown" aria-hidden="true"></div>
         <div class="cabinet-interior">
@@ -483,11 +536,10 @@ async function collection(id) {
     </section>
   `;
   bindActions();
-  $('#eng-cupboard-ai-settings')?.addEventListener('click', () => {
-    playPop(580);
-    window.dispatchEvent(new CustomEvent('bite-open-settings', { detail: { section: 'ai' } }));
-  });
   window.scrollTo({ top: 0, behavior: 'auto' });
+  if (id === 'english' && prevActive !== 'english') {
+    showEnglishEntryWarning();
+  }
 }
 
 function openTool(id) {
@@ -739,6 +791,46 @@ function renderSettingsModal() {
     });
   }
 
+  const tempWrap = $('#settings-temp-wrap');
+  if (tempWrap) {
+    const curTemp = getAiTemperature();
+    if (!isTempUnlocked()) {
+      tempWrap.innerHTML = `
+        <div class="settings-temp-locked">
+          <span>Current: <strong>${curTemp.toFixed(2)}</strong> (Balanced Default)</span>
+          <button type="button" class="gbtn" id="settings-unlock-temp">🔓 Unlock Temperature Control (Experienced Users Only)</button>
+        </div>
+      `;
+      tempWrap.querySelector('#settings-unlock-temp')?.addEventListener('click', () => {
+        playPop(520);
+        $('#exp-warning-overlay').hidden = false;
+      });
+    } else {
+      tempWrap.innerHTML = `<div class="settings-temp-controls"></div>`;
+      const box = tempWrap.querySelector('.settings-temp-controls');
+      const slider = gameSlider({
+        label: 'Temperature',
+        min: 0,
+        max: 1.5,
+        step: 0.05,
+        value: curTemp,
+        format: v => `${v.toFixed(2)}${v <= 0.3 ? ' · Precise' : v <= 0.85 ? ' · Balanced' : ' · Creative'}`,
+        onChange: v => setAiTemperature(v)
+      });
+      const lockBtn = document.createElement('button');
+      lockBtn.type = 'button';
+      lockBtn.className = 'gbtn gbtn-chip';
+      lockBtn.textContent = '🔒 Reset & Lock (0.70)';
+      lockBtn.addEventListener('click', () => {
+        setAiTemperature(0.7);
+        setTempUnlocked(false);
+        playPop(460);
+        renderSettingsModal();
+      });
+      box.append(slider.el, lockBtn);
+    }
+  }
+
   detectDeviceDiagnostics().then(d => {
     const pill = $('#settings-device-pill');
     if (pill) {
@@ -772,6 +864,39 @@ $('#settings-sound-toggle')?.addEventListener('click', () => {
 $('#settings-close').addEventListener('click', () => {
   playPop(460);
   $('#settings-overlay').hidden = true;
+});
+
+$('#eng-warn-close')?.addEventListener('click', () => {
+  playPop(460);
+  $('#english-warning-overlay').hidden = true;
+});
+$('#eng-warn-ok')?.addEventListener('click', () => {
+  playPop(600);
+  $('#english-warning-overlay').hidden = true;
+});
+$('#eng-warn-settings')?.addEventListener('click', () => {
+  playPop(580);
+  $('#english-warning-overlay').hidden = true;
+  openSettingsModal('ai');
+});
+$('#english-warning-overlay')?.addEventListener('click', e => {
+  if (e.target.id === 'english-warning-overlay') $('#english-warning-overlay').hidden = true;
+});
+
+const closeExpWarn = () => {
+  playPop(460);
+  $('#exp-warning-overlay').hidden = true;
+};
+$('#exp-warn-cancel')?.addEventListener('click', closeExpWarn);
+$('#exp-warn-back')?.addEventListener('click', closeExpWarn);
+$('#exp-warn-confirm')?.addEventListener('click', () => {
+  setTempUnlocked(true);
+  playSparkle();
+  $('#exp-warning-overlay').hidden = true;
+  renderSettingsModal();
+});
+$('#exp-warning-overlay')?.addEventListener('click', e => {
+  if (e.target.id === 'exp-warning-overlay') closeExpWarn();
 });
 $('#settings-overlay').addEventListener('click', e => {
   if (e.target === $('#settings-overlay')) {

@@ -1,5 +1,5 @@
 /** Cozy 2.5D Text, File & Art Toys — zero default HTML select/range/checkbox/color inputs */
-import { gEl, gameBtn, gameTabs, gameToggle, gameSlider, gameColorPicker, gameFilePill, gameField, statBox } from './ui-kit.js';
+import { gEl, gameBtn, gameTabs, gameToggle, gameSlider, gameColorPicker, gameFilePill, gameField, statBox, copyToClipboard } from './ui-kit.js';
 import { playPop, playSparkle } from './sfx.js';
 
 const TEXT_IDS = ['file-converter', 'crazy-text-filters', 'word-counter', 'case-converter', 'json-formatter', 'base64', 'url-codec', 'markdown-preview', 'text-diff', 'find-replace', 'lorem-ipsum', 'hash-generator', 'csv-editor', 'notepad', 'file-inspector'];
@@ -237,7 +237,7 @@ function textTools(id, ctx) {
       out.value = v;
     }
     src.addEventListener('input', update);
-    ctx.form.append(modeTabs.el, gEl('div', { class: 'two-col' }, gameField('Input Text', src), gameField('Result', out)), gEl('div', { class: 'gtabs' }, gameBtn('📋 Copy Result', 'primary', () => navigator.clipboard?.writeText(out.value)), gameBtn('↓ Download .txt', 'chip', () => download(out.value, 'text.txt'))));
+    ctx.form.append(modeTabs.el, gEl('div', { class: 'two-col' }, gameField('Input Text', src), gameField('Result', out)), gEl('div', { class: 'gtabs' }, gameBtn('📋 Copy Result', 'primary', () => copyToClipboard(out.value)), gameBtn('↓ Download .txt', 'chip', () => download(out.value, 'text.txt'))));
     update();
     return;
   }
@@ -349,7 +349,7 @@ function textTools(id, ctx) {
       const sent = () => { const w = Array.from({ length: 10 }, () => words[idx++ % words.length]).join(' '); return w[0].toUpperCase() + w.slice(1) + '.'; };
       out.value = kind.value === 'Words' ? Array.from({ length: n }, () => words[idx++ % words.length]).join(' ') : Array.from({ length: n }, () => kind.value === 'Sentences' ? sent() : Array.from({ length: 4 }, sent).join(' ')).join(kind.value === 'Paragraphs' ? '\n\n' : ' ');
     };
-    ctx.form.append(kind.el, countSl.el, gEl('div', { class: 'gtabs' }, gameBtn('✨ Generate', 'primary', gen), gameBtn('📋 Copy', 'chip', () => navigator.clipboard?.writeText(out.value))), out);
+    ctx.form.append(kind.el, countSl.el, gEl('div', { class: 'gtabs' }, gameBtn('✨ Generate', 'primary', gen), gameBtn('📋 Copy', 'chip', () => copyToClipboard(out.value))), out);
     gen();
     return;
   }
@@ -917,7 +917,7 @@ function colorTools(id, ctx) {
     function upd() {
       const [h, s, l] = rgbHSL(hexRGB(base.value));
       colors = Array.from({ length: 5 }, (_, i) => rgbHex(hslRGB(h + (mode.value === 'Analogous' ? (i - 2) * 25 : mode.value === 'Complementary' ? (i % 2) * 180 : mode.value === 'Triadic' ? (i % 3) * 120 : 0), mode.value === 'Monochromatic' ? s : Math.max(20, s - (i % 2) * 12), mode.value === 'Monochromatic' ? 18 + i * 16 : Math.max(12, Math.min(88, l + (i - 2) * 8)))));
-      swatches.replaceChildren(...colors.map(hex => gameBtn(hex, '', () => navigator.clipboard?.writeText(hex))));
+      swatches.replaceChildren(...colors.map(hex => gameBtn(hex, '', () => copyToClipboard(hex))));
       [...swatches.children].forEach((b, i) => { b.style.background = colors[i]; b.style.color = luminance(hexRGB(colors[i])) > .179 ? '#222' : '#fff'; });
     }
     ctx.form.append(base.el, mode.el, gEl('div', { class: 'gtabs' }, gameBtn('🎲 Random Base', 'primary', () => { base.value = rgbHex([...crypto.getRandomValues(new Uint8Array(3))]); upd(); }), gameBtn('↓ Export JSON', 'chip', () => download(JSON.stringify(colors, null, 2), 'palette.json', 'application/json'))), swatches);

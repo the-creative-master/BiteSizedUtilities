@@ -137,6 +137,22 @@ export function setSmartPromptEnabled(v) {
   writePref(KEY_SMART, v ? 'true' : 'false');
 }
 
+export function getAiTemperature() {
+  const n = parseFloat(readPref('bite-ai-temp', '0.7'));
+  return Number.isFinite(n) ? Math.max(0, Math.min(1.5, Math.round(n * 20) / 20)) : 0.7;
+}
+export function setAiTemperature(v) {
+  const n = Math.max(0, Math.min(1.5, Math.round(Number(v) * 20) / 20));
+  writePref('bite-ai-temp', Number.isFinite(n) ? n.toFixed(2) : '0.70');
+}
+
+export function isTempUnlocked() {
+  return readPref('bite-ai-temp-unlocked', 'false') === 'true';
+}
+export function setTempUnlocked(v) {
+  writePref('bite-ai-temp-unlocked', v ? 'true' : 'false');
+}
+
 export const AI_DISCLAIMER_TEXT =
   'DISCLAIMER: You might not be able to enjoy local/browser AI smoothly in BiteSizedUtilities if you are on an iPhone below iOS 26, an older phone/tablet, or a device that does not support WebGPU. Roughly 1 in 4 mobile devices lack WebGPU, which can cause browser AI models to crash, fail to load, or run slowly unless you have a capable device. Automatic fallbacks (WebGPU, WLlama, WASM CPU, and local server) are built in — you can adjust models and fallback mode in Settings.';
 

@@ -1,5 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 export const WAFFLE_MODEL_PATH = process.env.WAFFLE_AI_MODEL_PATH || path.resolve('.cache/waffle-ai/qwen2.5-1.5b.gguf');
 
@@ -187,7 +191,7 @@ function buildChatHistory(messages, customSystemPrompt) {
   return { history, userText };
 }
 
-function readJsonBody(req, maxBytes = 256 * 1024) {
+function readJsonBody(req, maxBytes = 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
@@ -223,6 +227,97 @@ function sendJson(res, statusCode, data) {
 function sendSse(res, event, data) {
   if (res.writableEnded || res.destroyed) return;
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+async function fetchJsonWithFallback(url, opts = {}, ms = 4500) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), ms);
+  try {
+    const r = await fetch(url, { ...opts, signal: ac.signal });
+    if (r.ok) return await r.json();
+  } catch {
+    // Fall back to system curl when Node's built-in CA store lacks a proxy certificate
+  } finally {
+    clearTimeout(t);
+  }
+  try {
+    const { stdout } = await execFileAsync('curl', ['-sS', '-L', '--max-time', '4', '-A', 'BiteSizedUtilities-WaffleAI', url], {
+      maxBuffer: 1024 * 1024
+    });
+    return JSON.parse(stdout);
+  } catch {
+    return null;
+  }
+}
+
+async function performWebSearch(query) {
+  const q = String(query || '').trim().slice(0, 240);
+  if (!q) return { results: [], providers: [] };
+
+  const results = [];
+  const providers = [];
+
+  await Promise.allSettled([
+    (async () => {
+      const d = await fetchJsonWithFallback(`https://api.duckduckgo.com/?q=${encodeURIComponent(q)}&format=json&no_html=1&skip_disambig=1`);
+      if (!d) return;
+      providers.push('DuckDuckGo');
+      if (d.AbstractText) {
+        results.push({ title: d.Heading || q, snippet: d.AbstractText.slice(0, 420), url: d.AbstractURL || 'https://duckduckgo.com', source: 'DuckDuckGo' });
+      }
+      for (const topic of (d.RelatedTopics || []).slice(0, 4)) {
+        if (topic?.Text && topic?.FirstURL) {
+          results.push({ title: topic.Text.split(' - ')[0].slice(0, 80), snippet: topic.Text.slice(0, 320), url: topic.FirstURL, source: 'DuckDuckGo' });
+        }
+      }
+    })(),
+    (async () => {
+      const d = await fetchJsonWithFallback(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&srlimit=3&format=json&origin=*`);
+      if (!d?.query?.search) return;
+      providers.push('Wikipedia');
+      for (const hit of d.query.search) {
+        const clean = String(hit.snippet || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+        results.push({
+          title: hit.title,
+          snippet: clean.slice(0, 340),
+          url: `https://en.wikipedia.org/wiki/${encodeURIComponent(hit.title.replace(/ /g, '_'))}`,
+          source: 'Wikipedia'
+        });
+      }
+    })(),
+    (async () => {
+      const d = await fetchJsonWithFallback(`https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&per_page=3`, {
+        headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'BiteSizedUtilities-WaffleAI' }
+      });
+      if (!d?.items) return;
+      providers.push('GitHub');
+      for (const repo of d.items) {
+        results.push({
+          title: repo.full_name,
+          snippet: `${repo.description || 'Repository'} (★ ${repo.stargazers_count ?? 0}${repo.language ? `, ${repo.language}` : ''})`.slice(0, 320),
+          url: repo.html_url,
+          source: 'GitHub'
+        });
+      }
+    })(),
+    (async () => {
+      const d = await fetchJsonWithFallback(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(q)}&size=2`);
+      if (!d?.objects) return;
+      providers.push('npm');
+      for (const obj of d.objects) {
+        const p = obj.package;
+        if (!p) continue;
+        results.push({
+          title: `${p.name}@${p.version}`,
+          snippet: (p.description || 'npm package').slice(0, 320),
+          url: p.links?.npm || `https://www.npmjs.com/package/${encodeURIComponent(p.name)}`,
+          source: 'npm'
+        });
+      }
+    })()
+  ]);
+
+  return { results: results.slice(0, 6), providers };
 }
 
 export function attachWaffleAiMiddleware(middlewares) {
@@ -398,6 +493,18 @@ export function attachWaffleAiMiddleware(middlewares) {
         }
       }
       return;
+    }
+
+    if (pathname === '/api/waffle-ai/web-search' && req.method === 'POST') {
+      try {
+        const body = await readJsonBody(req);
+        const query = String(body?.query || '').trim();
+        if (!query) return sendJson(res, 400, { ok: false, error: 'Query required', results: [] });
+        const data = await performWebSearch(query);
+        return sendJson(res, 200, { ok: true, query, ...data });
+      } catch (err) {
+        return sendJson(res, err.statusCode || 500, { ok: false, error: err.message || 'Web search failed', results: [] });
+      }
     }
 
     next();

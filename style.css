@@ -2268,6 +2268,83 @@ html[data-kitchen-theme="midnight"] .english-device-note {
   box-shadow: 0 5px 0 #1f120d;
 }
 
+html[data-kitchen-theme="blueberry"] {
+  --waffle-base: #bed7f2;
+}
+html[data-kitchen-theme="blueberry"] .waffle-grid-layer {
+  background-color: #bed7f2;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' fill='%23bed7f2'/%3E%3Cg stroke='%2391b7e0' stroke-width='6'%3E%3Cline x1='-24' y1='48' x2='48' y2='-24'/%3E%3Cline x1='0' y1='96' x2='96' y2='0'/%3E%3Cline x1='48' y1='120' x2='120' y2='48'/%3E%3Cline x1='-24' y1='48' x2='48' y2='120'/%3E%3Cline x1='0' y1='0' x2='96' y2='96'/%3E%3Cline x1='48' y1='-24' x2='120' y2='48'/%3E%3C/g%3E%3Crect x='22' y='22' width='52' height='52' rx='16' fill='none' stroke='%239ec0e6' stroke-width='3' opacity='0.55'/%3E%3C/svg%3E");
+}
+
+html[data-kitchen-theme="citrus"] {
+  --waffle-base: #ffcf96;
+}
+html[data-kitchen-theme="citrus"] .waffle-grid-layer {
+  background-color: #ffcf96;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' fill='%23ffcf96'/%3E%3Cg stroke='%23f2ab63' stroke-width='6'%3E%3Cline x1='-24' y1='48' x2='48' y2='-24'/%3E%3Cline x1='0' y1='96' x2='96' y2='0'/%3E%3Cline x1='48' y1='120' x2='120' y2='48'/%3E%3Cline x1='-24' y1='48' x2='48' y2='120'/%3E%3Cline x1='0' y1='0' x2='96' y2='96'/%3E%3Cline x1='48' y1='-24' x2='120' y2='48'/%3E%3C/g%3E%3Crect x='22' y='22' width='52' height='52' rx='16' fill='none' stroke='%23f6b877' stroke-width='3' opacity='0.55'/%3E%3C/svg%3E");
+}
+
+html[data-kitchen-theme="lavender"] {
+  --waffle-base: #dfd0f5;
+}
+html[data-kitchen-theme="lavender"] .waffle-grid-layer {
+  background-color: #dfd0f5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' fill='%23dfd0f5'/%3E%3Cg stroke='%23bca4e3' stroke-width='6'%3E%3Cline x1='-24' y1='48' x2='48' y2='-24'/%3E%3Cline x1='0' y1='96' x2='96' y2='0'/%3E%3Cline x1='48' y1='120' x2='120' y2='48'/%3E%3Cline x1='-24' y1='48' x2='48' y2='120'/%3E%3Cline x1='0' y1='0' x2='96' y2='96'/%3E%3Cline x1='48' y1='-24' x2='120' y2='48'/%3E%3C/g%3E%3Crect x='22' y='22' width='52' height='52' rx='16' fill='none' stroke='%23c8b2eb' stroke-width='3' opacity='0.55'/%3E%3C/svg%3E");
+}
+
+html[data-kitchen-theme="mintchoco"] {
+  --waffle-base: #b8eadb;
+}
+html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
+  background-color: #b8eadb;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' fill='%23b8eadb'/%3E%3Cg stroke='%23745141' stroke-width='5' opacity='0.45'%3E%3Cline x1='-24' y1='48' x2='48' y2='-24'/%3E%3Cline x1='0' y1='96' x2='96' y2='0'/%3E%3Cline x1='48' y1='120' x2='120' y2='48'/%3E%3Cline x1='-24' y1='48' x2='48' y2='120'/%3E%3Cline x1='0' y1='0' x2='96' y2='96'/%3E%3Cline x1='48' y1='-24' x2='120' y2='48'/%3E%3C/g%3E%3Crect x='22' y='22' width='52' height='52' rx='16' fill='none' stroke='%238cd2bc' stroke-width='3' opacity='0.7'/%3E%3C/svg%3E");
+}
+
+.warning-popup-card {
+  width: min(520px, 100%);
+}
+.warning-popup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.settings-temp-locked,
+.settings-temp-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 2.5px dashed #b98f5c;
+  background: #fff9ec;
+}
+.waffle-web-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.waffle-web-label {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--ink-soft);
+}
+.waffle-web-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: #e6f4ff;
+  color: var(--ink);
+  text-decoration: none;
+}
+.waffle-web-chip:hover { background: #cfe8ff; }
+
 .settings-theme-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

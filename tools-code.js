@@ -1,5 +1,5 @@
 /** Cozy 2.5D Developer Utilities — zero default HTML select/checkbox/range/color inputs */
-import { gEl, gameBtn, gameTabs, gameToggle, gameSlider, gameColorPicker, gameField, statBox } from './ui-kit.js';
+import { gEl, gameBtn, gameTabs, gameToggle, gameSlider, gameColorPicker, gameField, statBox, copyToClipboard } from './ui-kit.js';
 import { playPop, playSparkle } from './sfx.js';
 import { streamWaffleChat, formatWaffleMarkdown } from './waffle-ai.js';
 import { getAppLanguage } from './i18n.js';
@@ -98,9 +98,9 @@ function download(name, text) {
   const a = document.createElement('a'); a.href = url; a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-function copy(text) {
-  assert(navigator.clipboard?.writeText, 'Clipboard unavailable.');
-  return navigator.clipboard.writeText(text);
+async function copy(text) {
+  const ok = await copyToClipboard(text);
+  if (!ok) throw Error('Copy failed — select and copy manually.');
 }
 function codeArea(value = '', rows = 7) {
   return gEl('textarea', { class: 'gfield-input code-area', rows, spellcheck: 'false', value });

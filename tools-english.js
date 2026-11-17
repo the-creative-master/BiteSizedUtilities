@@ -1,9 +1,8 @@
-import { gEl, gameBtn, gameTabs, gameToggle, gameField, gameFilePill } from './ui-kit.js';
+import { gEl, gameBtn, gameTabs, gameToggle, gameField, gameFilePill, copyToClipboard } from './ui-kit.js';
 import { playPop, playSparkle, playBoing } from './sfx.js';
 import { streamWaffleChat, formatWaffleMarkdown } from './waffle-ai.js';
 import { createDocxBlob, extractTextFromUpload, triggerFileDownload } from './file-tools-client.js';
 import { getAppLanguage } from './i18n.js';
-import { AI_DISCLAIMER_TEXT, detectDeviceDiagnostics, getSelectedTextModel, TEXT_MODELS } from './waffle-browser-ai.js';
 
 const ENGLISH_IDS = [
   'waffle-translate', 'sentence-corrector', 'tone-rewriter', 'grammar-explainer',
@@ -67,8 +66,8 @@ function createRunner(form) {
   const outBody = gEl('div', { class: 'eng-output-body' });
   const copyBtn = gameBtn('📋 Copy', 'chip', async () => {
     if (!lastText) return;
-    await navigator.clipboard?.writeText(lastText).catch(() => {});
-    copyBtn.textContent = 'Copied!';
+    const ok = await copyToClipboard(lastText);
+    copyBtn.textContent = ok ? 'Copied!' : 'Copy failed';
     setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 1200);
   });
   const docxBtn = gameBtn('⬇ Save .docx', 'chip', () => {
@@ -163,8 +162,8 @@ function mountTranslate(form, run) {
 
   const copyBtn = gameBtn('📋 Copy', 'chip', async () => {
     if (!lastTranslation) return;
-    await navigator.clipboard?.writeText(lastTranslation).catch(() => {});
-    copyBtn.textContent = 'Copied!';
+    const ok = await copyToClipboard(lastTranslation);
+    copyBtn.textContent = ok ? 'Copied!' : 'Copy failed';
     setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 1200);
   });
   const speakBtn = gameBtn('🔊 Pronounce', 'chip', () => {
@@ -420,29 +419,13 @@ export function mountEnglish(id, root) {
   root.replaceChildren();
 
   const form = gEl('section', { class: 'game-panel tool-form' });
-  const activeModel = TEXT_MODELS.find(m => m.id === getSelectedTextModel()) || TEXT_MODELS[0];
   const badgeText = id === 'waffle-translate'
-    ? `🌐 Google Translate + ${activeModel.label} · Decent device & WebGPU recommended`
-    : `⚠ Uses ${activeModel.label} (Qwen 2.5 1.5B default) · Decent device & WebGPU recommended`;
-  const devStatusPill = gEl('span', { class: 'waffle-device-pill is-risk' }, 'Checking WebGPU…');
-  const openSettingsBtn = gameBtn('⚙ AI & Fallback Settings', 'chip', () => {
-    playPop(580);
-    window.dispatchEvent(new CustomEvent('bite-open-settings', { detail: { section: 'ai' } }));
-  });
-  const disclaimerCard = gEl('div', { class: 'english-disclaimer-card' },
-    gEl('div', { class: 'eng-ai-banner' },
-      gEl('span', { class: 'gbadge' }, badgeText),
-      devStatusPill,
-      openSettingsBtn
-    ),
-    gEl('p', { class: 'english-disclaimer-copy' }, AI_DISCLAIMER_TEXT),
-    gEl('p', { class: 'english-disclaimer-copy' }, '⚠ Mobile Warning: On an iPhone below iOS 26 or any phone/tablet without WebGPU, browser AI models may crash, freeze, or run slowly — switch to a lighter model or Local Server / WASM CPU mode in Settings if needed.')
+    ? '🌐 Powered by Google Translate API'
+    : '✨ Powered by Qwen 2.5 1.5B';
+  const badge = gEl('div', { class: 'eng-ai-banner' },
+    gEl('span', { class: 'gbadge' }, badgeText)
   );
-  detectDeviceDiagnostics().then(d => {
-    devStatusPill.textContent = d.summaryLabel;
-    devStatusPill.className = `waffle-device-pill ${d.hasRisk ? 'is-risk' : 'is-ok'}`;
-  }).catch(() => {});
-  form.append(disclaimerCard);
+  form.append(badge);
   root.append(form);
 
   const run = createRunner(form);

@@ -225,9 +225,9 @@ export function createDocxBlob(markdownText, title = '') {
   });
 }
 
-async function inflateRaw(bytes) {
+async function inflateStream(bytes, format = 'deflate-raw') {
   if (typeof DecompressionStream !== 'undefined') {
-    const ds = new DecompressionStream('deflate-raw');
+    const ds = new DecompressionStream(format);
     const writer = ds.writable.getWriter();
     writer.write(bytes);
     writer.close();
@@ -237,18 +237,18 @@ async function inflateRaw(bytes) {
   throw new Error('Deflate decompression is not supported in this environment.');
 }
 
-export async function extractTextFromDocxBuffer(arrayBuffer) {
+async function readZipEntries(arrayBuffer, filterFn) {
   const bytes = new Uint8Array(arrayBuffer);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  // Locate End of Central Directory (0x06054b50)
   let eocd = -1;
   for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
     if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
   }
-  if (eocd < 0) throw new Error('Invalid DOCX archive.');
+  if (eocd < 0) throw new Error('Invalid ZIP/OOXML archive.');
   const cdOffset = view.getUint32(eocd + 16, true);
   const totalEntries = view.getUint16(eocd + 10, true);
   const dec = new TextDecoder();
+  const out = [];
 
   let ptr = cdOffset;
   for (let idx = 0; idx < totalEntries && ptr + 46 <= bytes.length; idx++) {
@@ -262,29 +262,94 @@ export async function extractTextFromDocxBuffer(arrayBuffer) {
     const name = dec.decode(bytes.subarray(ptr + 46, ptr + 46 + nameLen));
     ptr += 46 + nameLen + extraLen + commentLen;
 
-    if (name !== 'word/document.xml') continue;
+    if (!filterFn(name)) continue;
     const lNameLen = view.getUint16(localOffset + 26, true);
     const lExtraLen = view.getUint16(localOffset + 28, true);
     const dataStart = localOffset + 30 + lNameLen + lExtraLen;
     const rawSlice = bytes.subarray(dataStart, dataStart + compSize);
-    const xmlBytes = method === 0 ? rawSlice : method === 8 ? await inflateRaw(rawSlice) : null;
-    if (!xmlBytes) throw new Error(`Unsupported DOCX compression method ${method}.`);
-    const xmlStr = dec.decode(xmlBytes);
+    const body = method === 0 ? rawSlice : method === 8 ? await inflateStream(rawSlice, 'deflate-raw') : null;
+    if (body) out.push({ name, text: dec.decode(body) });
+  }
+  return out;
+}
 
-    if (typeof DOMParser !== 'undefined') {
-      const doc = new DOMParser().parseFromString(xmlStr, 'application/xml');
-      const paras = [...doc.getElementsByTagNameNS('*', 'p')];
-      if (paras.length) {
-        return paras.map(p => [...p.getElementsByTagNameNS('*', 't')].map(t => t.textContent).join('')).join('\n').trim();
+function xmlToText(xmlStr, tagName = 't') {
+  if (typeof DOMParser !== 'undefined') {
+    const doc = new DOMParser().parseFromString(xmlStr, 'application/xml');
+    const paras = [...doc.getElementsByTagNameNS('*', 'p')];
+    if (paras.length) {
+      return paras.map(p => [...p.getElementsByTagNameNS('*', tagName)].map(t => t.textContent).join('')).filter(Boolean).join('\n').trim();
+    }
+    const nodes = [...doc.getElementsByTagNameNS('*', tagName)];
+    if (nodes.length) return nodes.map(n => n.textContent).filter(Boolean).join('\n').trim();
+  }
+  return xmlStr
+    .replace(/<\/(?:w:p|a:p|p)>/g, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .trim();
+}
+
+export async function extractTextFromDocxBuffer(arrayBuffer) {
+  const entries = await readZipEntries(arrayBuffer, n => /^word\/document\d*\.xml$/i.test(n));
+  if (!entries.length) throw new Error('Could not find word/document.xml inside DOCX.');
+  return entries.map(e => xmlToText(e.text, 't')).filter(Boolean).join('\n\n').trim();
+}
+
+function parsePdfOperators(chunk) {
+  const pieces = [];
+  const decodePdfStr = s => s
+    .replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')
+    .replace(/\\\(/g, '(').replace(/\\\)/g, ')').replace(/\\\\/g, '\\');
+  for (const m of chunk.matchAll(/\(((?:\\.|[^\\)])*)\)\s*Tj/g)) {
+    pieces.push(decodePdfStr(m[1]));
+  }
+  for (const m of chunk.matchAll(/\[((?:[^[\]]|\((?:\\.|[^\\)])*\))*)\]\s*TJ/g)) {
+    const sub = [];
+    for (const p of m[1].matchAll(/\(((?:\\.|[^\\)])*)\)/g)) sub.push(decodePdfStr(p[1]));
+    if (sub.length) pieces.push(sub.join(''));
+  }
+  return pieces.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+async function extractTextFromPdfBuffer(arrayBuffer) {
+  const bytes = new Uint8Array(arrayBuffer);
+  const raw = new TextDecoder('latin1').decode(bytes);
+  const chunks = [];
+  const direct = parsePdfOperators(raw);
+  if (direct) chunks.push(direct);
+
+  // Decompress FlateDecode PDF streams
+  let pos = 0;
+  while (pos < bytes.length && chunks.join('\n').length < 18000) {
+    const sIdx = raw.indexOf('stream', pos);
+    if (sIdx < 0) break;
+    let dataStart = sIdx + 6;
+    if (raw[dataStart] === '\r' && raw[dataStart + 1] === '\n') dataStart += 2;
+    else if (raw[dataStart] === '\n' || raw[dataStart] === '\r') dataStart += 1;
+    const eIdx = raw.indexOf('endstream', dataStart);
+    if (eIdx < 0) break;
+    let dataEnd = eIdx;
+    if (raw[dataEnd - 1] === '\n') dataEnd--;
+    if (raw[dataEnd - 1] === '\r') dataEnd--;
+    const header = raw.slice(Math.max(0, sIdx - 320), sIdx);
+    if (/FlateDecode/i.test(header) && dataEnd > dataStart) {
+      const slice = bytes.subarray(dataStart, dataEnd);
+      for (const fmt of ['deflate', 'deflate-raw']) {
+        try {
+          const dec = new TextDecoder('latin1').decode(await inflateStream(slice, fmt));
+          const txt = parsePdfOperators(dec);
+          if (txt) { chunks.push(txt); break; }
+        } catch {}
       }
     }
-    return xmlStr
-      .replace(/<\/w:p>/g, '\n')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
-      .trim();
+    pos = eIdx + 9;
   }
-  throw new Error('Could not find word/document.xml inside DOCX.');
+
+  const out = chunks.join('\n').trim();
+  if (out) return out.slice(0, 12000);
+  const printable = raw.replace(/[^\x20-\x7E\r\n\t]+/g, ' ').replace(/\s{3,}/g, '\n').trim();
+  return printable.slice(0, 8000) || '(PDF contains scanned images or unsupported font encoding)';
 }
 
 export async function extractTextFromUpload(file) {
@@ -295,14 +360,31 @@ export async function extractTextFromUpload(file) {
     const text = await extractTextFromDocxBuffer(await file.arrayBuffer());
     return text || '(Empty DOCX document)';
   }
-  if (ext === 'doc' || ext === 'pdf') {
+  if (ext === 'pptx') {
+    const slides = await readZipEntries(await file.arrayBuffer(), n => /^ppt\/slides\/slide\d+\.xml$/i.test(n));
+    slides.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    const text = slides.map((s, i) => `Slide ${i + 1}:\n${xmlToText(s.text, 't')}`).join('\n\n').trim();
+    return text || '(Empty PPTX presentation)';
+  }
+  if (ext === 'xlsx') {
+    const sheets = await readZipEntries(await file.arrayBuffer(), n => /^xl\/sharedStrings\.xml$/i.test(n));
+    const text = sheets.map(s => xmlToText(s.text, 't')).join('\n').trim();
+    return text || '(Empty XLSX spreadsheet)';
+  }
+  if (ext === 'pdf') {
+    return await extractTextFromPdfBuffer(await file.arrayBuffer());
+  }
+  if (ext === 'doc') {
     const buf = new Uint8Array(await file.arrayBuffer());
     const raw = new TextDecoder('latin1').decode(buf);
     const printable = raw.replace(/[^\x20-\x7E\r\n\t]+/g, ' ').replace(/\s{3,}/g, '\n').trim();
-    return printable.slice(0, 12000) || '(Binary document — convert to .docx or .txt for full text extraction)';
+    return printable.slice(0, 12000) || '(Binary .doc — convert to .docx or .txt for full text extraction)';
+  }
+  if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'ico'].includes(ext)) {
+    return `[Image file: ${file.name}, ${Math.max(1, Math.round(file.size / 1024))} KB, type: ${file.type || ext}]`;
   }
   const text = await file.text();
-  return text;
+  return text.replace(/\u0000/g, '');
 }
 
 export function triggerFileDownload(contentOrBlob, filename, mime = 'text/plain;charset=utf-8') {

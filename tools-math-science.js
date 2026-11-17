@@ -1,6 +1,6 @@
 /** Cozy 2.5D Science & Physics Toys — zero default HTML select/range/checkbox inputs */
 import { MATH_NUMBER_TOOLS } from './tools-math-numbers.js';
-import { gEl, gameBtn, gameTabs, gameSlider, gameField, statBox } from './ui-kit.js';
+import { gEl, gameBtn, gameTabs, gameSlider, gameField, statBox, copyToClipboard } from './ui-kit.js';
 import { playPop, playSparkle, playBoing } from './sfx.js';
 
 const PI = Math.PI;
@@ -851,7 +851,7 @@ function constants(root) {
       const card = gEl('div', { class: 'pastel-card cream' },
         gEl('div', { class: 'gslider-head' }, gEl('strong', {}, `${name} (${sym})`), gEl('span', { class: 'gbadge' }, note)),
         gEl('div', { class: 'stat-mid' }, `${val} ${unit}`),
-        gameBtn('Copy Value', 'chip', () => { playSparkle(); navigator.clipboard?.writeText(String(val)); })
+        gameBtn('Copy Value', 'chip', () => { playSparkle(); copyToClipboard(String(val)); })
       );
       return card;
     }));

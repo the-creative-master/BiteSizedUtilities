@@ -1,5 +1,6 @@
 import { waffleMascotSVG } from './icons-25d.js';
 import { playPop, playBoing, playSquish, playSparkle } from './sfx.js';
+import { copyToClipboard } from './ui-kit.js';
 import { createDocxBlob, extractTextFromUpload, triggerFileDownload } from './file-tools-client.js';
 import {
   TEXT_MODELS,
@@ -9,6 +10,7 @@ import {
   getSelectedImageModel,
   getSelectedExecutionMode,
   getSmartPromptEnabled,
+  getAiTemperature,
   detectDeviceDiagnostics,
   AI_DISCLAIMER_TEXT
 } from './waffle-browser-ai.js';
@@ -49,6 +51,7 @@ let activeAbort = null;
 let modelState = { preCached: true, loaded: false, loading: false };
 let codeArtifacts = [];
 let imageMode = false;
+let webSearchMode = false;
 let imageCaps = { hasWebGPU: false, hasF16: false };
 let deviceDiag = { hasWebGPU: false, isOldIOS: false, hasRisk: true, summaryLabel: 'Checking device…' };
 
@@ -519,6 +522,9 @@ function renderMessages() {
       bodyHtml = m.content ? formatWaffleMarkdown(m.content, streamingNow) : '<span class="waffle-thinking">Warming up the waffle iron…</span>';
     }
 
+    const webSourcesBar = !isUser && m.webSources?.length
+      ? `<div class="waffle-web-sources"><span class="waffle-web-label">🌐 Sources:</span>${m.webSources.map(s => `<a class="waffle-web-chip" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)} · <small>${esc(s.source)}</small></a>`).join('')}</div>`
+      : '';
     const exportBar = !isUser && !streamingNow && m.content && !m.imageResult
       ? `<div class="waffle-msg-actions">
            <button type="button" class="waffle-mini-btn" data-copy-msg="${idx}">Copy</button>
@@ -532,6 +538,7 @@ function renderMessages() {
         <div class="waffle-msg-bubble">
           <div class="waffle-msg-author">${isUser ? 'You' : (m.authorLabel || 'Sir Waffle')}</div>
           ${fileNote}
+          ${webSourcesBar}
           <div class="waffle-msg-body">${bodyHtml}${streamingCursor}</div>
           ${exportBar}
         </div>
@@ -543,8 +550,8 @@ function renderMessages() {
     btn.addEventListener('click', async () => {
       const art = codeArtifacts[Number(btn.dataset.copyArtifact)];
       if (!art) return;
-      await navigator.clipboard?.writeText(art.code).catch(() => {});
-      btn.textContent = 'Copied!';
+      const ok = await copyToClipboard(art.code);
+      btn.textContent = ok ? 'Copied!' : 'Failed';
       setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
     });
   });
@@ -594,8 +601,8 @@ function renderMessages() {
     btn.addEventListener('click', async () => {
       const m = messages[Number(btn.dataset.copyMsg)];
       if (!m) return;
-      await navigator.clipboard?.writeText(m.content).catch(() => {});
-      btn.textContent = 'Copied!';
+      const ok = await copyToClipboard(m.content);
+      btn.textContent = ok ? 'Copied!' : 'Failed';
       setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
     });
   });
@@ -629,20 +636,27 @@ function syncComposerState() {
   const sendBtn = overlayEl.querySelector('#waffle-ai-send');
   const stopBtn = overlayEl.querySelector('#waffle-ai-stop');
   const imgToggle = overlayEl.querySelector('#waffle-ai-img-toggle');
+  const webToggle = overlayEl.querySelector('#waffle-ai-web-toggle');
   const input = overlayEl.querySelector('#waffle-ai-input');
   if (sendBtn) {
     sendBtn.hidden = isGenerating;
-    sendBtn.textContent = imageMode ? 'Imagine' : 'Send';
+    sendBtn.textContent = imageMode ? 'Imagine' : webSearchMode ? 'Search & Ask' : 'Send';
   }
   if (stopBtn) stopBtn.hidden = !isGenerating;
   if (imgToggle) {
     imgToggle.classList.toggle('selected', imageMode);
     imgToggle.setAttribute('aria-pressed', String(imageMode));
   }
+  if (webToggle) {
+    webToggle.classList.toggle('selected', webSearchMode);
+    webToggle.setAttribute('aria-pressed', String(webSearchMode));
+  }
   if (input) {
     input.placeholder = imageMode
       ? `Describe an image for ${activeImageCfg().name}…`
-      : 'Ask Sir Waffle, drop a file, or type /imagine <prompt>…';
+      : webSearchMode
+        ? 'Ask with Web Search ON (e.g. latest news, GitHub repos, facts)…'
+        : 'Ask Sir Waffle, attach a file, /search <query>, or /imagine <prompt>…';
   }
   updateStatusBadge();
 }
@@ -651,7 +665,8 @@ async function handleFilesSelected(fileList) {
   for (const file of [...fileList].slice(0, 4)) {
     try {
       const extracted = await extractTextFromUpload(file);
-      const clipped = extracted.slice(0, 6000);
+      const clipped = String(extracted || '').trim().slice(0, 5200);
+      if (!clipped) throw new Error('No readable text found inside this file.');
       attachments.push({ name: file.name, text: clipped });
       playPop(620);
     } catch (err) {
@@ -765,9 +780,13 @@ async function sendMessage(rawText) {
   const currentFiles = attachments.splice(0);
   renderAttachments();
 
+  const wantsWeb = webSearchMode || /^\/search\b/i.test(text);
+  const cleanQuery = text.replace(/^\/search\s*/i, '').trim();
+
   const fileNames = currentFiles.map(f => f.name);
-  const fileContext = currentFiles.map(f => `[Attached File: ${f.name}]\n${f.text}`).join('\n\n');
-  const promptText = [fileContext, text || 'Please analyze the attached file(s).'].filter(Boolean).join('\n\n');
+  const fileContext = currentFiles.map(f =>
+    `The user uploaded the file "${f.name}". Read its exact contents carefully and use it to answer:\n--- BEGIN FILE: ${f.name} ---\n${f.text}\n--- END FILE: ${f.name} ---`
+  ).join('\n\n');
   const tCfg = activeTextCfg();
 
   playPop(580);
@@ -775,11 +794,12 @@ async function sendMessage(rawText) {
     role: 'user',
     displayContent: text || `Analyze ${fileNames.join(', ')}`,
     fileNames,
-    content: promptText
+    content: [fileContext, cleanQuery || 'Please read and summarize the attached file(s).'].filter(Boolean).join('\n\n')
   });
   messages.push({
     role: 'assistant',
     authorLabel: `Sir Waffle · ${tCfg.label}`,
+    webSources: [],
     content: ''
   });
   isGenerating = true;
@@ -787,8 +807,39 @@ async function sendMessage(rawText) {
   syncComposerState();
 
   const assistantIdx = messages.length - 1;
-  const historyPayload = messages.slice(0, assistantIdx).map(m => ({ role: m.role, content: m.content }));
   activeAbort = new AbortController();
+
+  let webContext = '';
+  if (wantsWeb && cleanQuery) {
+    updateStatusBadge('🌐 Searching the web…');
+    try {
+      const wr = await fetch('./api/waffle-ai/web-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: cleanQuery }),
+        signal: activeAbort.signal
+      });
+      if (wr.ok) {
+        const wd = await wr.json();
+        if (Array.isArray(wd.results) && wd.results.length) {
+          messages[assistantIdx].webSources = wd.results;
+          webContext = `Web search results for "${cleanQuery}":\n` + wd.results
+            .map((r, i) => `[${i + 1}] ${r.title} (${r.source}) - ${r.url}\n${r.snippet}`)
+            .join('\n\n');
+          renderMessages();
+        }
+      }
+    } catch {}
+  }
+
+  const finalUserContent = [
+    fileContext,
+    webContext ? `Use these live web search results to answer accurately and cite sources:\n--- WEB SEARCH RESULTS ---\n${webContext}\n--- END WEB SEARCH RESULTS ---` : '',
+    cleanQuery || 'Please read and summarize the attached file(s).'
+  ].filter(Boolean).join('\n\n');
+  messages[assistantIdx - 1].content = finalUserContent;
+
+  const historyPayload = messages.slice(0, assistantIdx).map(m => ({ role: m.role, content: m.content }));
 
   try {
     const finalText = await streamWaffleChat({
@@ -798,7 +849,7 @@ async function sendMessage(rawText) {
         ? 'You are Sir Waffle, the cheerful, helpful mascot of BiteSizedUtilities. Answer clearly in Markdown.'
         : undefined,
       maxTokens: tCfg.kind === 'browser' ? 560 : 680,
-      temperature: 0.7,
+      temperature: getAiTemperature(),
       signal: activeAbort.signal,
       onStatus(payload) {
         if (payload.detail) updateStatusBadge(payload.detail);
@@ -882,10 +933,11 @@ function buildOverlay() {
       <div class="waffle-ai-files" id="waffle-ai-files" hidden></div>
 
       <form class="waffle-ai-composer" id="waffle-ai-form">
-        <input type="file" id="waffle-ai-file-in" multiple accept=".txt,.md,.csv,.json,.js,.ts,.py,.html,.css,.xml,.yaml,.yml,.docx,.pdf,.log,.sql" hidden>
-        <button type="button" class="gbtn waffle-attach-btn" id="waffle-ai-attach" title="Attach .docx, .txt, .md, .csv, or code file">📎</button>
+        <input type="file" id="waffle-ai-file-in" multiple accept=".docx,.pptx,.xlsx,.pdf,.txt,.md,.csv,.json,.js,.ts,.jsx,.tsx,.py,.java,.c,.cpp,.rs,.go,.rb,.php,.html,.css,.xml,.yaml,.yml,.sql,.log,.svg,.png,.jpg,.jpeg,.webp" hidden>
+        <button type="button" class="gbtn waffle-attach-btn" id="waffle-ai-attach" title="Attach .docx, .pdf, .pptx, .xlsx, .txt, .md, .csv, or code file">📎</button>
+        <button type="button" class="gbtn waffle-img-toggle" id="waffle-ai-web-toggle" aria-pressed="false" title="Toggle Web Search mode">🌐 Web</button>
         <button type="button" class="gbtn waffle-img-toggle" id="waffle-ai-img-toggle" aria-pressed="false" title="Toggle Image Generation mode (SDXS-512 / SD-Turbo)">🎨 Image</button>
-        <textarea id="waffle-ai-input" class="waffle-ai-input" rows="1" placeholder="Ask Sir Waffle, drop a file, or type /imagine <prompt>…" aria-label="Message Waffle AI"></textarea>
+        <textarea id="waffle-ai-input" class="waffle-ai-input" rows="1" placeholder="Ask Sir Waffle, attach a file, /search <query>, or /imagine <prompt>…" aria-label="Message Waffle AI"></textarea>
         <button type="submit" class="gbtn gbtn-primary waffle-send-btn" id="waffle-ai-send">Send</button>
         <button type="button" class="gbtn waffle-stop-btn" id="waffle-ai-stop" hidden>Stop</button>
       </form>
@@ -914,8 +966,17 @@ function buildOverlay() {
     syncComposerState();
   });
 
+  wrap.querySelector('#waffle-ai-web-toggle').addEventListener('click', () => {
+    webSearchMode = !webSearchMode;
+    if (webSearchMode) imageMode = false;
+    playPop(webSearchMode ? 680 : 520);
+    syncComposerState();
+    wrap.querySelector('#waffle-ai-input').focus();
+  });
+
   wrap.querySelector('#waffle-ai-img-toggle').addEventListener('click', () => {
     imageMode = !imageMode;
+    if (imageMode) webSearchMode = false;
     playPop(imageMode ? 680 : 520);
     syncComposerState();
     wrap.querySelector('#waffle-ai-input').focus();

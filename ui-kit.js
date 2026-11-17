@@ -246,3 +246,30 @@ export function statBox(label, value = '—', tone = '') {
   const box = gEl('div', { class: `stat-box ${tone}` }, gEl('span', {}, label), valEl);
   return { el: box, valEl, set(v) { valEl.textContent = String(v); } };
 }
+
+export async function copyToClipboard(text) {
+  const str = String(text ?? '');
+  if (!str) return false;
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(str);
+      return true;
+    } catch {}
+  }
+  if (typeof document !== 'undefined') {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = str;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+      document.body.append(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, str.length);
+      const ok = document.execCommand('copy');
+      ta.remove();
+      if (ok) return true;
+    } catch {}
+  }
+  return false;
+}

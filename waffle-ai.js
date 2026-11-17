@@ -871,21 +871,46 @@ async function sendMessage(rawText) {
   if (wantsWeb && cleanQuery) {
     updateStatusBadge('🌐 Searching the web…');
     try {
-      const wr = await fetch('./api/waffle-ai/web-search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: cleanQuery }),
-        signal: activeAbort.signal
-      });
-      if (wr.ok) {
-        const wd = await wr.json();
-        if (Array.isArray(wd.results) && wd.results.length) {
-          messages[assistantIdx].webSources = wd.results;
-          webContext = `Web search results for "${cleanQuery}":\n` + wd.results
-            .map((r, i) => `[${i + 1}] ${r.title} (${r.source}) - ${r.url}\n${r.snippet}`)
-            .join('\n\n');
-          renderMessages();
+      let results = [];
+      try {
+        const wr = await fetch('./api/waffle-ai/web-search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: cleanQuery }),
+          signal: activeAbort.signal
+        });
+        const ct = wr.headers.get('content-type') || '';
+        if (wr.ok && ct.includes('application/json')) {
+          const wd = await wr.json();
+          if (Array.isArray(wd.results)) results = wd.results;
         }
+      } catch {}
+      if (!results.length) {
+        const qEnc = encodeURIComponent(cleanQuery);
+        const [wiki, gh, npm] = await Promise.allSettled([
+          fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${qEnc}&srlimit=3&format=json&origin=*`, { signal: activeAbort.signal }).then(r => r.ok ? r.json() : null),
+          fetch(`https://api.github.com/search/repositories?q=${qEnc}&per_page=2`, { signal: activeAbort.signal }).then(r => r.ok ? r.json() : null),
+          fetch(`https://registry.npmjs.org/-/v1/search?text=${qEnc}&size=2`, { signal: activeAbort.signal }).then(r => r.ok ? r.json() : null)
+        ]);
+        for (const hit of (wiki.value?.query?.search || [])) {
+          const clean = String(hit.snippet || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+          results.push({ title: hit.title, snippet: clean.slice(0, 340), url: `https://en.wikipedia.org/wiki/${encodeURIComponent(hit.title.replace(/ /g, '_'))}`, source: 'Wikipedia' });
+        }
+        for (const repo of (gh.value?.items || [])) {
+          results.push({ title: repo.full_name, snippet: `${repo.description || 'Repository'} (★ ${repo.stargazers_count ?? 0})`.slice(0, 320), url: repo.html_url, source: 'GitHub' });
+        }
+        for (const obj of (npm.value?.objects || [])) {
+          const p = obj.package;
+          if (p) results.push({ title: `${p.name}@${p.version}`, snippet: (p.description || 'npm package').slice(0, 320), url: p.links?.npm || `https://www.npmjs.com/package/${encodeURIComponent(p.name)}`, source: 'npm' });
+        }
+        results = results.slice(0, 6);
+      }
+      if (results.length) {
+        messages[assistantIdx].webSources = results;
+        webContext = `Web search results for "${cleanQuery}":\n` + results
+          .map((r, i) => `[${i + 1}] ${r.title} (${r.source}) - ${r.url}\n${r.snippet}`)
+          .join('\n\n');
+        renderMessages();
       }
     } catch {}
   }

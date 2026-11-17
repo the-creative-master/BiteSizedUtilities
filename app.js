@@ -31,6 +31,12 @@ import {
   isTempUnlocked,
   setTempUnlocked,
   detectDeviceDiagnostics,
+  precacheTextModel,
+  listPrecachedModels,
+  removePrecachedModel,
+  clearPrecachedModels,
+  estimateModelStorage,
+  requestPersistentStorage,
   AI_DISCLAIMER_TEXT
 } from './waffle-browser-ai.js';
 import { IMAGE_MODELS, detectImageCapabilities } from './waffle-image-gen.js';
@@ -166,6 +172,8 @@ app.innerHTML = `
           <div class="waffle-pill-grid" id="settings-ai-exec-list"></div>
           <div class="settings-sub-label">Quantization / File Size</div>
           <div class="waffle-pill-grid" id="settings-ai-quant-list"></div>
+          <div class="settings-sub-label">Pre-cache Models On This Device</div>
+          <div class="waffle-precache" id="settings-ai-precache"></div>
           <div class="settings-sub-label">Temperature (Experienced Users Only)</div>
           <div id="settings-temp-wrap"></div>
         </div>
@@ -700,6 +708,123 @@ function syncSoundUI() {
 
 let settingsImageCaps = { hasWebGPU: false, hasF16: false };
 
+/* ------------------------------------------------------------------ *
+ * Pre-cache panel — download a model's GGUF into on-device storage
+ * (OPFS) once, so later chats start instantly and work with no server.
+ * ------------------------------------------------------------------ */
+let precacheState = { entries: [], storage: null, busy: null, busyDetail: '', error: '' };
+let precacheAbort = null;
+
+async function refreshPrecacheState() {
+  try {
+    const [entries, storageInfo] = await Promise.all([
+      listPrecachedModels().catch(() => []),
+      estimateModelStorage().catch(() => null)
+    ]);
+    precacheState = { ...precacheState, entries, storage: storageInfo };
+  } catch {}
+  if (!$('#settings-overlay')?.hidden) renderPrecachePanel();
+}
+
+function renderPrecachePanel() {
+  const box = $('#settings-ai-precache');
+  if (!box) return;
+  const byRepo = new Map(precacheState.entries.map(e => [e.key, e]));
+  const mb = b => (b > 0 ? `${Math.round(b / 1048576)} MB` : '?');
+  const st = precacheState.storage;
+
+  const rows = TEXT_MODELS.filter(m => m.hfGgufRepo).map(m => {
+    const entry = byRepo.get(m.hfGgufRepo);
+    const cached = Boolean(entry?.usable);
+    const busy = precacheState.busy === m.id;
+    const stateLabel = busy
+      ? (precacheState.busyDetail || 'Working…')
+      : cached
+        ? `✅ On device · ${mb(entry.sizeBytes)} · ${entry.quant || 'GGUF'}`
+        : entry?.onDisk
+          ? '⚠ Cached but incomplete — re-cache it'
+          : `⬇ Not cached · ~${m.ggufMB || '?'} MB`;
+    return `
+      <div class="waffle-precache-row ${busy ? 'is-busy' : ''}">
+        <div class="waffle-precache-info">
+          <strong>${m.label}</strong>
+          <small>${stateLabel}</small>
+        </div>
+        <div class="waffle-precache-actions">
+          ${busy ? '<button type="button" class="gbtn waffle-mini-btn" data-precache-stop>Stop</button>' : ''}
+          <button type="button" class="gbtn waffle-mini-btn" data-precache="${m.id}" ${busy ? 'disabled' : ''}>${cached ? '↻ Re-cache' : '⬇ Pre-cache'}</button>
+          ${cached ? `<button type="button" class="gbtn waffle-mini-btn" data-precache-rm="${entry.key}" title="Delete this cached model">🗑</button>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  box.innerHTML = `
+    <p class="waffle-precache-copy">
+      Static hosts like GitHub Pages have no llama.cpp server, so models are streamed from
+      Hugging Face on first use. Pre-cache them here and they are stored on this device
+      (OPFS) — later chats start instantly and keep working offline.
+    </p>
+    ${precacheState.error ? `<p class="waffle-precache-error">${precacheState.error}</p>` : ''}
+    ${rows}
+    <div class="waffle-precache-foot">
+      <span>${st ? `Device storage: ${mb(st.usageBytes)} used of ${mb(st.quotaBytes)}${st.persistent ? ' · kept' : ''}` : 'Device storage: unknown'}</span>
+      <span class="waffle-precache-foot-btns">
+        ${st && !st.persistent ? '<button type="button" class="gbtn waffle-mini-btn" id="precache-persist">🔒 Ask to keep</button>' : ''}
+        <button type="button" class="gbtn waffle-mini-btn" id="precache-clear">🧹 Clear all cached models</button>
+      </span>
+    </div>
+  `;
+
+  box.querySelectorAll('[data-precache]').forEach(btn => {
+    btn.addEventListener('click', () => startPrecache(btn.dataset.precache));
+  });
+  box.querySelector('[data-precache-stop]')?.addEventListener('click', () => {
+    precacheAbort?.abort();
+  });
+  box.querySelectorAll('[data-precache-rm]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      playPop(420);
+      await removePrecachedModel(btn.dataset.precacheRm).catch(() => {});
+      await refreshPrecacheState();
+    });
+  });
+  box.querySelector('#precache-clear')?.addEventListener('click', async () => {
+    playPop(380);
+    await clearPrecachedModels().catch(() => {});
+    await refreshPrecacheState();
+  });
+  box.querySelector('#precache-persist')?.addEventListener('click', async () => {
+    const ok = await requestPersistentStorage();
+    precacheState.error = ok ? '' : 'This browser refused to mark storage persistent; cached models may still be evicted when space is tight.';
+    await refreshPrecacheState();
+  });
+}
+
+async function startPrecache(modelId) {
+  if (precacheState.busy) return;
+  playPop(620);
+  precacheAbort = new AbortController();
+  precacheState = { ...precacheState, busy: modelId, busyDetail: 'Resolving the best quant…', error: '' };
+  renderPrecachePanel();
+  try {
+    await precacheTextModel(modelId, {
+      signal: precacheAbort.signal,
+      onProgress: p => {
+        precacheState.busyDetail = p.detail || '';
+        const row = document.querySelector('.waffle-precache-row.is-busy .waffle-precache-info small');
+        if (row) row.textContent = precacheState.busyDetail;
+      }
+    });
+    precacheState.error = '';
+  } catch (err) {
+    if (err?.name !== 'AbortError') precacheState.error = String(err?.message || err);
+  } finally {
+    precacheState = { ...precacheState, busy: null, busyDetail: '' };
+    precacheAbort = null;
+    await refreshPrecacheState();
+  }
+}
+
 function renderSettingsModal() {
   syncSoundUI();
   const themeList = $('#settings-theme-list');
@@ -824,6 +949,8 @@ function renderSettingsModal() {
     });
   }
 
+  renderPrecachePanel();
+
   const tempWrap = $('#settings-temp-wrap');
   if (tempWrap) {
     const curTemp = getAiTemperature();
@@ -882,6 +1009,7 @@ function openSettingsModal(scrollToSection = '') {
   playPop(580);
   renderSettingsModal();
   $('#settings-overlay').hidden = false;
+  refreshPrecacheState();
   if (scrollToSection === 'ai') {
     setTimeout(() => $('#settings-ai-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40);
   }

@@ -1,7 +1,110 @@
 import { defineConfig } from 'vite';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { attachWaffleAiMiddleware, scheduleWaffleWarmup } from './waffle-ai-server.js';
+
+const nodeRequire = createRequire(import.meta.url);
+
+/** Walk up from a resolved module file until its own package.json is found. */
+function packageRootOf(resolvedFile) {
+  let dir = path.dirname(resolvedFile);
+  for (let i = 0; i < 12; i++) {
+    const pkgPath = path.join(dir, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pj = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+        if (pj?.name) return { dir, version: pj.version || '', name: pj.name };
+      } catch {}
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+function resolvePackage(spec, fromFile) {
+  try {
+    const r = fromFile ? createRequire(fromFile) : nodeRequire;
+    return packageRootOf(r.resolve(spec));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * onnxruntime-web ships its WASM factory next to the JS that was built against
+ * it, and the two must come from the SAME build. This app pulls ORT in through
+ * two different doors:
+ *
+ *   - waffle-image-gen.js imports `onnxruntime-web/webgpu` directly, so Vite
+ *     bundles the top-level onnxruntime-web.
+ *   - waffle-browser-ai.js goes through @huggingface/transformers, which ships
+ *     its own pre-bundled ORT JS built against a *pinned* onnxruntime-web
+ *     (often a dev pre-release nested inside the transformers package).
+ *
+ * Feeding the chat pipeline the top-level WASM therefore mixes ORT JS 1.31.x
+ * with a WASM factory from a different build: the model downloads fine and the
+ * session then dies. So each consumer gets its own directory.
+ */
+function resolveOrtRuntimes() {
+  const image = resolvePackage('onnxruntime-web');
+  const transformers = resolvePackage('@huggingface/transformers');
+  const chat = transformers
+    ? (resolvePackage('onnxruntime-web', path.join(transformers.dir, 'package.json')) || image)
+    : image;
+  const withDist = entry => {
+    if (!entry) return null;
+    const dist = path.join(entry.dir, 'dist');
+    return fs.existsSync(dist) ? { ...entry, dist } : null;
+  };
+  return { image: withDist(image), chat: withDist(chat) };
+}
+
+const ORT_RUNTIME_FILES = /^ort-wasm-simd-threaded(\.asyncify)?\.(wasm|mjs)$/;
+const HASHED_ORT_ASSET = /^(ort-wasm-simd-threaded(?:\.asyncify|\.jsep|\.jspi)?)-[\w-]{8}\.(wasm|mjs)$/;
+
+/**
+ * Rollup also emits every `new URL('ort-wasm-simd-threaded*.wasm',
+ * import.meta.url)` reference inside the ORT bundles as a hashed asset under
+ * `dist/assets/`. Those copies are pure dead weight: `env.wasm.wasmPaths` is
+ * always set before a session is created (transformers.js points it at
+ * jsDelivr, Waffle AI points it at the local `ort/` + `ort-chat/` dirs), so the
+ * `locateFile` fallback that reads them never runs. Repoint the reference at
+ * the stable copy and delete the duplicate — that is ~27 MB less per deploy.
+ */
+function dedupeOrtAssets(outDirs) {
+  const assetsDir = path.resolve('dist/assets');
+  if (!fs.existsSync(assetsDir)) return 0;
+  const stable = new Map();
+  for (const rel of outDirs) {
+    const dir = path.resolve(rel);
+    if (!fs.existsSync(dir)) continue;
+    for (const f of fs.readdirSync(dir)) {
+      if (ORT_RUNTIME_FILES.test(f) && !stable.has(f)) stable.set(f, { dir: rel, file: dir + path.sep + f });
+    }
+  }
+  let removed = 0;
+  for (const f of fs.readdirSync(assetsDir)) {
+    const m = HASHED_ORT_ASSET.exec(f);
+    if (!m) continue;
+    const twin = stable.get(`${m[1]}.${m[2]}`);
+    const assetPath = path.join(assetsDir, f);
+    if (!twin || fs.statSync(assetPath).size !== fs.statSync(twin.file).size) continue;
+    const target = `../${path.basename(twin.dir)}/${m[1]}.${m[2]}`;
+    for (const chunk of fs.readdirSync(assetsDir)) {
+      if (!chunk.endsWith('.js')) continue;
+      const chunkPath = path.join(assetsDir, chunk);
+      const code = fs.readFileSync(chunkPath, 'utf8');
+      if (!code.includes(f)) continue;
+      fs.writeFileSync(chunkPath, code.split(f).join(target));
+    }
+    fs.rmSync(assetPath);
+    removed++;
+  }
+  return removed;
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -35,13 +138,18 @@ const MIME = {
 function attachLocalModelRoutes(middlewares) {
   const sdRoot = path.resolve('.cache/waffle-ai/sd-models');
   const ggufRoot = path.resolve('.cache/waffle-ai');
-  const ortRoot = path.resolve('node_modules/onnxruntime-web/dist');
+  const ortRuntimes = resolveOrtRuntimes();
+  const ortRoot = ortRuntimes.image?.dist || path.resolve('node_modules/onnxruntime-web/dist');
+  const ortChatRoot = ortRuntimes.chat?.dist || ortRoot;
+  const ortVersion = ortRuntimes.image?.version || '';
+  const ortChatVersion = ortRuntimes.chat?.version || ortVersion;
   const wllamaRoot = path.resolve('node_modules/@wllama/wllama/esm/wasm');
   const wllamaCompatRoot = path.resolve('node_modules/@wllama/wllama-compat/wasm');
   const mounts = [
     ['/api/waffle-ai/sd-models/', sdRoot, 'public, max-age=86400'],
     ['/api/waffle-ai/gguf/', ggufRoot, 'public, max-age=86400'],
-    ['/ort/', ortRoot, 'public, max-age=86400'],
+    ['/ort-chat/', ortChatRoot, 'public, max-age=86400', ortChatVersion],
+    ['/ort/', ortRoot, 'public, max-age=86400', ortVersion],
     ['/wllama/', wllamaRoot, 'public, max-age=86400'],
     ['/wllama-compat/', wllamaCompatRoot, 'public, max-age=86400'],
     ['/runtimes/', path.resolve('runtimes'), 'no-cache'],
@@ -55,11 +163,19 @@ function attachLocalModelRoutes(middlewares) {
     } catch {
       return next();
     }
-    for (const [marker, rootDir, cacheCtl] of mounts) {
+    for (const [marker, rootDir, cacheCtl, runtimeVersion] of mounts) {
       const offset = pathname.indexOf(marker);
       if (offset < 0) continue;
       const rel = pathname.slice(offset + marker.length);
       if (marker === '/api/waffle-ai/gguf/' && !rel.endsWith('.gguf')) return next();
+      if (rel === 'ort-version.json' && runtimeVersion) {
+        res.statusCode = 200;
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.end(JSON.stringify({ version: runtimeVersion, dir: marker }));
+        return;
+      }
       const file = path.resolve(rootDir, rel);
       if (!file.startsWith(rootDir + path.sep)) {
         res.statusCode = 403;
@@ -168,15 +284,29 @@ export default defineConfig({
       for (const dir of ['games', 'runtimes']) {
         if (fs.existsSync(dir)) fs.cpSync(dir, `dist/${dir}`, { recursive: true });
       }
-      const ortDist = path.resolve('node_modules/onnxruntime-web/dist');
-      if (fs.existsSync(ortDist)) {
-        fs.mkdirSync('dist/ort', { recursive: true });
-        for (const f of fs.readdirSync(ortDist)) {
-          if (/^ort-wasm-simd-threaded(\.asyncify)?\.(wasm|mjs)$/.test(f)) {
-            fs.copyFileSync(path.join(ortDist, f), path.join('dist/ort', f));
+      const ortRuntimes = resolveOrtRuntimes();
+      const copyOrtRuntime = (srcDist, outDir, version) => {
+        if (!srcDist || !fs.existsSync(srcDist)) return false;
+        fs.mkdirSync(outDir, { recursive: true });
+        let copied = 0;
+        for (const f of fs.readdirSync(srcDist)) {
+          if (ORT_RUNTIME_FILES.test(f)) {
+            fs.copyFileSync(path.join(srcDist, f), path.join(outDir, f));
+            copied++;
           }
         }
+        // Lets the browser verify that the WASM factory matches the ORT JS it
+        // was handed, and fall back to the CDN copy when it does not.
+        fs.writeFileSync(path.join(outDir, 'ort-version.json'), JSON.stringify({ version: version || '' }));
+        return copied > 0;
+      };
+      copyOrtRuntime(ortRuntimes.image?.dist, 'dist/ort', ortRuntimes.image?.version);
+      // Only ship a second copy when the chat pipeline (transformers.js) really
+      // was built against a different onnxruntime-web than the image pipeline.
+      if (ortRuntimes.chat?.dist && ortRuntimes.chat.dist !== ortRuntimes.image?.dist) {
+        copyOrtRuntime(ortRuntimes.chat.dist, 'dist/ort-chat', ortRuntimes.chat.version);
       }
+      dedupeOrtAssets(['dist/ort-chat', 'dist/ort']);
       const wllamaDist = path.resolve('node_modules/@wllama/wllama/esm/wasm');
       if (fs.existsSync(wllamaDist)) {
         fs.mkdirSync('dist/wllama', { recursive: true });
@@ -205,9 +335,84 @@ export default defineConfig({
         }
       }
       walk('dist');
-      const shell = files.filter(p => !p.startsWith('./games/') && !p.startsWith('./runtimes/') && !p.startsWith('./ort/') && !p.startsWith('./wllama/') && !p.startsWith('./wllama-compat/') && !p.endsWith('.wasm') && p !== './sw.js');
+      const shell = files.filter(p => !p.startsWith('./games/') && !p.startsWith('./runtimes/') && !p.startsWith('./ort/') && !p.startsWith('./ort-chat/') && !p.startsWith('./wllama/') && !p.startsWith('./wllama-compat/') && !p.endsWith('.wasm') && p !== './sw.js');
       const version = 'bite-' + Date.now();
-      fs.writeFileSync('dist/sw.js', `const CACHE=${JSON.stringify(version)};const SHELL=${JSON.stringify(shell)};self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('bite-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.origin!==location.origin||u.pathname.startsWith('/api/'))return;e.respondWith(fetch(e.request).then(r=>{if(r.ok&&r.type==='basic'){const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy)).catch(()=>{})}return r}).catch(()=>caches.match(e.request).then(hit=>hit||(e.request.mode==='navigate'?caches.match('./index.html'):Response.error()))))});`);
+      // The worker only exists on static hosts (GitHub Pages), where there is no
+      // llama.cpp server and no COOP/COEP. It has to:
+      //   - answer /api/waffle-ai/* instantly instead of letting the host return
+      //     a 404 HTML page (the client then knows it is a static deploy at once),
+      //   - stay out of the way of the huge runtime assets (transformers.js keeps
+      //     its own copy of the ORT wasm, so caching it twice only burns quota),
+      //   - work from a sub-path, so nothing may assume the site lives at "/".
+      const swSource = `
+const CACHE = __CACHE__;
+const SHELL = __SHELL__;
+const SCOPE = new URL('.', self.location.href).href;
+const BIG_ASSET = /\\.(wasm|gguf|onnx|bin|safetensors|zip|mp4|webm)$/i;
+const MAX_CACHE_BYTES = 8 * 1024 * 1024;
+
+function staticHostAnswer() {
+  return new Response(
+    JSON.stringify({ ok: false, static: true, error: 'No llama.cpp server on this static host — using the in-browser runtimes.' }),
+    { status: 501, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } }
+  );
+}
+
+self.addEventListener('install', e => {
+  e.waitUntil(
+    caches.open(CACHE)
+      // One missing file must not kill the whole install.
+      .then(c => Promise.allSettled(SHELL.map(u => c.add(u))))
+      .then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k.startsWith('bite-') && k !== CACHE).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', e => {
+  const req = e.request;
+  let u;
+  try { u = new URL(req.url); } catch { return; }
+  if (u.origin !== self.location.origin) return;
+
+  // The API only exists on the dev/preview server; on a static host answer at
+  // once so Waffle AI switches to the browser runtimes without a 404 round trip.
+  if (u.href.startsWith(SCOPE + 'api/')) {
+    e.respondWith(staticHostAnswer());
+    return;
+  }
+
+  if (req.method !== 'GET') return;
+  const isBigAsset = BIG_ASSET.test(u.pathname);
+
+  e.respondWith(
+    fetch(req).then(r => {
+      if (r.ok && r.type === 'basic' && !isBigAsset) {
+        const len = Number(r.headers.get('content-length') || '0');
+        if (!len || len <= MAX_CACHE_BYTES) {
+          const copy = r.clone();
+          caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
+        }
+      }
+      return r;
+    }).catch(() => caches.match(req).then(hit => hit || (
+      req.mode === 'navigate' ? caches.match(SCOPE + 'index.html') : Response.error()
+    )))
+  );
+});
+`;
+      fs.writeFileSync(
+        'dist/sw.js',
+        swSource
+          .replace('__CACHE__', JSON.stringify(version))
+          .replace('__SHELL__', JSON.stringify(shell))
+      );
     }
   }]
 });

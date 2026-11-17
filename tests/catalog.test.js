@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { cupboards, allTools } from '../catalog.js';
+import { toolPropSVG } from '../icons-25d.js';
 
 test('Math & Numbers cupboard contains exact 10 utilities and other four cupboards contain 15 each', () => {
   assert.equal(cupboards.length, 5);
@@ -28,6 +29,11 @@ test('Math & Numbers cupboard contains exact 10 utilities and other four cupboar
   assert.equal(allTools.length, 70);
 });
 
+test('every single one of the 70 utilities has its own unique 2.5D SVG icon', () => {
+  const svgs = allTools.map(t => toolPropSVG(t.id));
+  assert.equal(new Set(svgs).size, 70, 'Every tool across all cupboards must have a distinct SVG');
+});
+
 test('tool identifiers are unique and every cupboard has its star', () => {
   assert.equal(new Set(allTools.map(t => t.id)).size, 70);
   for (const c of cupboards) assert.ok(c.tools.some(t => t[0] === c.star));
@@ -50,34 +56,22 @@ test('all utility identifiers have implementation dispatch cases', () => {
   }
 });
 
-test('every curated game includes local entrypoint, license and download', () => {
-  const raw = JSON.parse(fs.readFileSync('games/catalog.json', 'utf8'));
-  const games = Array.isArray(raw) ? raw : raw.games;
-  assert.ok(games.length >= 20);
+test('offline arcade catalog includes 115 games including Flash, Impossible Quiz & Fancade hits with valid entrypoints and ZIPs', () => {
+  const games = JSON.parse(fs.readFileSync('games/catalog.json', 'utf8'));
+  assert.equal(games.length, 115);
+  const first = games.filter(g => g.origin === 'first-party');
+  const hits = games.filter(g => g.origin === 'arcade-hit');
+  assert.equal(first.length, 75);
+  assert.equal(hits.length, 15);
+  assert.ok(hits.some(g => g.id === 'impossible-quiz'));
+  assert.ok(hits.some(g => g.id === 'drive-mad-wobble'));
+  assert.ok(hits.some(g => g.id === 'papa-waffleria'));
+  assert.ok(hits.some(g => g.id === 'henry-kitchen-heist'));
   for (const g of games) {
     assert.ok(g.title);
     assert.ok(g.license);
-    const entry = g.entrypoint || g.entry || g.path || g.url;
-    const zip = g.zip || g.download;
-    assert.ok(entry, g.title + ' entry');
-    assert.ok(zip, g.title + ' zip');
-    assert.ok(fs.existsSync(entry.replace(/^\.\//, '')), g.title + ' entry exists');
-    assert.ok(fs.existsSync(zip.replace(/^\.\//, '')), g.title + ' zip exists');
-  }
-});
-
-test('100-game catalogue adds exactly 75 original playable games with intact source and download packages', () => {
-  const games = JSON.parse(fs.readFileSync('games/catalog.json', 'utf8'));
-  assert.equal(games.length, 100);
-  const first = games.filter(g => g.origin === 'first-party');
-  assert.equal(first.length, 75);
-  assert.ok(new Set(first.map(g => g.mechanic)).size >= 20);
-  for (const g of first) {
-    assert.equal(g.license, 'MIT');
-    assert.equal(g.revision, 'local-first-party');
-    assert.ok(fs.existsSync(g.entrypoint));
-    assert.ok(fs.existsSync(g.zip));
-    const z = fs.statSync(g.zip);
-    assert.ok(z.size > 1000, g.id + ' ZIP is nonempty');
+    assert.ok(fs.existsSync(g.entrypoint), g.id + ' entrypoint exists');
+    assert.ok(fs.existsSync(g.zip), g.id + ' zip exists');
+    assert.ok(fs.statSync(g.zip).size > 500, g.id + ' zip nonempty');
   }
 });

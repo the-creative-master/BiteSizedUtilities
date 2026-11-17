@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cozy Mini-Golf</title>
+<style>
+  *{box-sizing:border-box;user-select:none}
+  body{margin:0;min-height:100vh;background:#e6f4d7;color:#4b2e20;font-family:'Trebuchet MS',sans-serif;display:flex;align-items:center;justify-content:center;padding:12px}
+  .card{width:100%;max-width:640px;background:#fff9ec;border:4px solid #4b2e20;border-radius:26px;padding:14px;box-shadow:0 10px 0 #95bd7d;text-align:center}
+  .hud{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+  .pill{background:#ffe599;border:3px solid #4b2e20;border-radius:999px;padding:5px 14px;font-weight:900}
+  canvas{width:100%;height:auto;border-radius:18px;border:3.5px solid #4b2e20;background:#9ed98d;touch-action:none;cursor:crosshair;display:block}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hud">
+    <div class="pill" id="hole">Hole 1 / 6</div>
+    <div class="pill" id="strokes">Strokes: 0 • Total: 0</div>
+    <button class="pill" onclick="loadHole(hIdx)" style="cursor:pointer;background:#ffd3b8">↻ Retry Hole</button>
+  </div>
+  <canvas id="c" width="600" height="360"></canvas>
+  <p style="margin:10px 0 0;font-weight:800;font-size:14px">Drag back from the golf ball to aim & shoot into the flag hole!</p>
+</div>
+<script>
+const c = document.getElementById('c'), ctx = c.getContext('2d');
+const HOLES = [
+  { ball:[90,180], hole:[510,180], walls:[[280,100,26,160]] },
+  { ball:[80,290], hole:[510,80], walls:[[200,150,24,210],[380,0,24,210]] },
+  { ball:[80,180], hole:[520,180], walls:[[220,70,24,140],[370,150,24,140]], sand:[[270,250,90,70]] },
+  { ball:[90,80], hole:[90,280], walls:[[20,168,420,24]] },
+  { ball:[75,180], hole:[525,180], walls:[[240,0,24,135],[240,225,24,135],[400,100,24,160]] },
+  { ball:[75,295], hole:[525,70], walls:[[180,140,24,220],[320,0,24,220],[440,140,24,150]], sand:[[370,270,120,60]] }
+];
+let hIdx = 0, strokes = 0, total = 0, ball = {x:90,y:180,vx:0,vy:0}, drag = null;
+
+function loadHole(n) {
+  hIdx = n % HOLES.length;
+  strokes = 0;
+  ball = { x: HOLES[hIdx].ball[0], y: HOLES[hIdx].ball[1], vx: 0, vy: 0 };
+  document.getElementById('hole').textContent = `Hole ${hIdx + 1} / ${HOLES.length}`;
+  document.getElementById('strokes').textContent = `Strokes: ${strokes} • Total: ${total}`;
+}
+
+function pt(e) {
+  const r = c.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * c.width / r.width, y: (e.clientY - r.top) * c.height / r.height };
+}
+
+c.addEventListener('pointerdown', e => {
+  if (Math.hypot(ball.vx, ball.vy) > 0.2) return;
+  const p = pt(e);
+  if (Math.hypot(p.x - ball.x, p.y - ball.y) < 42) drag = p;
+});
+window.addEventListener('pointermove', e => { if (drag) drag = pt(e); });
+window.addEventListener('pointerup', () => {
+  if (!drag) return;
+  const dx = ball.x - drag.x, dy = ball.y - drag.y;
+  const mag = Math.min(15, Math.hypot(dx, dy) * 0.14);
+  const ang = Math.atan2(dy, dx);
+  if (mag > 0.7) {
+    ball.vx = Math.cos(ang) * mag;
+    ball.vy = Math.sin(ang) * mag;
+    strokes++; total++;
+    document.getElementById('strokes').textContent = `Strokes: ${strokes} • Total: ${total}`;
+  }
+  drag = null;
+});
+
+function loop() {
+  const hole = HOLES[hIdx];
+  const inSand = (hole.sand || []).some(([sx,sy,sw,sh]) => ball.x > sx && ball.x < sx+sw && ball.y > sy && ball.y < sy+sh);
+  ball.x += ball.vx; ball.y += ball.vy;
+  const fric = inSand ? 0.89 : 0.975;
+  ball.vx *= fric; ball.vy *= fric;
+  if (Math.hypot(ball.vx, ball.vy) < 0.08) { ball.vx = 0; ball.vy = 0; }
+
+  if (ball.x < 14 || ball.x > c.width - 14) { ball.vx *= -0.85; ball.x = Math.max(14, Math.min(c.width - 14, ball.x)); }
+  if (ball.y < 14 || ball.y > c.height - 14) { ball.vy *= -0.85; ball.y = Math.max(14, Math.min(c.height - 14, ball.y)); }
+
+  for (const [wx, wy, ww, wh] of hole.walls) {
+    const cx = Math.max(wx, Math.min(ball.x, wx + ww)), cy = Math.max(wy, Math.min(ball.y, wy + wh));
+    const dx = ball.x - cx, dy = ball.y - cy, d = Math.hypot(dx, dy);
+    if (d < 12) {
+      if (Math.abs(dx) > Math.abs(dy)) ball.vx *= -0.85;
+      else ball.vy *= -0.85;
+      ball.x += (dx / (d || 1)) * (12 - d);
+      ball.y += (dy / (d || 1)) * (12 - d);
+    }
+  }
+
+  if (Math.hypot(ball.x - hole.hole[0], ball.y - hole.hole[1]) < 16 && Math.hypot(ball.vx, ball.vy) < 9) {
+    loadHole(hIdx + 1);
+  }
+
+  ctx.clearRect(0, 0, c.width, c.height);
+  for (const [sx, sy, sw, sh] of (hole.sand || [])) {
+    ctx.fillStyle = '#f6dc9c'; ctx.strokeStyle = '#4b2e20'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.roundRect(sx, sy, sw, sh, 16); ctx.fill(); ctx.stroke();
+  }
+  for (const [wx, wy, ww, wh] of hole.walls) {
+    ctx.fillStyle = '#c98550'; ctx.strokeStyle = '#4b2e20'; ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.roundRect(wx, wy, ww, wh, 8); ctx.fill(); ctx.stroke();
+  }
+  // Hole & flag
+  ctx.fillStyle = '#4b2e20';
+  ctx.beginPath(); ctx.arc(hole.hole[0], hole.hole[1], 14, 0, 7); ctx.fill();
+  ctx.fillRect(hole.hole[0] - 2, hole.hole[1] - 48, 4, 48);
+  ctx.fillStyle = '#ff8b80';
+  ctx.beginPath(); ctx.moveTo(hole.hole[0], hole.hole[1] - 48); ctx.lineTo(hole.hole[0] + 24, hole.hole[1] - 38); ctx.lineTo(hole.hole[0], hole.hole[1] - 28); ctx.closePath(); ctx.fill();
+
+  if (drag) {
+    ctx.strokeStyle = '#4b2e20'; ctx.lineWidth = 4; ctx.setLineDash([6, 6]);
+    ctx.beginPath(); ctx.moveTo(ball.x, ball.y); ctx.lineTo(ball.x + (ball.x - drag.x), ball.y + (ball.y - drag.y)); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.fillStyle = '#fffdf7'; ctx.strokeStyle = '#4b2e20'; ctx.lineWidth = 3.5;
+  ctx.beginPath(); ctx.arc(ball.x, ball.y, 11, 0, 7); ctx.fill(); ctx.stroke();
+  requestAnimationFrame(loop);
+}
+loadHole(0);
+loop();
+</script>
+</body>
+</html>

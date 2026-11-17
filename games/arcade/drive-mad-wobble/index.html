@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wobble Truck (Drive Mad Style)</title>
+<style>
+  *{box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:#d8eefc;color:#4b2e20;font-family:'Trebuchet MS',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:10px}
+  .wrap{width:100%;max-width:740px;background:#fff8ea;border:4px solid #4b2e20;border-radius:24px;padding:12px;box-shadow:0 10px 0 #c99259}
+  .hud{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+  .pill{background:#ffe599;border:3px solid #4b2e20;border-radius:999px;padding:5px 14px;font-weight:900}
+  canvas{width:100%;height:auto;display:block;border-radius:16px;border:3.5px solid #4b2e20;background:#cce9ff}
+  .pedals{display:flex;justify-content:space-between;gap:12px;margin-top:10px}
+  .pedal{flex:1;min-height:56px;border-radius:18px;border:3.5px solid #4b2e20;font-size:18px;font-weight:900;background:#ffd3b8;color:#4b2e20;cursor:pointer;box-shadow:0 5px 0 #c98a65}
+  .pedal.gas{background:#b8e5b0;box-shadow:0 5px 0 #76ab6e}
+  .pedal:active{transform:translateY(3px)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hud">
+    <div class="pill" id="lvl">Course 1 / 5</div>
+    <div class="pill" id="status">Hold GAS (→ / D) & balance!</div>
+    <button class="pill" onclick="resetLevel()" style="cursor:pointer;background:#ffd2c2">↻ Reset</button>
+  </div>
+  <canvas id="c" width="700" height="380"></canvas>
+  <div class="pedals">
+    <button class="pedal" id="brakeBtn">◀ BRAKE / TILT</button>
+    <button class="pedal gas" id="gasBtn">GAS / GO ▶</button>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+const lvlEl = document.getElementById('lvl'), statusEl = document.getElementById('status');
+let gas = false, brake = false, level = 0, dead = false, won = false;
+
+const COURSES = [
+  { name: 'Waffle Hills', pts: [[0,290],[180,290],[280,255],[380,295],[500,240],[620,285],[760,260],[920,290],[1120,290]], goal: 1030 },
+  { name: 'Bridge Bumps', pts: [[0,290],[200,290],[260,260],[340,295],[430,240],[510,240],[590,295],[700,220],[820,270],[950,240],[1140,280]], goal: 1060 },
+  { name: 'Steep Syrup Ramp', pts: [[0,300],[170,300],[310,210],[430,290],[580,200],[720,295],[880,220],[1040,280],[1220,280]], goal: 1140 },
+  { name: 'Rollercoaster', pts: [[0,280],[150,280],[260,190],[370,295],[480,185],[600,300],[740,205],[890,295],[1050,225],[1240,275]], goal: 1160 },
+  { name: 'Boss Mountain', pts: [[0,300],[160,300],[290,210],[390,250],[500,170],[620,290],[750,195],[880,265],[1020,185],[1180,275],[1360,275]], goal: 1270 }
+];
+
+let truck = {};
+function groundY(x) {
+  const pts = COURSES[level].pts;
+  if (x <= pts[0][0]) return pts[0][1];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x1, y1] = pts[i], [x2, y2] = pts[i + 1];
+    if (x >= x1 && x <= x2) {
+      const t = (x - x1) / (x2 - x1);
+      return y1 + (y2 - y1) * t;
+    }
+  }
+  return pts[pts.length - 1][1];
+}
+function groundSlope(x) {
+  return Math.atan2(groundY(x + 8) - groundY(x - 8), 16);
+}
+
+function resetLevel() {
+  dead = false; won = false;
+  truck = { x: 80, y: 240, vx: 0, vy: 0, ang: 0, va: 0 };
+  lvlEl.textContent = `Course ${level + 1} / ${COURSES.length}: ${COURSES[level].name}`;
+  statusEl.textContent = 'Drive to the checkered flag!';
+}
+
+function bindHold(el, set) {
+  el.addEventListener('pointerdown', e => { e.preventDefault(); set(true); });
+  window.addEventListener('pointerup', () => set(false));
+  el.addEventListener('pointerleave', () => set(false));
+}
+bindHold(document.getElementById('gasBtn'), v => gas = v);
+bindHold(document.getElementById('brakeBtn'), v => brake = v);
+window.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') gas = true;
+  if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') brake = true;
+  if (e.key === 'r' || e.key === 'R') resetLevel();
+});
+window.addEventListener('keyup', e => {
+  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') gas = false;
+  if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') brake = false;
+});
+
+function step() {
+  if (!dead && !won) {
+    const targetSlope = groundSlope(truck.x);
+    if (gas) { truck.vx += 0.38; truck.va -= 0.0045; }
+    if (brake) { truck.vx -= 0.28; truck.va += 0.0055; }
+    truck.vx *= 0.965;
+    truck.vy += 0.42;
+    truck.x += truck.vx;
+    truck.y += truck.vy;
+
+    const gy = groundY(truck.x) - 24;
+    if (truck.y >= gy) {
+      truck.y = gy;
+      if (truck.vy > 3) truck.vy = -truck.vy * 0.22;
+      else truck.vy = 0;
+      truck.ang += (targetSlope - truck.ang) * 0.22;
+      truck.va *= 0.72;
+    } else {
+      truck.ang += truck.va;
+      truck.va *= 0.94;
+    }
+    if (truck.x < 30) { truck.x = 30; truck.vx = 0; }
+    if (Math.abs(truck.ang) > 1.95) {
+      dead = true;
+      statusEl.textContent = '💥 FLIPPED! Auto-retrying…';
+      setTimeout(resetLevel, 900);
+    }
+    if (truck.x >= COURSES[level].goal) {
+      won = true;
+      statusEl.textContent = '🏁 GOAL!! Next course!';
+      setTimeout(() => { level = (level + 1) % COURSES.length; resetLevel(); }, 1000);
+    }
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const camX = Math.max(0, truck.x - 200);
+  ctx.save();
+  ctx.translate(-camX, 0);
+
+  // Clouds
+  ctx.fillStyle = '#fff9ec';
+  for (let cx = 80; cx < 1400; cx += 240) {
+    ctx.beginPath(); ctx.arc(cx, 70, 26, 0, 7); ctx.arc(cx + 25, 64, 30, 0, 7); ctx.arc(cx + 52, 72, 22, 0, 7); ctx.fill();
+  }
+
+  // Terrain
+  const pts = COURSES[level].pts;
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (const [px, py] of pts) ctx.lineTo(px, py);
+  ctx.lineTo(pts[pts.length - 1][0], 420);
+  ctx.lineTo(0, 420);
+  ctx.closePath();
+  ctx.fillStyle = '#b8e0a4';
+  ctx.fill();
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = '#4b2e20';
+  ctx.stroke();
+
+  // Flag
+  const gx = COURSES[level].goal, gy = groundY(gx);
+  ctx.fillStyle = '#4b2e20';
+  ctx.fillRect(gx - 3, gy - 72, 6, 72);
+  ctx.fillStyle = '#ff8b80';
+  ctx.beginPath(); ctx.roundRect(gx, gy - 72, 42, 26, 6); ctx.fill(); ctx.lineWidth = 3.5; ctx.stroke();
+
+  // Monster Truck
+  ctx.save();
+  ctx.translate(truck.x, truck.y);
+  ctx.rotate(truck.ang);
+  ctx.fillStyle = '#f28268';
+  ctx.strokeStyle = '#4b2e20';
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.roundRect(-34, -28, 68, 26, 10); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#fff4d6';
+  ctx.beginPath(); ctx.roundRect(-14, -44, 34, 20, 8); ctx.fill(); ctx.stroke();
+  for (const wx of [-22, 22]) {
+    ctx.beginPath(); ctx.arc(wx, 6, 14, 0, 7); ctx.fillStyle = '#574036'; ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(wx, 6, 5, 0, 7); ctx.fillStyle = '#ffe599'; ctx.fill();
+  }
+  ctx.restore();
+  ctx.restore();
+
+  step();
+  requestAnimationFrame(draw);
+}
+resetLevel();
+draw();
+</script>
+</body>
+</html>

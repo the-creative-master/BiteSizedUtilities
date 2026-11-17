@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Odd Bot Box Push (Fancade Sokoban)</title>
+<style>
+  *{box-sizing:border-box;user-select:none}
+  body{margin:0;min-height:100vh;background:#dceefb;color:#4b2e20;font-family:'Trebuchet MS',sans-serif;display:flex;align-items:center;justify-content:center;padding:10px}
+  .wrap{width:100%;max-width:520px;background:#fff9ec;border:4px solid #4b2e20;border-radius:26px;padding:14px;box-shadow:0 10px 0 #8fb8d6;text-align:center}
+  .hud{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+  .pill{background:#ffe599;border:3px solid #4b2e20;border-radius:999px;padding:5px 14px;font-weight:900;cursor:pointer}
+  canvas{width:100%;max-width:400px;height:auto;border:3.5px solid #4b2e20;border-radius:18px;background:#f4ead5;margin:0 auto;display:block}
+  .dpad{display:grid;grid-template-columns:repeat(3,64px);gap:6px;justify-content:center;margin-top:10px}
+  .db{height:48px;border:3px solid #4b2e20;border-radius:14px;background:#ffd3b8;font-size:20px;font-weight:900;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hud">
+    <div class="pill" id="lvl">Puzzle 1 / 5</div>
+    <button class="pill" onclick="load(li)" style="background:#ffd2c2">↻ Reset</button>
+  </div>
+  <canvas id="c" width="400" height="400"></canvas>
+  <div class="dpad">
+    <div></div><button class="db" onclick="move(0,-1)">▲</button><div></div>
+    <button class="db" onclick="move(-1,0)">◀</button><button class="db" onclick="move(0,1)">▼</button><button class="db" onclick="move(1,0)">▶</button>
+  </div>
+</div>
+<script>
+const MAPS = [
+  ['########','#......#','#..B.T.#','#..P...#','#......#','########'],
+  ['########','#T....T#','#..BB..#','#..P...#','#......#','########'],
+  ['########','#..#...#','#P.B.T.#','#..#...#','#..B.T.#','########'],
+  ['########','#T.#..T#','#..B.B.#','#..#P..#','#......#','########'],
+  ['########','#T.B..T#','#.#.##.#','#..B.P.#','#T.....#','########']
+];
+let li = 0, grid = [], px = 0, py = 0;
+const c = document.getElementById('c'), ctx = c.getContext('2d');
+
+function load(n) {
+  li = n % MAPS.length;
+  document.getElementById('lvl').textContent = `Puzzle ${li + 1} / ${MAPS.length}`;
+  grid = MAPS[li].map(r => r.split(''));
+  for (let y = 0; y < grid.length; y++) for (let x = 0; x < grid[y].length; x++) {
+    if (grid[y][x] === 'P') { px = x; py = y; grid[y][x] = '.'; }
+  }
+  draw();
+}
+
+window.move = (dx, dy) => {
+  const nx = px + dx, ny = py + dy;
+  const cell = grid[ny]?.[nx];
+  if (!cell || cell === '#') return;
+  if (cell === 'B' || cell === '*') {
+    const bx = nx + dx, by = ny + dy;
+    const next = grid[by]?.[bx];
+    if (!next || next === '#' || next === 'B' || next === '*') return;
+    grid[by][bx] = next === 'T' ? '*' : 'B';
+    grid[ny][nx] = cell === '*' ? 'T' : '.';
+  }
+  px = nx; py = ny;
+  draw();
+  if (!grid.some(r => r.includes('T'))) {
+    setTimeout(() => load(li + 1), 350);
+  }
+};
+window.addEventListener('keydown', e => {
+  if (e.key === 'ArrowUp' || e.key === 'w') move(0, -1);
+  if (e.key === 'ArrowDown' || e.key === 's') move(0, 1);
+  if (e.key === 'ArrowLeft' || e.key === 'a') move(-1, 0);
+  if (e.key === 'ArrowRight' || e.key === 'd') move(1, 0);
+});
+
+function draw() {
+  ctx.clearRect(0, 0, 400, 400);
+  const s = 50;
+  for (let y = 0; y < grid.length; y++) {
+    for (let x = 0; x < grid[y].length; x++) {
+      const ch = grid[y][x], rx = x * s, ry = 50 + y * s;
+      ctx.strokeStyle = '#4b2e20'; ctx.lineWidth = 3;
+      if (ch === '#') {
+        ctx.fillStyle = '#c98550'; ctx.fillRect(rx + 2, ry + 2, s - 4, s - 4); ctx.strokeRect(rx + 2, ry + 2, s - 4, s - 4);
+      } else {
+        if (ch === 'T' || ch === '*') {
+          ctx.fillStyle = '#9ee09e'; ctx.beginPath(); ctx.arc(rx + s/2, ry + s/2, 14, 0, 7); ctx.fill(); ctx.stroke();
+        }
+        if (ch === 'B' || ch === '*') {
+          ctx.fillStyle = ch === '*' ? '#ffe17d' : '#f28268';
+          ctx.beginPath(); ctx.roundRect(rx + 7, ry + 7, s - 14, s - 14, 10); ctx.fill(); ctx.stroke();
+        }
+      }
+    }
+  }
+  // Odd Bot
+  ctx.fillStyle = '#7ec3d4'; ctx.strokeStyle = '#4b2e20'; ctx.lineWidth = 3.5;
+  ctx.beginPath(); ctx.roundRect(px * s + 10, 50 + py * s + 8, s - 20, s - 16, 10); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#fff9ec'; ctx.beginPath(); ctx.arc(px * s + s / 2, 50 + py * s + 22, 6, 0, 7); ctx.fill(); ctx.stroke();
+}
+load(0);
+</script>
+</body>
+</html>

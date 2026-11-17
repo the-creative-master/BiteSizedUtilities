@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Waffle Pants Adventure</title>
+<style>
+  *{box-sizing:border-box;user-select:none}
+  body{margin:0;min-height:100vh;background:#fde9c6;color:#4b2e20;font-family:'Trebuchet MS',sans-serif;display:flex;align-items:center;justify-content:center;padding:10px}
+  .wrap{width:100%;max-width:720px;background:#fff9ec;border:4px solid #4b2e20;border-radius:24px;padding:12px;box-shadow:0 10px 0 #c99259}
+  .hud{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+  .pill{background:#ffe599;border:3px solid #4b2e20;border-radius:999px;padding:5px 14px;font-weight:900}
+  canvas{width:100%;height:auto;border:3.5px solid #4b2e20;border-radius:16px;background:#fff6de;display:block}
+  .pad{display:flex;justify-content:space-between;gap:8px;margin-top:8px}
+  .btn{flex:1;min-height:48px;border:3px solid #4b2e20;border-radius:14px;background:#ffd3b8;font-weight:900;font-size:16px;cursor:pointer;box-shadow:0 4px 0 #c98a65}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hud">
+    <div class="pill" id="coins">🧈 Coins: 0</div>
+    <div class="pill" id="msg">Reach the Syrup Door!</div>
+    <button class="pill" onclick="reset()" style="cursor:pointer;background:#c5e8c2">↻ Restart</button>
+  </div>
+  <canvas id="c" width="680" height="360"></canvas>
+  <div class="pad">
+    <button class="btn" id="left">◀ Left</button>
+    <button class="btn" id="right">Right ▶</button>
+    <button class="btn" id="jump" style="background:#c5e8c2">⬆ Jump / Wall-Jump</button>
+  </div>
+</div>
+<script>
+const c = document.getElementById('c'), ctx = c.getContext('2d');
+const keys = { l: false, r: false, j: false };
+let p, plats, springs, coins, bugs, door, got = 0;
+
+function reset() {
+  got = 0;
+  p = { x: 48, y: 260, vx: 0, vy: 0, w: 24, h: 36, onGround: false, onWall: 0, dir: 1 };
+  plats = [
+    [0,320,420,40],[470,290,180,70],[680,240,170,120],[880,190,130,170],
+    [1040,120,30,240],[1140,260,240,100],[1210,160,180,22],[1430,220,280,140]
+  ];
+  springs = [[370,308],[820,228],[1350,148]];
+  coins = [[200,280],[540,250],[740,200],[930,150],[1260,120],[1500,180]].map(([x,y])=>({x,y,ok:true}));
+  bugs = [{x:520,y:272,min:480,max:610,vx:1.8,alive:true},{x:1200,y:242,min:1150,max:1340,vx:2.2,alive:true}];
+  door = { x: 1620, y: 158 };
+  document.getElementById('coins').textContent = '🧈 Coins: 0';
+  document.getElementById('msg').textContent = 'Run, wall-jump & squish bugs!';
+}
+
+function hold(id, k) {
+  const el = document.getElementById(id);
+  el.addEventListener('pointerdown', e => { e.preventDefault(); keys[k] = true; });
+  window.addEventListener('pointerup', () => keys[k] = false);
+}
+hold('left', 'l'); hold('right', 'r'); hold('jump', 'j');
+window.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft' || e.key === 'a') keys.l = true;
+  if (e.key === 'ArrowRight' || e.key === 'd') keys.r = true;
+  if (e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') { e.preventDefault(); keys.j = true; }
+});
+window.addEventListener('keyup', e => {
+  if (e.key === 'ArrowLeft' || e.key === 'a') keys.l = false;
+  if (e.key === 'ArrowRight' || e.key === 'd') keys.r = false;
+  if (e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') keys.j = false;
+});
+
+function loop() {
+  if (keys.l) { p.vx -= 0.7; p.dir = -1; }
+  if (keys.r) { p.vx += 0.7; p.dir = 1; }
+  p.vx *= 0.84;
+  p.vy = Math.min(12, p.vy + 0.55);
+
+  if (keys.j) {
+    if (p.onGround) { p.vy = -10.8; p.onGround = false; }
+    else if (p.onWall !== 0) { p.vy = -10.2; p.vx = -p.onWall * 8.5; p.onWall = 0; }
+  }
+
+  p.x += p.vx;
+  p.onWall = 0;
+  for (const [rx, ry, rw, rh] of plats) {
+    if (p.x < rx + rw && p.x + p.w > rx && p.y < ry + rh && p.y + p.h > ry) {
+      if (p.vx > 0) { p.x = rx - p.w; p.onWall = 1; }
+      else if (p.vx < 0) { p.x = rx + rw; p.onWall = -1; }
+      p.vx = 0;
+    }
+  }
+
+  p.y += p.vy;
+  p.onGround = false;
+  for (const [rx, ry, rw, rh] of plats) {
+    if (p.x < rx + rw && p.x + p.w > rx && p.y < ry + rh && p.y + p.h > ry) {
+      if (p.vy > 0) { p.y = ry - p.h; p.vy = 0; p.onGround = true; }
+      else if (p.vy < 0) { p.y = ry + rh; p.vy = 0; }
+    }
+  }
+
+  for (const [sx, sy] of springs) {
+    if (Math.abs(p.x + p.w / 2 - sx) < 22 && Math.abs(p.y + p.h - sy) < 18) {
+      p.vy = -15; p.onGround = false;
+    }
+  }
+  for (const b of bugs) {
+    if (!b.alive) continue;
+    b.x += b.vx;
+    if (b.x < b.min || b.x > b.max) b.vx *= -1;
+    if (Math.abs(p.x + 12 - b.x) < 20 && Math.abs(p.y + 18 - b.y) < 20) {
+      if (p.vy > 1) { b.alive = false; p.vy = -10; got++; document.getElementById('coins').textContent = `🧈 Coins: ${got}`; }
+      else { reset(); return requestAnimationFrame(loop); }
+    }
+  }
+  for (const cn of coins) {
+    if (cn.ok && Math.hypot(p.x + 12 - cn.x, p.y + 18 - cn.y) < 22) {
+      cn.ok = false; got++; document.getElementById('coins').textContent = `🧈 Coins: ${got}`;
+    }
+  }
+  if (p.y > 420) reset();
+  if (Math.abs(p.x - door.x) < 32 && Math.abs(p.y - door.y) < 48) {
+    document.getElementById('msg').textContent = `🎉 LEVEL CLEAR with ${got} coins!`;
+  }
+
+  const cam = Math.max(0, p.x - 240);
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.save();
+  ctx.translate(-cam, 0);
+
+  // Pencil sketch grid
+  ctx.strokeStyle = '#efe2c6'; ctx.lineWidth = 1.5;
+  for (let gx = 0; gx < 1800; gx += 40) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, 360); ctx.stroke(); }
+
+  for (const [rx, ry, rw, rh] of plats) {
+    ctx.fillStyle = '#c98550'; ctx.strokeStyle = '#4b2e20'; ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.roundRect(rx, ry, rw, rh, 8); ctx.fill(); ctx.stroke();
+  }
+  for (const [sx, sy] of springs) {
+    ctx.fillStyle = '#ff8b80'; ctx.strokeStyle = '#4b2e20'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.roundRect(sx - 14, sy, 28, 12, 6); ctx.fill(); ctx.stroke();
+  }
+  for (const cn of coins) {
+    if (!cn.ok) continue;
+    ctx.fillStyle = '#ffe17d'; ctx.strokeStyle = '#4b2e20'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.roundRect(cn.x - 10, cn.y - 8, 20, 16, 5); ctx.fill(); ctx.stroke();
+  }
+  for (const b of bugs) {
+    if (!b.alive) continue;
+    ctx.fillStyle = '#a38ec2'; ctx.strokeStyle = '#4b2e20'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(b.x, b.y, 14, 0, 7); ctx.fill(); ctx.stroke();
+  }
+  // Door
+  ctx.fillStyle = '#8ac789'; ctx.strokeStyle = '#4b2e20'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.roundRect(door.x, door.y, 38, 62, 16); ctx.fill(); ctx.stroke();
+
+  // Stick Hero with Fancy Orange Pants!
+  ctx.strokeStyle = '#4b2e20'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(p.x + 12, p.y + 8, 8, 0, 7); ctx.fillStyle = '#fff9ec'; ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(p.x + 12, p.y + 16); ctx.lineTo(p.x + 12, p.y + 24); ctx.stroke();
+  // Orange zigzag hair!
+  ctx.strokeStyle = '#f28268'; ctx.lineWidth = 3.5;
+  ctx.beginPath(); ctx.moveTo(p.x + 6, p.y + 2); ctx.lineTo(p.x + 14 - p.dir * 8, p.y - 6); ctx.lineTo(p.x + 18, p.y + 2); ctx.stroke();
+  // Fancy Pants!
+  ctx.fillStyle = '#f28268'; ctx.strokeStyle = '#4b2e20'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.roundRect(p.x + 4, p.y + 22, 16, 14, 4); ctx.fill(); ctx.stroke();
+
+  ctx.restore();
+  requestAnimationFrame(loop);
+}
+reset();
+loop();
+</script>
+</body>
+</html>

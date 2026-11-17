@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Impossible Quiz: Kitchen Chaos</title>
+<style>
+  *{box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent}
+  body{margin:0;min-height:100vh;font-family:'Trebuchet MS',system-ui,sans-serif;background:#fff3d9;color:#4b2e20;display:flex;align-items:center;justify-content:center;padding:12px}
+  .quiz-box{width:100%;max-width:680px;background:#fffaf0;border:4px solid #4b2e20;border-radius:26px;padding:18px;box-shadow:0 10px 0 #c99259;position:relative;overflow:hidden}
+  .hud{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .pill{background:#ffe599;border:3px solid #4b2e20;border-radius:999px;padding:6px 14px;font-weight:900;font-size:15px;box-shadow:0 4px 0 #c9a13b}
+  .q-num{background:#ffd2c2;cursor:pointer;transition:transform .12s}
+  .q-num:active{transform:scale(.94)}
+  .lives{background:#ffc4cf}
+  .skips{background:#c5e8c2;cursor:pointer}
+  .skips:disabled{opacity:.45;cursor:not-allowed}
+  .bomb{background:#ff8e80;color:#4b2e20;animation:pulse .5s infinite alternate}
+  @keyframes pulse{from{transform:scale(1)}to{transform:scale(1.07)}}
+  .prompt{background:#f7e4bc;border:3px solid #4b2e20;border-radius:20px;padding:18px;font-size:22px;font-weight:900;text-align:center;min-height:92px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .ans{background:#bfe0f7;border:3.5px solid #4b2e20;border-radius:18px;padding:14px 12px;font-size:17px;font-weight:900;color:#4b2e20;cursor:pointer;box-shadow:0 6px 0 #82aecf;transition:transform .12s,box-shadow .12s}
+  .ans:hover{transform:translateY(-2px)}
+  .ans:active{transform:translateY(4px);box-shadow:0 2px 0 #82aecf}
+  .ans.c1{background:#ffd3b8;box-shadow:0 6px 0 #cf9472}
+  .ans.c2{background:#c5e8c2;box-shadow:0 6px 0 #84b680}
+  .ans.c3{background:#dfd0f5;box-shadow:0 6px 0 #a38ec2}
+  .ans.c4{background:#ffe599;box-shadow:0 6px 0 #c9a13b}
+  .inline-secret{text-decoration:underline dotted;cursor:pointer;color:#b84b36}
+  .shake{animation:shake .35s}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-10px)}75%{transform:translateX(10px)}}
+  .stage-btn{padding:12px 20px;border-radius:16px;border:3.5px solid #4b2e20;background:#ffe07d;font-weight:900;font-size:17px;cursor:pointer;box-shadow:0 5px 0 #c79a2b}
+  .footer-hint{margin-top:12px;text-align:center;font-size:12px;font-weight:800;color:#7a5540}
+  @media(max-width:520px){.grid{grid-template-columns:1fr}.prompt{font-size:19px}}
+</style>
+</head>
+<body>
+<div class="quiz-box" id="box">
+  <div class="hud">
+    <button class="pill q-num" id="qnum" title="Question number">Q1 / 25</button>
+    <div class="pill lives" id="lives">❤️❤️❤️</div>
+    <div class="pill bomb" id="bomb" hidden>💣 10s</div>
+    <button class="pill skips" id="skipBtn">⏭️ Skips: 3</button>
+  </div>
+  <div class="prompt" id="prompt"></div>
+  <div class="grid" id="grid"></div>
+  <div class="footer-hint" id="hint">Classic Flash-style trick logic! Watch every word carefully…</div>
+</div>
+<script>
+const ctx = window.AudioContext ? new AudioContext() : null;
+function beep(f, d = 0.08, t = 'triangle') {
+  if (!ctx) return;
+  if (ctx.state === 'suspended') ctx.resume();
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = t; o.frequency.value = f;
+  g.gain.setValueAtTime(0.14, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + d);
+  o.connect(g).connect(ctx.destination);
+  o.start(); o.stop(ctx.currentTime + d);
+}
+
+const QUESTIONS = [
+  { q: 'How many holes in a Polo?', opts: ['One', 'Two', 'Three', 'Four'], ok: 3, note: 'Front, back, and both ends of the wrapper/mint logic!' },
+  { q: 'Can a match box?', opts: ['Yes', 'No', 'No, but a tin can!', 'Only on Tuesdays'], ok: 2 },
+  { q: 'Sdrawkcab noitseuq siht rewsna!', opts: ['K.O', 'What?', 'I give up', 'Tennis elbow'], ok: 0 },
+  { q: 'Click the <span class="inline-secret" id="secretAnswer">smallest</span> answer!', opts: ['Giant Whale', 'Medium Cat', 'Tiny Ant', 'Microbe'], ok: -1, secret: 'smallest' },
+  { q: 'What follows December 2nd?', opts: ['December 3rd', 'January', 'The letter N', 'A waffle'], ok: 2, note: 'Decembe[r] 2[n]d -> N!' },
+  { q: 'How many months have 28 days?', opts: ['1 (February)', '2', 'All 12 of them!', 'Only leap years'], ok: 2 },
+  { q: 'Quick! Defuse the bomb! Click GREEN!', opts: ['BLUE', 'RED', 'YELLOW', 'GREEN'], ok: 3, bomb: 7, colors: ['#c5e8c2', '#ffd3b8', '#ffe599', '#ff9494'], note: 'Classic Flash color trap — read the word or check the button?' },
+  { q: 'Wait — which button was actually the GREEN colored one above? Click the word <span class="inline-secret" id="secretAnswer">GREEN</span> right here!', opts: ['This one', 'Not this one', 'Maybe me?', 'Nope'], ok: -1, secret: 'GREEN' },
+  { q: 'What is the 7th letter of the alphabet?', opts: ['G', 'H', 'E', 'F'], ok: 1, note: 'T-H-E  A-L-P-H-A-B-E-T -> 7th letter is H!' },
+  { q: 'What sound does a bell make?', opts: ['Woof', 'B-flat', 'F’taang!', 'Ding-dong'], ok: 2, note: 'Classic Impossible Quiz tribute!' },
+  { q: 'Click the REAL horse:', opts: ['🐴', '🦄', '🐎', '🦓'], ok: 2 },
+  { q: 'A farmer has 17 sheep. All but 9 run away. How many are left?', opts: ['8', '9', '17', '0'], ok: 1 },
+  { q: 'Tap the question number at the top left to advance!', opts: ['Trap 1', 'Trap 2', 'Trap 3', 'Trap 4'], ok: -2, qnumWin: true },
+  { q: 'Mash the WAFFLE button 12 times before the bomb blows!', mash: 12, bomb: 6 },
+  { q: 'What can you put in a bucket to make it lighter?', opts: ['Helium', 'Feathers', 'A torch / hole!', 'Nothing'], ok: 2 },
+  { q: 'Mary’s father has 5 daughters: Nana, Nene, Nini, Nono, and ___?', opts: ['Nunu', 'Mary', 'Sally', 'Waffle'], ok: 1 },
+  { q: 'Don’t touch the RED button!', waitWin: 4, bomb: 4, opts: ['DON’T CLICK ME', 'SERIOUSLY STOP', 'DANGER', 'BOOM'], trapAll: true },
+  { q: 'How do you spell "MOUSETRAP" in 3 letters?', opts: ['M-S-T', 'C-A-T', 'R-A-T', 'Impossible'], ok: 1 },
+  { q: 'Which weighs more: 1kg of bricks or 1kg of maple syrup?', opts: ['Bricks', 'Maple syrup', 'They weigh the same!', 'Depends on the plate'], ok: 2 },
+  { q: 'Press the letter Q on your keyboard — or click the hidden Q in this sentence: <span class="inline-secret" id="secretAnswer">Q</span>!', opts: ['A', 'B', 'C', 'D'], ok: -1, keyWin: 'q' },
+  { q: 'If you overtake the 2nd place runner, what place are you in?', opts: ['1st place', '2nd place', '3rd place', 'Disqualified'], ok: 1 },
+  { q: 'Before Mt. Everest was discovered, what was the tallest mountain?', opts: ['K2', 'Mt. Everest', 'Kilimanjaro', 'Mt. Fuji'], ok: 1 },
+  { q: 'What has keys that open no locks?', opts: ['A haunted house', 'A piano', 'A broken padlock', 'A potato'], ok: 1 },
+  { q: 'Where can you find Friday before Thursday?', opts: ['On Mars', 'In a dictionary!', 'Leap year', 'Never'], ok: 1 },
+  { q: 'FINAL BOSS! Choose the ONLY true Impossible Quiz answer:', opts: ['42', 'Blue', 'Waffle +1 Skip!', 'All of the above'], ok: 2 }
+];
+
+let idx = 0, lives = 3, skips = 3, timer = null, mashCount = 0;
+const box = document.getElementById('box');
+const qnum = document.getElementById('qnum');
+const livesEl = document.getElementById('lives');
+const bombEl = document.getElementById('bomb');
+const skipBtn = document.getElementById('skipBtn');
+const promptEl = document.getElementById('prompt');
+const grid = document.getElementById('grid');
+const hint = document.getElementById('hint');
+
+function clearTimers() {
+  if (timer) { clearInterval(timer); timer = null; }
+  bombEl.hidden = true;
+}
+
+function loseLife(msg) {
+  beep(150, 0.22, 'sawtooth');
+  lives--;
+  box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake');
+  hint.textContent = msg || 'Wrong! Watch out for tricks!';
+  if (lives <= 0) {
+    clearTimers();
+    livesEl.textContent = '💀 0';
+    promptEl.innerHTML = '💥 GAME OVER! Sir Waffle dropped his plate!';
+    grid.innerHTML = '<button class="ans c2" style="grid-column:1/-1" onclick="restart()">Try Again from Q1!</button>';
+    return;
+  }
+  updateHud();
+}
+
+function nextQ() {
+  clearTimers();
+  beep(660, 0.09); setTimeout(() => beep(880, 0.12), 70);
+  idx++;
+  if (idx >= QUESTIONS.length) {
+    promptEl.innerHTML = '🏆 YOU BEAT THE IMPOSSIBLE QUIZ! Legendary brain!';
+    grid.innerHTML = '<button class="ans c4" style="grid-column:1/-1" onclick="restart()">Play Again!</button>';
+    hint.textContent = 'Finished with ' + lives + ' ❤️ and ' + skips + ' skips remaining!';
+    return;
+  }
+  render();
+}
+
+function updateHud() {
+  qnum.textContent = `Q${idx + 1} / ${QUESTIONS.length}`;
+  livesEl.textContent = '❤️'.repeat(Math.max(0, lives));
+  skipBtn.textContent = `⏭️ Skips: ${skips}`;
+  skipBtn.disabled = skips <= 0 || idx >= QUESTIONS.length;
+}
+
+function render() {
+  clearTimers();
+  updateHud();
+  const item = QUESTIONS[idx];
+  mashCount = 0;
+  promptEl.innerHTML = item.q;
+  grid.innerHTML = '';
+  hint.textContent = 'Think laterally — read EVERY word!';
+
+  if (item.bomb) {
+    let left = item.bomb;
+    bombEl.hidden = false;
+    bombEl.textContent = `💣 ${left}s`;
+    timer = setInterval(() => {
+      left--;
+      bombEl.textContent = `💣 ${left}s`;
+      beep(420, 0.04);
+      if (left <= 0) {
+        if (item.waitWin) {
+          hint.textContent = 'Nice patience! You didn’t click!';
+          nextQ();
+        } else {
+          clearTimers();
+          loseLife('💣 BOOM! Too slow!');
+          if (lives > 0) render();
+        }
+      }
+    }, 1000);
+  }
+
+  const secret = document.getElementById('secretAnswer');
+  if (secret) {
+    secret.onclick = () => nextQ();
+  }
+
+  if (item.mash) {
+    const btn = document.createElement('button');
+    btn.className = 'ans c4';
+    btn.style.gridColumn = '1/-1';
+    btn.textContent = `🧇 MASH ME! (0 / ${item.mash})`;
+    btn.onclick = () => {
+      mashCount++;
+      beep(380 + mashCount * 28, 0.05);
+      btn.textContent = `🧇 MASH ME! (${mashCount} / ${item.mash})`;
+      if (mashCount >= item.mash) nextQ();
+    };
+    grid.append(btn);
+    return;
+  }
+
+  (item.opts || []).forEach((label, i) => {
+    const btn = document.createElement('button');
+    btn.className = `ans c${(i % 4) + 1}`;
+    btn.textContent = label;
+    if (item.colors && item.colors[i]) btn.style.background = item.colors[i];
+    btn.onclick = () => {
+      if (item.trapAll) { loseLife('I told you NOT to click!'); return; }
+      if (i === item.ok) nextQ();
+      else loseLife(item.note ? 'Nope! Think carefully!' : 'Trap triggered! -1 ❤️');
+    };
+    grid.append(btn);
+  });
+}
+
+qnum.onclick = () => {
+  if (QUESTIONS[idx]?.qnumWin) nextQ();
+  else { beep(520, 0.05); hint.textContent = 'Nice try clicking Q#, not this question!'; }
+};
+
+skipBtn.onclick = () => {
+  if (skips <= 0 || idx >= QUESTIONS.length) return;
+  skips--;
+  hint.textContent = 'Skipped! Clever save!';
+  nextQ();
+};
+
+window.addEventListener('keydown', e => {
+  const item = QUESTIONS[idx];
+  if (item?.keyWin && e.key.toLowerCase() === item.keyWin) nextQ();
+});
+
+window.restart = () => { idx = 0; lives = 3; skips = 3; render(); };
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Papa's Waffleria</title>
+<style>
+  *{box-sizing:border-box;user-select:none}
+  body{margin:0;min-height:100vh;background:#fde6bf;color:#4b2e20;font-family:'Trebuchet MS',sans-serif;display:flex;align-items:center;justify-content:center;padding:12px}
+  .shop{width:100%;max-width:680px;background:#fff9ec;border:4px solid #4b2e20;border-radius:26px;padding:16px;box-shadow:0 10px 0 #c99259}
+  .hud{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .pill{background:#ffe599;border:3px solid #4b2e20;border-radius:999px;padding:6px 14px;font-weight:900}
+  .stage{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .panel{background:#f7e4bc;border:3px solid #4b2e20;border-radius:18px;padding:12px;text-align:center}
+  .meter{height:22px;background:#fff9ec;border:3px solid #4b2e20;border-radius:999px;overflow:hidden;position:relative;margin:10px 0}
+  .sweet{position:absolute;left:58%;width:22%;top:0;bottom:0;background:#9ee09e;border-left:2px solid #4b2e20;border-right:2px solid #4b2e20}
+  .fill{height:100%;width:0%;background:#e5923d}
+  .plate{min-height:92px;background:#fff9ec;border:3px solid #4b2e20;border-radius:18px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;padding:8px;font-size:26px;margin:8px 0}
+  .btn{border:3px solid #4b2e20;border-radius:14px;padding:10px 14px;font-weight:900;background:#ffd3b8;cursor:pointer;margin:3px;box-shadow:0 4px 0 #c78b68}
+  .btn.ok{background:#b8e5b0;box-shadow:0 4px 0 #76ab6e}
+  @media(max-width:560px){.stage{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="shop">
+  <div class="hud">
+    <div class="pill" id="tips">🪙 Tips: $0</div>
+    <div class="pill" id="served">Orders: 0</div>
+    <div class="pill" id="feedback">Cook & top the exact order!</div>
+  </div>
+  <div class="stage">
+    <div class="panel">
+      <h3 style="margin:0 0 6px">Customer Order Ticket</h3>
+      <div class="plate" id="ticket"></div>
+      <h3 style="margin:8px 0 4px">1. Waffle Iron</h3>
+      <div class="meter"><div class="sweet"></div><div class="fill" id="cookFill"></div></div>
+      <button class="btn ok" id="cookBtn">🔥 Start / Stop Iron</button>
+    </div>
+    <div class="panel">
+      <h3 style="margin:0 0 6px">2. Your Plate</h3>
+      <div class="plate" id="plate">🧇?</div>
+      <div>
+        <button class="btn" onclick="addTop('🧈')">🧈 Butter</button>
+        <button class="btn" onclick="addTop('🍯')">🍯 Syrup</button>
+        <button class="btn" onclick="addTop('🍓')">🍓 Berry</button>
+        <button class="btn" onclick="addTop('🍦')">🍦 Cream</button>
+        <button class="btn" onclick="addTop('🍫')">🍫 Choco</button>
+      </div>
+      <button class="btn ok" style="width:100%;margin-top:8px" onclick="serve()">🍽️ SERVE ORDER!</button>
+    </div>
+  </div>
+</div>
+<script>
+const TOPS = ['🧈','🍯','🍓','🍦','🍫'];
+let tips = 0, served = 0, order = [], mine = [], cook = 0, cooking = false, cooked = false, timer = null;
+
+function newOrder() {
+  order = [];
+  const count = 2 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < count; i++) order.push(TOPS[Math.floor(Math.random() * TOPS.length)]);
+  mine = []; cook = 0; cooking = false; cooked = false;
+  clearInterval(timer);
+  document.getElementById('cookFill').style.width = '0%';
+  document.getElementById('ticket').textContent = '🧇 ' + order.join(' ');
+  document.getElementById('plate').textContent = 'Cook waffle first!';
+}
+
+document.getElementById('cookBtn').onclick = () => {
+  if (cooking) {
+    clearInterval(timer); cooking = false; cooked = true;
+    document.getElementById('plate').textContent = '🧇 ' + mine.join(' ');
+    return;
+  }
+  if (cooked) return;
+  cooking = true;
+  timer = setInterval(() => {
+    cook = Math.min(100, cook + 2.2);
+    document.getElementById('cookFill').style.width = cook + '%';
+    if (cook >= 100) { clearInterval(timer); cooking = false; cooked = true; document.getElementById('plate').textContent = '🖤 Burnt!'; }
+  }, 50);
+};
+
+window.addTop = t => {
+  if (!cooked) { document.getElementById('feedback').textContent = 'Cook the waffle first!'; return; }
+  if (mine.length < 5) mine.push(t);
+  document.getElementById('plate').textContent = '🧇 ' + mine.join(' ');
+};
+
+window.serve = () => {
+  if (!cooked) return;
+  let earn = (cook >= 55 && cook <= 84) ? 15 : (cook < 95 ? 8 : 1);
+  const match = order.every((x, i) => mine[i] === x) && order.length === mine.length;
+  earn += match ? 15 : 3;
+  tips += earn; served++;
+  document.getElementById('tips').textContent = `🪙 Tips: $${tips}`;
+  document.getElementById('served').textContent = `Orders: ${served}`;
+  document.getElementById('feedback').textContent = match && cook >= 55 && cook <= 84 ? `PERFECT! +$${earn}` : `Served! +$${earn}`;
+  newOrder();
+};
+newOrder();
+</script>
+</body>
+</html>

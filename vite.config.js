@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import fs from 'node:fs';
 import path from 'node:path';
+import { attachWaffleAiMiddleware, scheduleWaffleWarmup } from './waffle-ai-server.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -39,6 +40,9 @@ export default defineConfig({
   plugins: [{
     name: 'local-assets-and-offline',
     configureServer(server) {
+      attachWaffleAiMiddleware(server.middlewares);
+      scheduleWaffleWarmup(1500);
+
       // Serve runtimes and standalone sandboxed games byte-for-byte so Vite's HTML parser and HMR client never interfere.
       const mounts = [
         ['/runtimes/', path.resolve('runtimes')],
@@ -72,6 +76,10 @@ export default defineConfig({
         next();
       });
     },
+    configurePreviewServer(server) {
+      attachWaffleAiMiddleware(server.middlewares);
+      scheduleWaffleWarmup(1500);
+    },
     closeBundle() {
       for (const dir of ['games', 'runtimes']) {
         if (fs.existsSync(dir)) fs.cpSync(dir, `dist/${dir}`, { recursive: true });
@@ -88,7 +96,7 @@ export default defineConfig({
       walk('dist');
       const shell = files.filter(p => !p.startsWith('./games/') && !p.startsWith('./runtimes/') && p !== './sw.js');
       const version = 'bite-' + Date.now();
-      fs.writeFileSync('dist/sw.js', `const CACHE=${JSON.stringify(version)};const SHELL=${JSON.stringify(shell)};self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('bite-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});self.addEventListener('fetch',e=>{if(e.request.method!=='GET'||new URL(e.request.url).origin!==location.origin)return;e.respondWith(caches.match(e.request).then(hit=>hit||fetch(e.request).then(r=>{if(r.ok&&r.type==='basic'){const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy)).catch(()=>{})}return r}).catch(()=>{if(e.request.mode==='navigate')return caches.match('./index.html');return Response.error()})))});`);
+      fs.writeFileSync('dist/sw.js', `const CACHE=${JSON.stringify(version)};const SHELL=${JSON.stringify(shell)};self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('bite-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.origin!==location.origin||u.pathname.startsWith('/api/'))return;e.respondWith(caches.match(e.request).then(hit=>hit||fetch(e.request).then(r=>{if(r.ok&&r.type==='basic'){const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy)).catch(()=>{})}return r}).catch(()=>{if(e.request.mode==='navigate')return caches.match('./index.html');return Response.error()})))});`);
     }
   }]
 });

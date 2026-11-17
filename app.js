@@ -6,6 +6,7 @@ import { mountMathScience } from './tools-math-science.js';
 import { mountCode } from './tools-code.js';
 import { mountTextArt } from './tools-text-art.js';
 import { mountGames } from './games.js';
+import { openWaffleAI, warmupWaffleAI } from './waffle-ai.js';
 
 const $ = s => document.querySelector(s);
 const storage = {
@@ -21,12 +22,12 @@ let toolCleanup = null;
 let searchQuery = '';
 
 const WAFFLE_QUIPS = [
-  'Boing! Sweet math!',
-  'Tap a cupboard door!',
-  'Freshly baked utilities!',
-  '45 Arcade & Fancade hits ready to play!',
-  'Waffle power!',
-  'Pick a toy off the shelf!'
+  'Ask Waffle AI anything!',
+  'Boing! Touch me to chat!',
+  'Powered by Qwen 2.5 1.5B!',
+  '45 Arcade & Fancade hits ready!',
+  'Waffle AI is ready!',
+  'Touch me for Waffle AI!'
 ];
 let quipIndex = 0;
 
@@ -78,11 +79,12 @@ app.innerHTML = `
 
     <main id="main" class="kitchen-stage"></main>
 
-    <aside class="waffle-corner" aria-label="Sir Waffle Mascot">
+    <aside class="waffle-corner" aria-label="Sir Waffle Mascot & Waffle AI">
       <div class="counter-plate-wrap">
-        <div class="waffle-speech" id="waffle-speech">Tap a cupboard!</div>
-        <button type="button" class="waffle-mascot-btn" id="waffle-mascot" aria-label="Tap Sir Waffle mascot to bounce">
+        <button type="button" class="waffle-speech" id="waffle-speech" aria-label="Open Waffle AI chatbot">Touch me for Waffle AI!</button>
+        <button type="button" class="waffle-mascot-btn" id="waffle-mascot" aria-label="Touch Sir Waffle to open Waffle AI chatbot" title="Touch Sir Waffle to chat with Waffle AI!">
           ${waffleMascotSVG()}
+          <span class="waffle-ai-tag" aria-hidden="true">Waffle AI</span>
         </button>
       </div>
     </aside>
@@ -123,11 +125,16 @@ function triggerWaffleBounce(clientX, clientY, fromMascot = false) {
   }
 }
 
-$('#waffle-mascot').addEventListener('click', e => {
+function handleTouchWaffle(e) {
   e.stopPropagation();
-  const rect = e.currentTarget.getBoundingClientRect();
+  const target = $('#waffle-mascot') || e.currentTarget;
+  const rect = target.getBoundingClientRect();
   triggerWaffleBounce(rect.left + rect.width / 2, rect.top + rect.height / 2, true);
-});
+  openWaffleAI();
+}
+
+$('#waffle-mascot').addEventListener('click', handleTouchWaffle);
+$('#waffle-speech').addEventListener('click', handleTouchWaffle);
 
 $('#sound-toggle').addEventListener('click', () => {
   const nowMuted = toggleMute();
@@ -138,7 +145,7 @@ $('#sound-toggle').addEventListener('click', () => {
 
 // Tapping anywhere on the waffle wall bounces the waffle background & Sir Waffle
 document.addEventListener('click', e => {
-  if (e.target.closest('button, a, input, textarea, select, canvas, .gslider-track, .tool-window-card, .cupboard-card, .cabinet-bookcase, .game-hud, .kitchen-search-pill')) return;
+  if (e.target.closest('button, a, input, textarea, select, canvas, .gslider-track, .tool-window-card, .cupboard-card, .cabinet-bookcase, .game-hud, .kitchen-search-pill, .waffle-ai-dialog, .waffle-ai-overlay')) return;
   triggerWaffleBounce(e.clientX, e.clientY, false);
 });
 
@@ -252,7 +259,7 @@ function home() {
   view++;
   active = 'all';
   updateNav();
-  $('#waffle-speech').textContent = 'Tap a cupboard!';
+  $('#waffle-speech').textContent = 'Touch me for Waffle AI!';
 
   $('#main').innerHTML = `
     <section class="kitchen-home" aria-label="Cozy 2.5D Utility Kitchen">
@@ -479,6 +486,8 @@ function toast(msg) {
 window.addEventListener('hashchange', route);
 bindActions();
 route();
+
+setTimeout(() => warmupWaffleAI(), 800);
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register('./sw.js').catch(console.warn);

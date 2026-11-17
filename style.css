@@ -1607,6 +1607,300 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 #toast.show { transform: translate(-50%, 0); opacity: 1; }
 
 /* ==========================================================================
+   WAFFLE AI CHATBOT (2.5D COZY KITCHEN DIALOG)
+   ========================================================================== */
+
+.waffle-mascot-btn {
+  position: relative;
+  flex-direction: column;
+}
+
+.waffle-ai-tag {
+  margin-top: -12px;
+  background: linear-gradient(180deg, #ffe998 0%, #f5b94c 100%);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  padding: 2px 11px;
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: 0 3px 0 #b8732a;
+  z-index: 4;
+}
+
+body.waffle-modal-open {
+  overflow: hidden;
+}
+
+.waffle-ai-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(79, 47, 35, 0.52);
+}
+
+.waffle-ai-dialog {
+  width: 100%;
+  max-width: 680px;
+  max-height: min(86vh, 720px);
+  display: flex;
+  flex-direction: column;
+  background: var(--cream);
+  border: 4px solid var(--ink);
+  border-radius: 28px;
+  box-shadow: 0 10px 0 var(--wood-dark), 0 18px 34px rgba(45, 22, 10, 0.34);
+  overflow: hidden;
+  animation: shelfSlideIn 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.waffle-ai-header {
+  background: linear-gradient(180deg, #f3bd75 0%, #e09a4b 100%);
+  border-bottom: 4px solid var(--ink);
+  padding: 8px 16px 12px;
+}
+
+.waffle-ai-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.waffle-ai-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.waffle-ai-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: var(--cream);
+  border: 3px solid var(--ink);
+  box-shadow: 0 3px 0 #b8732a;
+}
+
+.waffle-header-svg {
+  width: 44px;
+  height: 44px;
+  display: block;
+}
+
+.waffle-ai-title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 22px;
+  line-height: 1.1;
+  color: var(--ink);
+}
+
+.waffle-ai-badge {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--cream);
+  border: 2.5px solid var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--ink-soft);
+}
+.waffle-ai-badge.is-ready { background: #d4f2c9; color: #26541e; }
+.waffle-ai-badge.is-busy { background: #ffe58f; color: #5c3a12; }
+.waffle-ai-badge.is-warn { background: #ffd2c9; color: #7a2117; }
+
+.waffle-ai-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.waffle-reset-btn {
+  min-height: 38px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--cream);
+  border: var(--outline-thin);
+  box-shadow: 0 3px 0 #b57a39;
+  font-family: var(--display);
+  font-size: 13px;
+}
+
+.waffle-ai-feed {
+  flex: 1;
+  min-height: 220px;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--parchment);
+}
+
+.waffle-msg {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: 88%;
+}
+
+.waffle-msg.is-user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.waffle-msg.is-bot {
+  align-self: flex-start;
+}
+
+.waffle-msg-avatar {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: var(--cream);
+  border: 2.5px solid var(--ink);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 3px 0 #c7a471;
+}
+
+.waffle-mini-svg {
+  width: 30px;
+  height: 30px;
+}
+
+.waffle-msg-bubble {
+  padding: 10px 14px;
+  border-radius: 18px;
+  border: 3px solid var(--ink);
+  background: var(--cream);
+  box-shadow: 0 4px 0 #c7a471;
+  font-size: 14.5px;
+  line-height: 1.48;
+  word-break: break-word;
+}
+
+.waffle-msg.is-user .waffle-msg-bubble {
+  background: #ffe8a3;
+  box-shadow: 0 4px 0 #c99a42;
+}
+
+.waffle-msg-author {
+  font-family: var(--display);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  margin-bottom: 3px;
+}
+
+.waffle-inline-code {
+  background: #f2dfc0;
+  border: 1.5px solid #c99e63;
+  border-radius: 6px;
+  padding: 1px 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.waffle-code-block {
+  margin: 8px 0 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #3d2418;
+  color: #fff6e0;
+  border: 2.5px solid var(--ink);
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.waffle-thinking {
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+.waffle-cursor {
+  display: inline-block;
+  margin-left: 2px;
+  color: #b85b28;
+  animation: waffleBlink 0.7s steps(2) infinite;
+}
+
+@keyframes waffleBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.waffle-ai-starters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px 2px;
+  background: var(--parchment);
+  border-top: 2.5px dashed #d3b27e;
+}
+
+.waffle-starter-chip {
+  min-height: 34px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--cream);
+  border: 2.5px solid var(--ink);
+  box-shadow: 0 3px 0 #c7a471;
+  font-size: 12.5px;
+}
+
+.waffle-ai-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--cream);
+  border-top: 4px solid var(--ink);
+}
+
+.waffle-ai-input {
+  flex: 1;
+  min-height: 44px;
+  max-height: 120px;
+  resize: vertical;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border: 3px solid var(--ink);
+  background: #fffdf7;
+  font-size: 14.5px;
+  line-height: 1.35;
+}
+
+.waffle-send-btn, .waffle-stop-btn {
+  min-height: 44px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: var(--outline-thin);
+  font-family: var(--display);
+  font-size: 15px;
+}
+
+.waffle-stop-btn {
+  background: #f7b8c4;
+  box-shadow: 0 4px 0 #b85c6e;
+}
+
+/* ==========================================================================
    MOBILE-FIRST RESPONSIVE RULES (2x3 cupboards, large buttons, no overflow)
    ========================================================================== */
 

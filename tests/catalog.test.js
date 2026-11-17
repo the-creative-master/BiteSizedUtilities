@@ -111,3 +111,19 @@ test('CodeHub runtimes (Luau, Haskell, Ruby, PHP, SQL, C++, Clojure, Prolog, Was
   for (const file of vendoredFiles) assert.ok(fs.existsSync(file), `${file} exists`);
   assert.ok(!appSrc.includes('await import('), 'app.js uses static imports for instant loading');
 });
+
+test('Waffle AI chatbot is wired to Sir Waffle mascot and powered by node-llama.cpp Qwen 2.5 1.5B', async () => {
+  const appSrc = fs.readFileSync('app.js', 'utf8');
+  const viteSrc = fs.readFileSync('vite.config.js', 'utf8');
+  const serverSrc = fs.readFileSync('waffle-ai-server.js', 'utf8');
+  const uiSrc = fs.readFileSync('waffle-ai.js', 'utf8');
+  assert.ok(appSrc.includes('openWaffleAI'), 'app.js opens Waffle AI when touching the waffle');
+  assert.ok(viteSrc.includes('attachWaffleAiMiddleware'), 'vite.config.js attaches Waffle AI middleware');
+  assert.ok(serverSrc.includes('node-llama-cpp'), 'waffle-ai-server.js uses node-llama-cpp');
+  assert.ok(uiSrc.includes('/api/waffle-ai/chat'), 'waffle-ai.js streams from /api/waffle-ai/chat');
+  const { getWaffleStatus } = await import('../waffle-ai-server.js');
+  const status = getWaffleStatus();
+  assert.equal(status.engine, 'node-llama.cpp');
+  assert.equal(status.model, 'Qwen 2.5 1.5B');
+  assert.equal(status.preCached, true, 'Qwen 2.5 1.5B GGUF model must be pre-cached on disk');
+});

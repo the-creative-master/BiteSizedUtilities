@@ -173,7 +173,8 @@ test('Waffle AI chatbot, streaming code boxes, DOCX creation/parsing, single Waf
   assert.ok(AI_DISCLAIMER_TEXT.includes('iOS 26') && AI_DISCLAIMER_TEXT.includes('WebGPU'), 'AI disclaimer warns about iOS 26 and WebGPU');
   assert.ok(!/tier\s*[123]|diagram/i.test(AI_DISCLAIMER_TEXT), 'AI disclaimer does not mention tier numbers or diagrams');
   assert.ok(fs.existsSync('node_modules/@wllama/wllama/esm/wasm/wllama.wasm'), 'WLlama WASM binary installed locally');
-  assert.ok(viteSrc.includes('/wllama/') && viteSrc.includes('/api/waffle-ai/gguf/'), 'Vite serves self-hosted WLlama WASM and local GGUF ranges');
+  assert.ok(fs.existsSync('node_modules/@wllama/wllama-compat/wasm/wllama.wasm'), 'WLlama compat WASM binary installed locally');
+  assert.ok(viteSrc.includes('/wllama/') && viteSrc.includes('/wllama-compat/') && viteSrc.includes('/api/waffle-ai/gguf/'), 'Vite serves self-hosted WLlama, compat WASM, and local GGUF ranges');
   assert.ok(uiSrc.includes('bite-open-settings') && uiSrc.includes('streamWllamaChat'), 'Waffle AI opens Settings for models and supports WLlama fallback');
 
   const { APP_LANGUAGES, tUI } = await import('../i18n.js');

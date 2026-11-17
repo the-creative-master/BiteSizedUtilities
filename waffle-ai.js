@@ -311,24 +311,24 @@ export async function streamWaffleChat({ modelId, messages: msgList, systemPromp
   if (mode === 'server') {
     attempts.push({ kind: 'server', id: cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b' });
     if (diag.hasWebGPU) attempts.push({ kind: 'browser', id: cfg.kind === 'browser' ? cfg.id : 'qwen2.5-0.5b', dev: 'webgpu' });
-    attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: false });
+    attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: false });
     attempts.push({ kind: 'browser', id: cfg.kind === 'browser' ? cfg.id : 'qwen2.5-0.5b', dev: 'wasm' });
   } else if (mode === 'webgpu') {
     if (diag.hasWebGPU) {
       attempts.push({ kind: 'browser', id: cfg.kind === 'browser' ? cfg.id : 'qwen3.5-0.8b', dev: 'webgpu' });
-      attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: true });
+      attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: true });
     }
-    attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: false });
+    attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: false });
     attempts.push({ kind: 'browser', id: cfg.kind === 'browser' ? cfg.id : 'qwen2.5-0.5b', dev: 'wasm' });
     attempts.push({ kind: 'server', id: cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b' });
   } else if (mode === 'wllama') {
-    if (diag.hasWebGPU) attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: true });
-    attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: false });
+    if (diag.hasWebGPU) attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: true });
+    attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: false });
     attempts.push({ kind: 'browser', id: 'qwen2.5-0.5b', dev: 'wasm' });
     attempts.push({ kind: 'server', id: cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b' });
   } else if (mode === 'wasm') {
     attempts.push({ kind: 'browser', id: cfg.kind === 'browser' ? cfg.id : 'qwen2.5-0.5b', dev: 'wasm' });
-    attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: false });
+    attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: false });
     attempts.push({ kind: 'server', id: cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b' });
   } else {
     // Auto fallback chain
@@ -338,17 +338,17 @@ export async function streamWaffleChat({ modelId, messages: msgList, systemPromp
       }
       attempts.push({ kind: 'browser', id: cfg.id, dev: 'wasm' });
       if (diag.hasWebGPU) {
-        attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: true });
+        attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: true });
       }
-      attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: false });
+      attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: false });
       attempts.push({ kind: 'server', id: 'qwen2.5-1.5b' });
     } else {
       attempts.push({ kind: 'server', id: cfg.id });
       if (diag.hasWebGPU) {
         attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'webgpu' });
-        attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: true });
+        attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: true });
       }
-      attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: false });
+      attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: false });
       attempts.push({ kind: 'browser', id: 'qwen2.5-0.5b', dev: 'wasm' });
     }
   }
@@ -365,7 +365,7 @@ export async function streamWaffleChat({ modelId, messages: msgList, systemPromp
         return await streamServerChat({ modelId: step.id, messages: msgList, systemPrompt, maxTokens, temperature, signal, onStatus, onToken });
       }
       if (step.kind === 'wllama') {
-        return await streamWllamaChat({ ggufFile: step.gguf, messages: msgList, systemPrompt, maxTokens, temperature, useWebGPU: step.webgpu, signal, onStatus, onToken });
+        return await streamWllamaChat({ ggufFile: step.gguf, hfRepo: step.hfRepo, hfQuant: step.hfQuant, messages: msgList, systemPrompt, maxTokens, temperature, useWebGPU: step.webgpu, signal, onStatus, onToken });
       }
       return await streamBrowserChat({ modelId: step.id, messages: msgList, systemPrompt, maxTokens, temperature, preferredDevice: step.dev, signal, onStatus, onToken });
     } catch (err) {

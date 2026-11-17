@@ -41,6 +41,8 @@ export const TEXT_MODELS = [
     loader: 'qwen3_5',
     hfId: 'onnx-community/Qwen3.5-0.8B-ONNX',
     dtype: { embed_tokens: 'q4', decoder_model_merged: 'q4' },
+    hfGgufRepo: 'unsloth/Qwen3.5-0.8B-GGUF',
+    hfGgufQuant: 'Q4_K_M',
     ggufFile: 'qwen3-0.6b.gguf',
     desc: 'Qwen 3.5 0.8B in-browser (~550 MB, auto-falls back if WebGPU missing)'
   },
@@ -355,6 +357,8 @@ export async function streamBrowserChat({
 
 export async function streamWllamaChat({
   ggufFile = 'qwen3-0.6b.gguf',
+  hfRepo = null,
+  hfQuant = 'Q4_K_M',
   messages,
   systemPrompt,
   maxTokens = 480,
@@ -366,20 +370,27 @@ export async function streamWllamaChat({
 }) {
   const { Wllama } = await import('@wllama/wllama');
   const wasmUrl = new URL('./wllama/wllama.wasm', window.location.href).href;
+  const compatJsUrl = new URL('./wllama-compat/wllama.js', window.location.href).href;
+  const compatWasmUrl = new URL('./wllama-compat/wllama.wasm', window.location.href).href;
   const ggufUrl = new URL(`./api/waffle-ai/gguf/${ggufFile}`, window.location.href).href;
+  const targetKey = `${hfRepo ? `${hfRepo}:${hfQuant}` : ggufFile}:${useWebGPU}`;
 
-  if (!wllamaInstance) {
-    wllamaInstance = new Wllama({ default: wasmUrl }, { suppressNativeLog: true });
-  }
+  const createFreshWllama = async () => {
+    try { await wllamaInstance?.exit?.(); } catch {}
+    wllamaInstance = null;
+    wllamaLoadedFile = null;
+    const inst = new Wllama({ default: wasmUrl }, { suppressNativeLog: true, parallelDownloads: 1 });
+    inst.setCompat({ worker: compatJsUrl, wasm: compatWasmUrl }, 'firefox_safari');
+    wllamaInstance = inst;
+    return inst;
+  };
 
-  if (wllamaLoadedFile !== `${ggufFile}:${useWebGPU}`) {
-    onStatus?.({
-      state: 'loading',
-      detail: `Loading ${ggufFile} via WLlama (${useWebGPU ? 'WebGPU' : 'WASM CPU'})…`
-    });
-    await wllamaInstance.loadModelFromUrl(ggufUrl, {
+  if (!wllamaInstance || wllamaLoadedFile !== targetKey || !wllamaInstance.isModelLoaded?.()) {
+    const loadParams = {
       n_ctx: 2048,
+      n_threads: 1,
       n_gpu_layers: useWebGPU ? 99 : 0,
+      useCache: true,
       progressCallback({ loaded, total }) {
         if (total > 0) {
           onStatus?.({
@@ -388,8 +399,43 @@ export async function streamWllamaChat({
           });
         }
       }
-    });
-    wllamaLoadedFile = `${ggufFile}:${useWebGPU}`;
+    };
+
+    let loadedOk = false;
+    if (hfRepo) {
+      const inst = await createFreshWllama();
+      onStatus?.({
+        state: 'loading',
+        detail: `Loading ${hfRepo} via WLlama (${useWebGPU ? 'WebGPU' : 'WASM CPU'})…`
+      });
+      try {
+        await inst.loadModelFromHF({ repo: hfRepo, quant: hfQuant }, loadParams);
+        wllamaLoadedFile = targetKey;
+        loadedOk = true;
+      } catch (err) {
+        if (err.name === 'AbortError' || signal?.aborted) throw err;
+        try { await inst.exit?.(); } catch {}
+        wllamaInstance = null;
+        wllamaLoadedFile = null;
+      }
+    }
+
+    if (!loadedOk) {
+      const inst = await createFreshWllama();
+      onStatus?.({
+        state: 'loading',
+        detail: `Loading ${ggufFile} via WLlama (${useWebGPU ? 'WebGPU' : 'WASM CPU'})…`
+      });
+      try {
+        await inst.loadModelFromUrl(ggufUrl, loadParams);
+        wllamaLoadedFile = targetKey;
+      } catch (err) {
+        try { await inst.exit?.(); } catch {}
+        wllamaInstance = null;
+        wllamaLoadedFile = null;
+        throw err;
+      }
+    }
   }
 
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -419,8 +465,9 @@ export async function streamWllamaChat({
     const piece = chunk?.choices?.[0]?.delta?.content || '';
     if (piece) {
       acc += piece;
-      onToken?.(piece, acc);
+      const cleaned = acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*$/, '');
+      onToken?.(piece, cleaned);
     }
   }
-  return acc.trim();
+  return acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*$/, '').trim();
 }

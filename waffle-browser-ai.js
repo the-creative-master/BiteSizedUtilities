@@ -38,8 +38,9 @@ export const TEXT_MODELS = [
     label: 'Qwen 3.5 0.8B',
     badge: 'Browser · Compact',
     kind: 'browser',
+    loader: 'qwen3_5',
     hfId: 'onnx-community/Qwen3.5-0.8B-ONNX',
-    dtype: 'q4f16',
+    dtype: { embed_tokens: 'q4', decoder_model_merged: 'q4' },
     ggufFile: 'qwen3-0.6b.gguf',
     desc: 'Qwen 3.5 0.8B in-browser (~550 MB, auto-falls back if WebGPU missing)'
   },
@@ -195,21 +196,56 @@ async function getBrowserGenerator(modelCfg, preferredDevice, onStatus) {
   const cacheKey = `${modelCfg.id}:${preferredDevice}`;
   if (pipeCache.has(cacheKey)) return pipeCache.get(cacheKey);
   const promise = (async () => {
-    const { pipeline } = await getTransformers();
+    const mod = await getTransformers();
+    const { pipeline, AutoTokenizer, Qwen3_5ForCausalLM } = mod;
     onStatus?.({ state: 'loading', detail: `Loading ${modelCfg.label} (${preferredDevice.toUpperCase()})…` });
-    const gen = await pipeline('text-generation', modelCfg.hfId, {
-      device: preferredDevice,
-      dtype: preferredDevice === 'webgpu' ? (modelCfg.dtype || 'q4f16') : 'q4',
-      progress_callback(p) {
-        if (p?.status === 'progress' && typeof p.progress === 'number') {
-          onStatus?.({
-            state: 'downloading',
-            detail: `Downloading ${modelCfg.label}: ${Math.round(p.progress)}%`
-          });
-        }
+
+    const progress_callback = p => {
+      if (p?.status === 'progress' && typeof p.progress === 'number') {
+        onStatus?.({
+          state: 'downloading',
+          detail: `Downloading ${modelCfg.label}: ${Math.round(p.progress)}%`
+        });
       }
-    });
-    return { gen, device: preferredDevice };
+    };
+
+    if (modelCfg.loader === 'qwen3_5') {
+      const tokenizer = await AutoTokenizer.from_pretrained(modelCfg.hfId, { progress_callback })
+        .catch(async () => {
+          const proc = await mod.AutoProcessor.from_pretrained(modelCfg.hfId, { progress_callback });
+          return proc.tokenizer || proc;
+        });
+      const dtypeMap = typeof modelCfg.dtype === 'object'
+        ? modelCfg.dtype
+        : { embed_tokens: 'q4', decoder_model_merged: 'q4' };
+      const model = await Qwen3_5ForCausalLM.from_pretrained(modelCfg.hfId, {
+        device: preferredDevice,
+        dtype: dtypeMap,
+        progress_callback
+      });
+      return { kind: 'qwen3_5', tokenizer, model, device: preferredDevice };
+    }
+
+    const wantedDtype = preferredDevice === 'webgpu' ? (modelCfg.dtype || 'q4f16') : 'q4';
+    let gen;
+    try {
+      gen = await pipeline('text-generation', modelCfg.hfId, {
+        device: preferredDevice,
+        dtype: wantedDtype,
+        progress_callback
+      });
+    } catch (err) {
+      if (wantedDtype !== 'q4') {
+        gen = await pipeline('text-generation', modelCfg.hfId, {
+          device: preferredDevice,
+          dtype: 'q4',
+          progress_callback
+        });
+      } else {
+        throw err;
+      }
+    }
+    return { kind: 'pipeline', gen, device: preferredDevice };
   })();
   pipeCache.set(cacheKey, promise);
   try {
@@ -236,11 +272,11 @@ export async function streamBrowserChat({
 
   const diag = await detectDeviceDiagnostics();
   const device = preferredDevice || (diag.hasWebGPU ? 'webgpu' : 'wasm');
-  const { gen, device: activeDev } = await getBrowserGenerator(cfg, device, onStatus);
+  const loaded = await getBrowserGenerator(cfg, device, onStatus);
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
   const { TextStreamer } = await getTransformers();
-  onStatus?.({ state: 'generating', detail: `${cfg.label} · ${activeDev.toUpperCase()}` });
+  onStatus?.({ state: 'generating', detail: `${cfg.label} · ${loaded.device.toUpperCase()}` });
 
   const chat = [];
   if (systemPrompt) chat.push({ role: 'system', content: systemPrompt });
@@ -251,7 +287,8 @@ export async function streamBrowserChat({
   }
 
   let acc = '';
-  const streamer = new TextStreamer(gen.tokenizer, {
+  const tokenizer = loaded.kind === 'qwen3_5' ? loaded.tokenizer : loaded.gen.tokenizer;
+  const streamer = new TextStreamer(tokenizer, {
     skip_prompt: true,
     skip_special_tokens: true,
     callback_function(text) {
@@ -261,7 +298,30 @@ export async function streamBrowserChat({
     }
   });
 
-  const out = await gen(chat, {
+  if (loaded.kind === 'qwen3_5') {
+    const promptStr = tokenizer.apply_chat_template(chat, {
+      tokenize: false,
+      add_generation_prompt: true,
+      enable_thinking: false
+    });
+    const inputs = tokenizer(promptStr);
+    const out = await loaded.model.generate({
+      ...inputs,
+      max_new_tokens: maxTokens,
+      temperature: Math.max(0.1, temperature),
+      do_sample: temperature > 0.15,
+      streamer
+    });
+    if (!acc && out) {
+      const inputLen = inputs.input_ids?.dims?.[1] || 0;
+      const decoded = tokenizer.decode(out[0].slice(inputLen), { skip_special_tokens: true });
+      acc = decoded;
+      onToken?.(decoded, acc);
+    }
+    return acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
+  }
+
+  const out = await loaded.gen(chat, {
     max_new_tokens: maxTokens,
     temperature: Math.max(0.1, temperature),
     do_sample: temperature > 0.15,

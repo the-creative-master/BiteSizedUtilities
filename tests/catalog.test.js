@@ -166,7 +166,8 @@ test('Waffle AI chatbot, streaming code boxes, DOCX creation/parsing, single Waf
 
   const { TEXT_MODELS, EXECUTION_MODES, AI_DISCLAIMER_TEXT } = await import('../waffle-browser-ai.js');
   assert.ok(TEXT_MODELS.some(m => m.id === 'llama3.2-1b'), 'Llama 3.2 1B available');
-  assert.ok(TEXT_MODELS.some(m => m.id === 'qwen3.5-0.8b'), 'Qwen 3.5 0.8B available');
+  const browserAiSrc = fs.readFileSync('waffle-browser-ai.js', 'utf8');
+  assert.ok(browserAiSrc.includes('Qwen3_5ForCausalLM') && browserAiSrc.includes('decoder_model_merged'), 'Qwen 3.5 0.8B uses Qwen3_5ForCausalLM with split ONNX dtype');
   assert.ok(TEXT_MODELS.some(m => m.id === 'qwen2.5-coder-1.5b'), 'Qwen 2.5 Coder 1.5B available');
   assert.ok(['auto', 'server', 'webgpu', 'wllama', 'wasm'].every(id => EXECUTION_MODES.some(m => m.id === id)), 'All fallback modes wired');
   assert.ok(AI_DISCLAIMER_TEXT.includes('iOS 26') && AI_DISCLAIMER_TEXT.includes('WebGPU'), 'AI disclaimer warns about iOS 26 and WebGPU');

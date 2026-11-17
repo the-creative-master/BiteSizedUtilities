@@ -332,10 +332,12 @@ export async function streamWaffleChat({ modelId, messages: msgList, systemPromp
     if (cfg.kind === 'browser') {
       if (diag.hasWebGPU) {
         attempts.push({ kind: 'browser', id: cfg.id, dev: 'webgpu' });
+      }
+      attempts.push({ kind: 'browser', id: cfg.id, dev: 'wasm' });
+      if (diag.hasWebGPU) {
         attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: true });
       }
       attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', webgpu: false });
-      attempts.push({ kind: 'browser', id: cfg.id, dev: 'wasm' });
       attempts.push({ kind: 'server', id: 'qwen2.5-1.5b' });
     } else {
       attempts.push({ kind: 'server', id: cfg.id });

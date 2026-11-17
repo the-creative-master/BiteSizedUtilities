@@ -71,6 +71,10 @@ app.innerHTML = `
           <span class="gnav-icon">${uiIconSVG('clock')}</span>
           <span class="gnav-label">Recent</span>
         </button>
+        <button type="button" class="gbtn gnav-btn waffle-hud-btn" id="waffle-hud-btn" aria-label="Open Waffle AI chatbot">
+          <span class="gnav-icon">${waffleMascotSVG('waffle-hud-svg')}</span>
+          <span class="gnav-label">Waffle AI</span>
+        </button>
         <button type="button" class="gbtn gnav-btn sound-btn" id="sound-toggle" aria-label="Toggle sound effects" aria-pressed="${!isMuted()}">
           <span class="gnav-icon" id="sound-icon">${uiIconSVG(isMuted() ? 'soundOff' : 'soundOn')}</span>
         </button>
@@ -135,6 +139,7 @@ function handleTouchWaffle(e) {
 
 $('#waffle-mascot').addEventListener('click', handleTouchWaffle);
 $('#waffle-speech').addEventListener('click', handleTouchWaffle);
+$('#waffle-hud-btn').addEventListener('click', handleTouchWaffle);
 
 $('#sound-toggle').addEventListener('click', () => {
   const nowMuted = toggleMute();

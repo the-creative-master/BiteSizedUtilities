@@ -128,7 +128,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   z-index: 1;
   max-width: 1060px;
   margin: 0 auto;
-  padding: 14px 16px 36px;
+  padding: 14px 16px 148px;
 }
 
 .game-hud {
@@ -547,11 +547,24 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
    ========================================================================== */
 
 .waffle-corner {
+  position: fixed;
+  right: 18px;
+  bottom: 14px;
+  z-index: 45;
   display: flex;
   justify-content: flex-end;
-  margin-top: -12px;
-  padding-right: 8px;
   pointer-events: none;
+}
+
+.waffle-hud-btn {
+  background: linear-gradient(180deg, #fff1b8 0%, #ffd972 100%);
+  box-shadow: 0 5px 0 #c78b33, 0 8px 12px rgba(79, 47, 35, 0.16);
+}
+
+.waffle-hud-svg {
+  width: 24px;
+  height: 24px;
+  display: block;
 }
 
 .counter-plate-wrap {
@@ -1909,11 +1922,13 @@ body.waffle-modal-open {
 }
 
 @media (max-width: 640px) {
-  .game-viewport { padding: 10px 10px 30px; }
+  .game-viewport { padding: 10px 10px 126px; }
   .wood-signboard { padding: 12px 14px; gap: 10px; }
   .brass-bolt { width: 18px; height: 18px; }
   .gnav-btn { padding: 7px 10px; font-size: 13px; }
-  .waffle-svg { width: 108px; height: 108px; }
+  .waffle-corner { right: 10px; bottom: 10px; }
+  .waffle-svg { width: 88px; height: 88px; }
+  .waffle-speech { font-size: 12px; padding: 4px 10px; }
 
   /* Strictly 2x3 cupboard grid on mobile, chunky & easy to tap */
   .cupboard-grid {

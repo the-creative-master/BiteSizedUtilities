@@ -36,8 +36,10 @@ const storage = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 };
 
-let favorites = new Set(storage.get('bite-favorites', []));
-let recent = storage.get('bite-recent', []);
+const rawFavs = storage.get('bite-favorites', []);
+const rawRecent = storage.get('bite-recent', []);
+let favorites = new Set(Array.isArray(rawFavs) ? rawFavs : []);
+let recent = Array.isArray(rawRecent) ? rawRecent : [];
 let active = 'all';
 let view = 0;
 let toolCleanup = null;
@@ -906,16 +908,20 @@ $('#settings-overlay').addEventListener('click', e => {
 });
 
 bindActions();
-route();
-initAppI18n();
+try { route(); } catch (e) { console.error(e); home(); }
+try { initAppI18n(); } catch (e) { console.error(e); }
 
-setTimeout(() => warmupWaffleAI(), 800);
+setTimeout(() => { try { warmupWaffleAI(); } catch {} }, 800);
 
-if ('serviceWorker' in navigator) {
-  if (import.meta.env.PROD) {
-    navigator.serviceWorker.register('./sw.js').catch(console.warn);
-  } else {
-    navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
-    if ('caches' in window) caches.keys().then(ks => ks.filter(k => k.startsWith('bite-')).forEach(k => caches.delete(k))).catch(() => {});
+try {
+  if ('serviceWorker' in navigator && navigator.serviceWorker) {
+    if (import.meta.env.PROD) {
+      navigator.serviceWorker.register('./sw.js').catch(console.warn);
+    } else {
+      navigator.serviceWorker.getRegistrations?.().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
+      if ('caches' in window && window.caches?.keys) {
+        window.caches.keys().then(ks => ks.filter(k => k.startsWith('bite-')).forEach(k => window.caches.delete(k))).catch(() => {});
+      }
+    }
   }
-}
+} catch {}

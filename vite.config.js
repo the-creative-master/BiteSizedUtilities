@@ -121,6 +121,9 @@ export default defineConfig({
         } catch {
           return next();
         }
+        if (pathname === '/' || pathname === '/index.html') {
+          res.setHeader('Cache-Control', 'no-store, max-age=0');
+        }
         if (pathname === '/sw.js' || pathname.endsWith('/sw.js')) {
           res.statusCode = 200;
           res.setHeader('Content-Type', 'text/javascript; charset=utf-8');

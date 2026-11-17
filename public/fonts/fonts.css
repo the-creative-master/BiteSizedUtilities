@@ -1,49 +1,35 @@
 @font-face {
-  font-family: 'DM Sans';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url(./font-1.woff2) format('truetype');
-}
-@font-face {
-  font-family: 'DM Sans';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url(./font-2.woff2) format('truetype');
-}
-@font-face {
-  font-family: 'DM Sans';
+  font-family: 'Fredoka';
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: url(./font-3.woff2) format('truetype');
+  src: url(./fredoka-latin-600-normal.woff2) format('woff2');
 }
 @font-face {
-  font-family: 'DM Sans';
+  font-family: 'Fredoka';
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  src: url(./font-4.woff2) format('truetype');
+  src: url(./fredoka-latin-700-normal.woff2) format('woff2');
 }
 @font-face {
-  font-family: 'Playfair Display';
-  font-style: italic;
-  font-weight: 400;
-  font-display: swap;
-  src: url(./font-5.woff2) format('truetype');
-}
-@font-face {
-  font-family: 'Playfair Display';
+  font-family: 'Nunito';
   font-style: normal;
-  font-weight: 400;
+  font-weight: 700;
   font-display: swap;
-  src: url(./font-6.woff2) format('truetype');
+  src: url(./nunito-latin-700-normal.woff2) format('woff2');
 }
 @font-face {
-  font-family: 'Playfair Display';
+  font-family: 'Nunito';
   font-style: normal;
-  font-weight: 500;
+  font-weight: 800;
   font-display: swap;
-  src: url(./font-7.woff2) format('truetype');
+  src: url(./nunito-latin-800-normal.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+  src: url(./nunito-latin-900-normal.woff2) format('woff2');
 }

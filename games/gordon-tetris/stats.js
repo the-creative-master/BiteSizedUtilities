@@ -1,1 +1,0 @@
-/* First-party no-op performance overlay adapter, MIT. */ var Stats=function(){return {domElement:document.createElement("div"),update:function(){}}};

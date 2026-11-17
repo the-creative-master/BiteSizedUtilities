@@ -82,17 +82,180 @@ function validateCssLexically(source) {
   if('({['.includes(c))stack.push(c);else if(')}]'.includes(c))need(stack.pop()==={')':'(','}':'{',']':'['}[c],'Unbalanced CSS delimiters');
  }need(!quote&&!comment&&!stack.length,'Unterminated CSS string, comment, or delimiter');
 }
+
+async function runHaskell(code) {
+  self.window = self;
+  if (typeof self.JSHC === 'undefined') importScripts(V + 'haskell/jshc.js');
+  const res = self.JSHC.runHaskell(code);
+  if (res !== '') out(res);
+}
+
 self.onmessage=async({data:d})=>{emitted=0;try{const {op,code='',input='',options={}}=d;need(code.length<=1000000,'Input limit exceeded (1 MB)');let value;
  switch(op){
- case'javascript':case'typescript':case'coffeescript':{let js=code;if(op==='typescript'){importScripts(V+'typescript.js');const result=ts.transpileModule(code,{reportDiagnostics:true,compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}});const errors=result.diagnostics?.filter(d=>d.category===ts.DiagnosticCategory.Error);need(!errors?.length,errors?.map(d=>ts.flattenDiagnosticMessageText(d.messageText,'\n')).join('\n'));js=result.outputText;}if(op==='coffeescript'){const coffee=await import(V+'coffeescript.js');js=coffee.default.compile(code,{bare:true});}const original=console;self.console={...original,log:out,info:out,warn:(...a)=>out('Warning:',...a),error:(...a)=>out('Error:',...a),debug:out,clear:()=>{}};const fn=new Function('input','"use strict";\n'+js+'\n//# sourceURL=codehub-user.js');value=await fn(input);if(value!==undefined)out(value);break;}
- case'bash':{const base=V+'bashkit/';const glue=await import(base+'bashkit_wasm.js');const init=glue.default;await init({module_or_path:base+'bashkit_wasm_bg.wasm'});const {Bash}=await import(base+'index.js');const shell=new Bash();try{const result=await shell.execute(code,{capture:100000});if(result.stderr)out('stderr: '+result.stderr);if(result.stdout)out(result.stdout.replace(/\n?$/,'\n'));value=result.exitCode;if(result.exitCode!==0)throw Error(`Bash exited with code ${result.exitCode}`);}finally{shell.cancel();}break;}
+ case'javascript':case'nodejs':case'typescript':case'coffeescript':{
+   let js=code;
+   if(op==='typescript'){importScripts(V+'typescript.js');const result=ts.transpileModule(code,{reportDiagnostics:true,compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}});const errors=result.diagnostics?.filter(d=>d.category===ts.DiagnosticCategory.Error);need(!errors?.length,errors?.map(d=>ts.flattenDiagnosticMessageText(d.messageText,'\n')).join('\n'));js=result.outputText;}
+   if(op==='coffeescript'){const coffee=await import(V+'coffeescript.js');js=coffee.default.compile(code,{bare:true});}
+   const original=console;self.console={...original,log:out,info:out,warn:(...a)=>out('Warning:',...a),error:(...a)=>out('Error:',...a),debug:out,clear:()=>{}};
+   const hadProcess='process'in self;
+   if(op==='nodejs'){self.process={argv:['node','main.js'],env:{},version:'v22.0.0',platform:'browser',stdout:{write:s=>out(String(s).replace(/\n$/,''))}};}
+   try{const fn=new Function('input','"use strict";\n'+js+'\n//# sourceURL=codehub-user.js');value=await fn(input);if(value!==undefined)out(value);}
+   finally{self.console=original;if(op==='nodejs'&&!hadProcess)delete self.process;}
+   break;
+ }
+ case'luau':{
+   const {LuauState}=await import(V+'luau/index.js');
+   const state=await LuauState.createAsync({print:(...a)=>out(...a),warn:(...a)=>out('Warning:',...a),input});
+   try{const fn=state.loadstring(code,'main.luau',true);if(typeof fn==='function')await fn();else if(fn!==undefined)out(fn);}finally{state.destroy();}
+   break;
+ }
+ case'haskell':{await runHaskell(code);break;}
+ case'ruby':case'erb':{
+   self.window=self;
+   if(typeof self.Opal==='undefined')importScripts(V+'ruby/opal.js',V+'ruby/pathname.js',V+'ruby/stringio.js',V+'ruby/opal-builder.js');
+   Opal.require('opal-builder');
+   let rbCode=code;
+   if(op==='erb'){
+     const ctxJson=input.trim()?JSON.parse(input):{};
+     const parts=['data = '+JSON.stringify(ctxJson),'__erb = []'];
+     let last=0;
+     for(const m of code.matchAll(/<%([=-]?)([\s\S]*?)%>/g)){
+       const lit=code.slice(last,m.index);
+       if(lit)parts.push('__erb << '+JSON.stringify(lit));
+       if(m[1]==='=')parts.push('__erb << ('+m[2].trim()+').to_s');
+       else parts.push(m[2]);
+       last=m.index+m[0].length;
+     }
+     const tail=code.slice(last);
+     if(tail)parts.push('__erb << '+JSON.stringify(tail));
+     parts.push('puts __erb.join("")');
+     rbCode=parts.join('\n');
+   }
+   const Builder=Opal.const_get_qualified(Opal.const_get_relative([],'Opal'),'Builder');
+   const built=Builder.$new().$build_str(rbCode,'main.rb').$to_s();
+   let rbuf='';
+   Opal.gvars.stdout['$write_proc='](s=>{rbuf+=String(s);});
+   const origLog=console.log;self.console={...console,log:(...a)=>out(...a)};
+   try{(0,eval)(built);}finally{self.console.log=origLog;}
+   if(rbuf)out(rbuf.replace(/\n$/,''));
+   break;
+ }
+ case'php':{
+   self.window=self;
+   if(typeof self.document==='undefined')self.document={querySelector:()=>null,getElementById:()=>null,createElement:()=>({style:{}}),currentScript:null};
+   const {default:PHP}=await import(V+'php/php8.3-web.mjs');
+   const outBytes=[],errBytes=[];
+   const php=await PHP({
+     locateFile:p=>V+'php/'+p,
+     stdin:()=>null,
+     stdout:b=>{if(b!==null&&b!==undefined)outBytes.push(b);},
+     stderr:b=>{if(b!==null&&b!==undefined)errBytes.push(b);}
+   });
+   await php.ccall('pib_storage_init','number',[],[],{async:true});
+   await php.ccall('pib_init','number',['string'],['embed'],{async:true});
+   const src=/^\s*<\?php(?=[ \t\r\n]|$)/i.test(code)?'     '+code.trimStart().slice(5):'?>'+code;
+   await php.ccall('pib_run','number',['string'],[src],{async:true});
+   await php.ccall('pib_flush','number',[],[],{async:true});
+   const dec=new TextDecoder();
+   const pOut=dec.decode(new Uint8Array(outBytes)).replace(/\n$/,'');
+   const pErr=dec.decode(new Uint8Array(errBytes)).replace(/\n$/,'');
+   if(pOut)out(pOut);
+   if(pErr)out('stderr: '+pErr);
+   break;
+ }
+ case'c':case'cpp':{
+   if(typeof self.JSCPP==='undefined')importScripts(V+'jscpp.js');
+   let cbuf='';
+   const exitCode=JSCPP.run(code,input,{stdio:{write:s=>{cbuf+=s;}}});
+   if(cbuf)out(cbuf.replace(/\n$/,''));
+   value=exitCode;
+   break;
+ }
+ case'clojure':case'clojurescript':{
+   self.window=self;self.document={querySelectorAll:()=>[],addEventListener:()=>{},getElementById:()=>null,currentScript:null};
+   if(typeof self.scittle==='undefined')importScripts(V+'scittle.js');
+   scittle.core.eval_string('(def __bite_out (atom ""))');
+   const val=scittle.core.eval_string(`(binding [*print-fn* (fn [s] (swap! __bite_out str s))] ${code})`);
+   const printed=scittle.core.eval_string('@__bite_out');
+   if(printed)out(printed.replace(/\n$/,''));
+   if(val!==undefined&&val!==null&&!printed)out(String(val));
+   break;
+ }
+ case'prolog':{
+   self.global=self;self.window=self;self.document={getElementById:()=>null,currentScript:null};
+   if(typeof self.TauProlog==='undefined')importScripts(V+'tau-prolog.js');
+   const lines=code.split('\n');
+   const qLines=lines.filter(l=>/^\s*\?-/.test(l));
+   const kb=lines.filter(l=>!/^\s*\?-/.test(l)).join('\n')+'\n';
+   const queryText=(input.trim()||qLines.map(l=>l.replace(/^\s*\?-\s*/,'')).join(' ')||'true.').trim();
+   const session=TauProlog.create(10000);
+   await new Promise((resolve,reject)=>{
+     session.consult(kb,{
+       success(){
+         session.query(queryText.endsWith('.')?queryText:queryText+'.',{
+           success(){session.answers(ans=>{if(ans===false)resolve();else out(TauProlog.format_answer(ans));},50,()=>resolve());},
+           error(e){reject(Error(typeof e==='string'?e:e?.message||TauProlog.format_answer(e)||String(e)));}
+         });
+       },
+       error(e){reject(Error(typeof e==='string'?e:e?.message||TauProlog.format_answer(e)||String(e)));}
+     });
+   });
+   break;
+ }
+ case'wasm':case'wat':{
+   if(typeof self.WabtModule==='undefined')importScripts(V+'wabt.js');
+   const wabt=await WabtModule();
+   const mod=wabt.parseWat('main.wat',code);
+   const {buffer}=mod.toBinary({write_debug_names:true});
+   const {instance}=await WebAssembly.instantiate(buffer,{env:{print:v=>out(v),log:v=>out(v)}});
+   const fns=Object.entries(instance.exports).filter(([,v])=>typeof v==='function');
+   if(fns.length){
+     const args=input.trim()?input.trim().split(/[\s,]+/).map(Number):[];
+     const mainFn=instance.exports.main||instance.exports.add||fns[0][1];
+     const name=instance.exports.main?'main':instance.exports.add?'add':fns[0][0];
+     out(`${name}(${args.join(', ')}) => ${mainFn(...args)}`);
+   } else out('Compiled WASM module ('+buffer.byteLength+' bytes).');
+   break;
+ }
+ case'jq':{
+   self.document={currentScript:{src:V+'jq/jq.js'}};
+   if(typeof self.jq==='undefined')importScripts(V+'jq/jq.js');
+   const jqInst=typeof jq==='function'?await jq():await jq;
+   const jsonIn=input.trim()?JSON.parse(input):{hello:'world',nums:[1,2,3,4,5]};
+   const res=await jqInst.raw(JSON.stringify(jsonIn),code,['-c']);
+   out(res);
+   break;
+ }
+ case'tcl':{
+   if(typeof self.TclJS==='undefined')importScripts(V+'tcl.js');
+   const interp=new TclJS.Tcl();
+   let tbuf='';
+   interp.getIO().write=(ch,s)=>{tbuf+=s;};
+   await interp.run(code);
+   if(tbuf)out(tbuf.replace(/\n$/,''));
+   break;
+ }
+ case'sass':case'scss':{
+   if(typeof self.DartSass==='undefined')importScripts(V+'sass.js');
+   const res=DartSass.compileString(code);
+   out(res.css);
+   break;
+ }
+ case'yaml':{importScripts(V+'markup-bundle.js');out(JSON.stringify(MarkupTools.yaml.load(code),null,2));break;}
+ case'toml':{importScripts(V+'markup-bundle.js');out(JSON.stringify(MarkupTools.toml.parse(code),null,2));break;}
+ case'markdown':{importScripts(V+'markup-bundle.js');out(MarkupTools.marked.parse(code));break;}
+ case'xml':{importScripts(V+'markup-bundle.js');const v=MarkupTools.XMLValidator.validate(code);need(v===true,v.err?.msg||'Invalid XML');out(JSON.stringify(new MarkupTools.XMLParser({ignoreAttributes:false}).parse(code),null,2));break;}
+ case'handlebars':{importScripts(V+'markup-bundle.js');const data=input.trim()?JSON.parse(input):{};out(MarkupTools.Handlebars.compile(code)(data));break;}
+ case'ejs':{importScripts(V+'markup-bundle.js');const data=input.trim()?JSON.parse(input):{};out(MarkupTools.ejs.render(code,data));break;}
+ case'css':{importScripts(V+'csstree.js');validateCssLexically(code);const ast=csstree.parse(code);out(csstree.generate(ast));break;}
+ case'bash':case'sh':{const base=V+'bashkit/';const glue=await import(base+'bashkit_wasm.js');const init=glue.default;await init({module_or_path:base+'bashkit_wasm_bg.wasm'});const {Bash}=await import(base+'index.js');const shell=new Bash();try{const result=await shell.execute(code,{capture:100000});if(result.stderr)out('stderr: '+result.stderr);if(result.stdout)out(result.stdout.replace(/\n?$/,'\n'));value=result.exitCode;if(result.exitCode!==0)throw Error(`Bash exited with code ${result.exitCode}`);}finally{shell.cancel();}break;}
  case'python':{value=await new Promise((resolve,reject)=>{const child=new Worker(new URL('./python-worker.js',self.location.href),{type:'module'});child.onmessage=({data:d})=>{if(d.type==='log')out(d.text);else{child.terminate();d.type==='error'?reject(Error(d.text)):resolve(d.value);}};child.onerror=e=>{child.terminate();reject(Error(e.message));};child.postMessage({code,input});});break;}
  case'lua':{importScripts(V+'fengari.js');const {lua,lauxlib,lualib,to_luastring,to_jsstring}=fengari;const L=lauxlib.luaL_newstate();lualib.luaL_openlibs(L);lua.lua_pushcfunction(L,L=>{const a=[];for(let i=1;i<=lua.lua_gettop(L);i++){const s=lauxlib.luaL_tolstring(L,i);a.push(to_jsstring(s));lua.lua_pop(L,1);}out(...a);return 0;});lua.lua_setglobal(L,to_luastring('print'));lua.lua_pushstring(L,to_luastring(input));lua.lua_setglobal(L,to_luastring('input'));let status=lauxlib.luaL_loadstring(L,to_luastring(code));if(status===lua.LUA_OK)status=lua.lua_pcall(L,0,lua.LUA_MULTRET,0);need(status===lua.LUA_OK,lua.lua_tojsstring(L,-1)||'Lua error');break;}
  case'sql':{importScripts(V+'sql-wasm.js');const SQL=await initSqlJs({locateFile:n=>V+n});const db=new SQL.Database();try{value=db.exec(code);out(JSON.stringify(value,null,2));}finally{db.close();}break;}
  case'json':value=JSON.parse(code);out(JSON.stringify(value,null,2));break;
  case'brainfuck':brain(code,input);break;case'boolfuck':brain(code.replace(/[^<>+,;\[\]]/g,''),input,true);break;
  case'ook':{const tokens=code.match(/Ook[.!?]/g)||[];need(tokens.length%2===0,'Ook needs pairs of Ook tokens');const map={'Ook.Ook?':'>','Ook?Ook.':'<','Ook.Ook.':'+','Ook!Ook!':'-','Ook!Ook.':'.','Ook.Ook!':',','Ook!Ook?':'[','Ook?Ook!':']'};let bf='';for(let i=0;i<tokens.length;i+=2){const c=map[tokens[i]+tokens[i+1]];need(c,'Invalid Ook pair');bf+=c;}brain(bf,input);break;}
- case'whitespace':whitespace(code,input);break;case'befunge':befunge(code,input);break;case'basic':basic(code,input);break;case'forth':forth(code);break;case'lisp':case'scheme':lisp(code);break;
+ case'whitespace':whitespace(code,input);break;case'befunge':befunge(code,input);break;case'basic':basic(code,input);break;case'forth':forth(code);break;case'lisp':case'scheme':case'racket':lisp(code);break;
  case'regex':{need(code.length<=100000,'Regex text limit: 100,000 characters');const flags=options.flags||'',pattern=options.pattern||'';need(pattern.length<=10000,'Pattern limit exceeded');const re=new RegExp(pattern,flags);const matches=[];let m;while((m=re.exec(code))){matches.push({index:m.index,match:m[0],groups:m.slice(1),named:m.groups??null});if(matches.length>=1000)break;if(!re.global&&!re.sticky)break;if(m[0]===''){const p=re.lastIndex;re.lastIndex+=re.unicode&&code.codePointAt(p)>65535?2:1;}}value={matches,capped:matches.length===1000};if(options.replace)value.replaced=code.replace(new RegExp(pattern,flags),options.replacement||'');break;}
  case'js-format':importScripts(V+'prettier.js',V+'prettier-babel.js',V+'prettier-estree.js',V+'prettier-typescript.js');value=await prettier.format(code,{parser:options.typescript?'typescript':'babel',plugins:prettierPlugins,tabWidth:2,semi:true});break;
  case'css-minify':{importScripts(V+'csstree.js');const errors=[];validateCssLexically(code);const ast=csstree.parse(code,{onParseError:e=>errors.push(e.formattedMessage||e.message)});need(!errors.length,errors.join('\n'));value=csstree.generate(ast);break;}

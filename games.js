@@ -1,85 +1,266 @@
-/** Offline GitHub game library. No third-party code runs in the host document. */
+/** 2.5D Offline Arcade — 45 Games (SchoolGames + Roper Fancade) */
+import { gamePropSVG } from './icons-25d.js';
+import { playPop, playSquish, playSparkle } from './sfx.js';
+
 export let gameCount = 0;
+let cachedCatalog = null;
 const assetURL = path => new URL(path, new URL(import.meta.env?.BASE_URL || './', document.baseURI)).href;
-const safePath = (path, suffix) => typeof path === 'string' && /^games\/[a-zA-Z0-9_./-]+$/.test(path) && !path.split('/').includes('..') && path.endsWith(suffix);
+const safePath = (path, suffixes) => typeof path === 'string'
+  && /^games\/[a-zA-Z0-9_./-]+$/.test(path)
+  && !path.split('/').includes('..')
+  && suffixes.some(s => path.endsWith(s));
 
 export async function mountGames(root) {
   if (!root || typeof root.replaceChildren !== 'function') throw new TypeError('mountGames requires a DOM element');
+
   const shell = document.createElement('section');
-  shell.className = 'games-library panel';
+  shell.className = 'arcade-shelf-shell';
   root.replaceChildren(shell);
-  const make = (tag, text, cls) => { const el = document.createElement(tag); if (text) el.textContent = text; if (cls) el.className = cls; return el; };
-  const title = make('h2', 'Offline Arcade');
-  const intro = make('p', 'One hundred little worlds. Find your next favorite, jump right in, and take the whole original arcade offline. A hundred games, each with its own little world.');
-  const controlsBar = make('div', '', 'arcade-controls');
-  const form = make('form', '', 'tool-form');
-  form.setAttribute('role', 'search');
-  const label = make('label', 'Find a game ');
-  const search = make('input'); search.type = 'search'; search.placeholder = 'Search titles, controls, licenses…'; search.setAttribute('aria-label', 'Search games'); label.append(search); form.append(label);
-  form.addEventListener('submit', e => e.preventDefault());
-  const filterBar = make('nav', '', 'arcade-filters'); filterBar.setAttribute('aria-label', 'Filter games by style');
-  const archive = make('a', '↓ Download all 75 originals', 'action arcade-archive'); archive.href = assetURL('games/zips/original-games.zip'); archive.download = 'bitesized-original-arcade.zip';
-  const random = make('button', '✦ Surprise me', 'action arcade-random'); random.type = 'button';
-  const seedButton = make('button','◈ Daily score challenge','action arcade-seed');seedButton.type='button';
-  const status = make('p', 'Loading local catalog…'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
-  const player = make('section', '', 'panel games-player'); player.hidden = true; player.setAttribute('aria-label', 'Game player');
-  const grid = make('div', '', 'game-grid');
-  const credits = make('a', 'Licenses, sources & offline audit'); credits.href = assetURL('games/ATTRIBUTION.md');
-  controlsBar.append(archive, random, seedButton); shell.append(title, intro, controlsBar, form, filterBar, status, player, grid, credits);
-  let activeCard = null, selectedGenre = 'All'; let visibleGames = [], valid = [], render = () => {};
-  const genres = ['All','Puzzles','Arcade','Driving','Strategy','Quiz & Words','Cozy'];
-  const genreKey={'all':'All','puzzles':'Puzzles','arcade':'Arcade','driving':'Driving','strategy':'Strategy','quiz & words':'Quiz & Words','cozy':'Cozy'};
-  function genre(game){if(game.origin!=='first-party')return 'Arcade';const m=game.mechanic;return m==='drive'?'Driving':['number-path','anagram','cipher','merge','mosaic','maze','ladder'].includes(m)?(m==='anagram'||m==='ladder'?'Quiz & Words':'Puzzles'):['life','ecosystem','market','fishing'].includes(m)?'Cozy':['defense','tactics','deck'].includes(m)?'Strategy':['quiz'].includes(m)?'Quiz & Words':'Arcade';}
-  for(const g of genres){const b=make('button',`${g} · 0`,'action arcade-filter');b.type='button';b.setAttribute('aria-pressed',String(g==='All'));b.addEventListener('click',()=>{selectedGenre=g;renderFilters();render()});filterBar.append(b)}
-  function renderFilters(){const counts=Object.fromEntries(genres.map(g=>[g,g==='All'?valid.length:valid.filter(x=>genre(x)===g).length]));for(const b of filterBar.children){const g=genreKey[b.textContent.split(' · ')[0].toLocaleLowerCase()]||b.textContent.split(' · ')[0];b.textContent=`${g} · ${counts[g]}`;b.setAttribute('aria-pressed',String(g===selectedGenre));b.classList.toggle('is-active',g===selectedGenre)}}
-  random.addEventListener('click',()=>{const source=visibleGames.length?visibleGames:valid;if(!source.length)return;const g=source[Math.floor(Math.random()*source.length)];const button=grid.querySelector(`[data-game-id=\"${g.id}\"]`);if(button)launch(g,button);});
-  seedButton.addEventListener('click',()=>{const game=visibleGames.find(g=>g.origin==='first-party'&&['life','quiz','deck','market','ecosystem','mosaic','anagram'].includes(g.mechanic))||valid.find(g=>g.origin==='first-party'&&g.mechanic==='life');if(!game)return;const day=new Date().toISOString().slice(0,10);game.seed=`daily-${day}-${game.mechanic}`;const button=grid.querySelector(`[data-game-id=\"${game.id}\"]`);if(button)launch(game,button);});
-  function stop() { player.replaceChildren(); player.hidden = true; activeCard?.focus(); activeCard = null; }
-  function launch(game, button) {
-    activeCard = button; player.replaceChildren(); player.hidden = false;
-    const heading = make('h3', game.title);
-    const controls = make('p', game.controls || game.keyboard || 'Use the on-screen controls.');
-    const note = make('p', 'Click inside the game to give it keyboard focus. Close stops the game. Scores are session-only.');
-    const toolbar = make('div', '', 'tool-form');
-    const restart = make('button', 'Restart', 'action'); restart.type = 'button';
-    const close = make('button', 'Close game', 'action'); close.type = 'button'; close.addEventListener('click', stop);
-    const download = make('a', 'Download offline ZIP', 'action'); download.href = assetURL(game.zip); download.download = `${game.id}.zip`;
-    const frame = make('iframe'); frame.title = `${game.title} — isolated offline game`;
-    frame.setAttribute('sandbox', 'allow-scripts'); frame.setAttribute('referrerpolicy', 'no-referrer');
-    frame.style.cssText = 'display:block;width:100%;height:70vh;min-height:420px;border:1px solid currentColor;border-radius:12px;background:#fff';
-    frame.src = assetURL(game.entrypoint);
-    restart.addEventListener('click', () => { frame.src = assetURL(game.entrypoint); });
-    toolbar.append(restart, close, download); player.append(heading, controls, note, toolbar, frame);
-    player.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); close.focus();
+
+  const make = (tag, text, cls) => {
+    const el = document.createElement(tag);
+    if (text) el.textContent = text;
+    if (cls) el.className = cls;
+    return el;
+  };
+
+  const topBar = make('div', '', 'arcade-top-bar');
+  const searchWrap = make('div', '', 'gfield-tray arcade-search-tray');
+  const search = make('input', '', 'gfield-input');
+  search.type = 'text';
+  search.placeholder = 'Search Roper, Bloons TD, Drive Mad, Impossible Quiz, Retro Bowl, BitLife…';
+  search.setAttribute('aria-label', 'Search games');
+  searchWrap.append(search);
+
+  const random = make('button', '✦ Surprise Game', 'gbtn gbtn-primary');
+  random.type = 'button';
+  topBar.append(searchWrap, random);
+
+  const filterBar = make('div', '', 'gtabs arcade-filters');
+  const status = make('p', 'Loading SchoolGames arcade…', 'arcade-status');
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+
+  const player = make('section', '', 'tool-window-card arcade-player-window');
+  player.hidden = true;
+  player.setAttribute('aria-label', 'Game player');
+
+  const shelvesHost = make('div', '', 'arcade-shelves-host');
+  const credits = make('a', 'SchoolGames source & catalog list', 'gbtn gbtn-chip');
+  credits.href = assetURL('games/ATTRIBUTION.md');
+
+  shell.append(topBar, filterBar, status, player, shelvesHost, credits);
+
+  let selectedGenre = 'All';
+  let visibleGames = [];
+  let valid = [];
+  let activeCard = null;
+  let render = () => {};
+
+  const genres = ['All', 'Action', 'Puzzle', 'Casual', 'Fancade'];
+
+  function genre(game) {
+    if (game.category && genres.includes(game.category)) return game.category;
+    if (Array.isArray(game.tags) && game.tags.includes('fancade')) return 'Fancade';
+    return 'Action';
   }
+
+  for (const g of genres) {
+    const b = make('button', `${g} · 0`, 'gbtn gtab');
+    b.type = 'button';
+    b.dataset.genre = g;
+    b.classList.toggle('is-active', g === 'All');
+    b.addEventListener('click', () => {
+      playPop(540);
+      selectedGenre = g;
+      renderFilters();
+      render();
+    });
+    filterBar.append(b);
+  }
+
+  function renderFilters() {
+    const counts = Object.fromEntries(genres.map(g => [
+      g,
+      g === 'All'
+        ? valid.length
+        : valid.filter(x => genre(x) === g || (Array.isArray(x.tags) && x.tags.map(t => t.toLowerCase()).includes(g.toLowerCase()))).length
+    ]));
+    for (const b of filterBar.children) {
+      const g = b.dataset.genre;
+      b.textContent = `${g} · ${counts[g]}`;
+      b.classList.toggle('is-active', g === selectedGenre);
+      b.setAttribute('aria-pressed', String(g === selectedGenre));
+    }
+  }
+
+  function stop() {
+    playPop(440);
+    player.replaceChildren();
+    player.hidden = true;
+    activeCard?.focus();
+    activeCard = null;
+  }
+
+  function launch(game, button) {
+    playSparkle();
+    activeCard = button;
+    player.replaceChildren();
+    player.hidden = false;
+
+    const header = make('div', '', 'tool-window-header');
+    const grab = make('div', '', 'window-grab-pill');
+    const headRow = make('div', '', 'window-head-row');
+    const titleGroup = make('div', '', 'window-title-group');
+    const iconBox = make('span', '', 'window-tool-icon');
+    iconBox.innerHTML = gamePropSVG(game, genre(game));
+    const titleText = document.createElement('div');
+    const kicker = make('span', `${genre(game).toUpperCase()} · SCHOOLGAMES`, 'window-kicker');
+    const h3 = make('h2', game.title);
+    titleText.append(kicker, h3);
+    titleGroup.append(iconBox, titleText);
+
+    const actions = make('div', '', 'window-head-actions');
+    const playHere = make('a', '▶ Play Game', 'gbtn gbtn-primary');
+    playHere.href = assetURL(game.entrypoint);
+    const fullTab = make('a', '↗ New Tab', 'gbtn gbtn-chip');
+    fullTab.href = assetURL(game.entrypoint);
+    fullTab.target = '_blank';
+    fullTab.rel = 'noopener';
+    const dl = make('a', '↓ Save', 'gbtn gbtn-chip');
+    dl.href = assetURL(game.entrypoint);
+    dl.download = `${game.id}.html`;
+    const close = make('button', '✕', 'window-close-x');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Close game');
+    close.addEventListener('click', stop);
+    actions.append(playHere, fullTab, dl, close);
+    headRow.append(titleGroup, actions);
+    header.append(grab, headRow);
+
+    const body = make('div', '', 'tool-window-body');
+    const controlsNote = make(
+      'p',
+      `${game.description || 'Ready to play!'} · ${game.controls || 'Keyboard / Mouse / Touch'} · Launches directly without iframing.`,
+      'arcade-player-controls'
+    );
+    const launcher = make('div', '', 'arcade-launcher-card');
+    const art = make('div', '', 'arcade-launcher-art');
+    art.innerHTML = gamePropSVG(game, genre(game));
+    const meta = make('div', '', 'arcade-launcher-meta');
+    meta.append(
+      make('h3', game.title, 'arcade-launcher-title'),
+      make('p', game.description || 'Ready to play offline directly from local assets.', 'arcade-launcher-desc'),
+      make('p', `Controls: ${game.controls || 'Keyboard / Mouse / Touch'}`, 'arcade-launcher-controls')
+    );
+    const launchBtns = make('div', '', 'arcade-launcher-actions');
+    const primaryPlay = make('a', '▶ Play Now (Direct)', 'gbtn gbtn-primary');
+    primaryPlay.href = assetURL(game.entrypoint);
+    const tabPlay = make('a', '↗ Open in New Tab', 'gbtn gbtn-chip');
+    tabPlay.href = assetURL(game.entrypoint);
+    tabPlay.target = '_blank';
+    tabPlay.rel = 'noopener';
+    launchBtns.append(primaryPlay, tabPlay);
+    meta.append(launchBtns);
+    launcher.append(art, meta);
+
+    body.append(controlsNote, launcher);
+    player.append(header, body);
+    player.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    primaryPlay.focus();
+  }
+
+  random.addEventListener('click', () => {
+    const source = visibleGames.length ? visibleGames : valid;
+    if (!source.length) return;
+    const g = source[Math.floor(Math.random() * source.length)];
+    const btn = shelvesHost.querySelector(`[data-game-id="${g.id}"]`);
+    launch(g, btn);
+  });
+
+  function renderShelfSection(heading, gamesList) {
+    if (!gamesList.length) return null;
+    const sec = make('div', '', 'arcade-section');
+    const h = make('div', '', 'arcade-section-banner');
+    h.textContent = heading;
+    sec.append(h);
+
+    const perShelf = window.innerWidth <= 640 ? 2 : 3;
+    for (let i = 0; i < gamesList.length; i += perShelf) {
+      const row = gamesList.slice(i, i + perShelf);
+      const shelfRow = make('div', '', 'wooden-shelf-row');
+      const grid = make('div', '', `shelf-objects-grid shelf-cols-${perShelf}`);
+      for (const game of row) {
+        const slot = make('div', '', 'shelf-object-slot arcade-slot');
+        const btn = make('button', '', 'shelf-object arcade-cartridge');
+        btn.type = 'button';
+        btn.dataset.gameId = game.id;
+        btn.setAttribute('aria-label', `Play ${game.title}`);
+
+        const tile = make('span', '', 'object-tile');
+        tile.innerHTML = gamePropSVG(game, genre(game));
+        const label = make('span', game.title, 'object-label');
+        const tag = make('span', genre(game), 'arcade-genre-pill');
+        btn.append(tile, label, tag);
+        btn.addEventListener('click', () => launch(game, btn));
+        slot.append(btn);
+        grid.append(slot);
+      }
+      const plank = make('div', '', 'wooden-plank');
+      plank.setAttribute('aria-hidden', 'true');
+      shelfRow.append(grid, plank);
+      sec.append(shelfRow);
+    }
+    return sec;
+  }
+
   try {
-    const response = await fetch(assetURL('games/catalog.json'));
-    if (!response.ok) throw new Error(`Catalog request failed (${response.status})`);
-    const payload = await response.json();
+    if (!cachedCatalog) {
+      const response = await fetch(assetURL('games/catalog.json'));
+      if (!response.ok) throw new Error(`Catalog request failed (${response.status})`);
+      cachedCatalog = await response.json();
+    }
+    const payload = cachedCatalog;
     const games = Array.isArray(payload) ? payload : payload.games;
     if (!Array.isArray(games)) throw new Error('Invalid local game catalog');
-    valid = games.filter(g => g && typeof g.title === 'string' && typeof g.license === 'string' && safePath(g.entrypoint, '.html') && safePath(g.zip, '.zip'));
-    // Navigation may have replaced the root while the catalog was loading.
+    valid = games.filter(g => g && typeof g.title === 'string' && safePath(g.entrypoint, ['.html', '.htm']));
     if (shell.parentNode !== root) return;
     gameCount = valid.length;
+
     render = () => {
       const query = search.value.trim().toLocaleLowerCase();
-      const shown = valid.filter(g => (selectedGenre==='All'||genre(g)===selectedGenre) && [g.title, g.description, g.mechanic, g.license, g.controls, g.repo].join(' ').toLocaleLowerCase().includes(query));
-      visibleGames=shown; grid.replaceChildren(); renderFilters();
-      for (const game of shown) {
-        const card = make('article', '', `game-card panel ${game.origin==='first-party'?'game-original':'game-open-source'}`);
-        const h = make('h3', game.title);
-        const license = make('p', '', 'game-provenance'); license.append(make('span',game.license,'game-license-chip'),make('span',game.origin==='first-party'?'Made here':'Open-source classic','game-origin-chip'),make('span',genre(game),'game-genre-chip'));
-        const blurb = make('p', game.description || game.controls || 'A little game to brighten the break.','game-description');
-        const actions = make('div', '', 'tool-form');
-        const play = make('button', 'Play now ↗', 'action'); play.type = 'button'; play.setAttribute('aria-label', `Play ${game.title}`); play.dataset.gameId=game.id;play.addEventListener('click', () => launch(game, play));
-        const zip = make('a', 'Offline ZIP', 'action'); zip.href = assetURL(game.zip); zip.download = `${game.id}.zip`; zip.setAttribute('aria-label', `Download ${game.title} offline ZIP`);
-        const launchNote = make('p',game.controls || game.keyboard || 'Click to start.', 'game-controls'); launchNote.prepend(document.createTextNode('HOW TO PLAY · '));
-        actions.append(play, zip); card.append(license, h, blurb, launchNote, actions); grid.append(card);
+      const shown = valid.filter(g => (
+        selectedGenre === 'All'
+        || genre(g) === selectedGenre
+        || (Array.isArray(g.tags) && g.tags.map(t => t.toLowerCase()).includes(selectedGenre.toLowerCase()))
+      ) && [g.title, g.description, g.category, ...(g.tags || []), g.id].join(' ').toLocaleLowerCase().includes(query));
+      visibleGames = shown;
+      shelvesHost.replaceChildren();
+      renderFilters();
+
+      const featured = shown.filter(g => g.featured);
+      const rest = shown.filter(g => !g.featured);
+
+      if (featured.length) shelvesHost.append(renderShelfSection('★ SCHOOLGAMES FAN FAVORITES & FANCADE', featured));
+      if (rest.length) shelvesHost.append(renderShelfSection('✦ MORE SCHOOLGAMES ARCADE & PUZZLES', rest));
+
+      if (!shown.length) {
+        const empty = make('div', '', 'empty-shelf');
+        empty.textContent = 'No games matched that search! Try "Bloons", "Drive Mad", "Retro Bowl", or "2048".';
+        shelvesHost.append(empty);
       }
-      status.textContent = shown.length ? `${shown.length} little games · ${valid.filter(g => g.origin === 'first-party').length} original creations · ${new Set(valid.filter(g => g.origin !== 'first-party').map(g => g.repo)).size} open-source game sources` : 'No games match this filter. Try another shelf.';
+
+      status.textContent = `${shown.length} games from the-creative-master/SchoolGames`;
     };
-    search.addEventListener('input', render); render();
-  } catch (error) { status.textContent = `Unable to load the offline arcade: ${error.message}. Serve the app through its local web server.`; }
-  return () => { player.replaceChildren(); if (shell.parentNode === root) shell.remove(); };
+
+    search.addEventListener('input', render);
+    render();
+  } catch (error) {
+    status.textContent = `Unable to load the offline arcade: ${error.message}.`;
+  }
+
+  return () => {
+    player.replaceChildren();
+    if (shell.parentNode === root) shell.remove();
+  };
 }

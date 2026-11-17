@@ -1,6 +1,8 @@
 /** Cozy 2.5D Developer Utilities — zero default HTML select/checkbox/range/color inputs */
 import { gEl, gameBtn, gameTabs, gameToggle, gameSlider, gameColorPicker, gameField, statBox } from './ui-kit.js';
 import { playPop, playSparkle } from './sfx.js';
+import { streamWaffleChat, formatWaffleMarkdown } from './waffle-ai.js';
+import { getAppLanguage } from './i18n.js';
 
 const runtimeBase = () => new URL('runtimes/', document.baseURI);
 const mounted = new WeakMap();
@@ -157,6 +159,7 @@ export function mountCode(id, root) {
     const featuredIds = ['javascript', 'luau', 'haskell', 'ruby', 'php', 'sql', 'python', 'cpp', 'c', 'typescript', 'clojure', 'prolog', 'wasm', 'lua', 'bash', 'web'];
     let currentLang = 'javascript';
     let showAllRunnable = false;
+    let aiErrorsOn = true;
     const drafts = new Map();
 
     const filterIn = textIn('', `Filter all ${catalogue.length} languages… e.g. luau, haskell, ruby, php, sql`);
@@ -169,6 +172,13 @@ export function mountCode(id, root) {
     const runnableToggle = gameToggle('Show All 42 Runnable Languages', false, val => {
       showAllRunnable = val;
       buildMoreChips(filterIn.value);
+    });
+    const aiErrorToggle = gameToggle('AI Error Diagnostics', true, val => {
+      aiErrorsOn = val;
+      if (!val) {
+        aiAbort?.abort();
+        aiBox.hidden = true;
+      }
     });
     const moreTray = gEl('div', { class: 'gtabs code-lang-drawer', hidden: true });
     const statusBadge = gEl('div', { class: 'pastel-card peach' });
@@ -183,11 +193,96 @@ export function mountCode(id, root) {
 
     const result = outConsole();
     const preview = gEl('div', { class: 'pastel-card cream', hidden: true });
-    let stage = null, stageTimer = null, runId = 0;
+
+    const aiBox = gEl('div', { class: 'pastel-card cream codehub-ai-box', hidden: true });
+    const aiHead = gEl('div', { class: 'codehub-ai-head' },
+      gEl('strong', {}, '✨ AI Error Helper'),
+      gEl('span', { class: 'gbadge' }, 'CODER AI')
+    );
+    const aiBody = gEl('div', { class: 'codehub-ai-body' });
+    let lastFixedCode = '';
+    const applyFixBtn = gameBtn('⚡ Apply Fix to Editor', 'primary', () => {
+      if (!lastFixedCode) return;
+      playPop(640);
+      if (currentLang === 'web') jsIn.value = lastFixedCode;
+      else editor.value = lastFixedCode;
+    });
+    applyFixBtn.hidden = true;
+    const aiActions = gEl('div', { class: 'gtabs codehub-ai-actions' }, applyFixBtn);
+    aiBox.append(aiHead, aiBody, aiActions);
+
+    let stage = null, stageTimer = null, runId = 0, aiAbort = null, lastErrorText = '';
 
     const clearFrame = () => { clearTimeout(stageTimer); stage?.remove(); stage = null; preview.replaceChildren(); preview.hidden = true; };
     cleanups.push(clearFrame);
-    const stop = () => { runId++; for (const c of [...scope.jobs]) c(); clearFrame(); };
+    cleanups.push(() => aiAbort?.abort());
+    const stop = () => {
+      runId++;
+      aiAbort?.abort();
+      aiAbort = null;
+      for (const c of [...scope.jobs]) c();
+      clearFrame();
+    };
+
+    function extractFirstCodeBlock(md) {
+      const m = String(md || '').match(/```[a-zA-Z0-9_-]*\n([\s\S]*?)```/);
+      return m ? m[1].trimEnd() : '';
+    }
+
+    async function diagnoseWithCoderAI(errorMsg = '') {
+      const l = catalogue.find(x => x.id === currentLang);
+      const source = l.id === 'web'
+        ? `HTML:\n${htmlIn.value}\n\nCSS:\n${cssIn.value}\n\nJS:\n${jsIn.value}`
+        : editor.value;
+      if (!source.trim()) return;
+
+      aiAbort?.abort();
+      const ac = new AbortController();
+      aiAbort = ac;
+      signal.addEventListener('abort', () => ac.abort(), { once: true });
+
+      lastFixedCode = '';
+      applyFixBtn.hidden = true;
+      aiBox.hidden = false;
+      aiBody.innerHTML = '<span class="waffle-thinking">Analyzing code & error…</span><span class="waffle-cursor" aria-hidden="true">▌</span>';
+
+      const appLang = getAppLanguage();
+      const langHint = appLang && appLang !== 'English' ? `\n\n(Speak in ${appLang})` : '';
+      const promptText = errorMsg
+        ? `Language: ${l.name}\nError:\n${errorMsg.slice(0, 1200)}\n\nCode:\n\`\`\`${l.id}\n${source.slice(0, 3200)}\n\`\`\`\n\nExplain the root cause briefly in 2-3 sentences and provide the corrected ${l.id === 'web' ? 'JavaScript' : l.name} code in a single fenced code block.${langHint}`
+        : `Language: ${l.name}\nReview this code for bugs or syntax issues. Explain concisely and provide an improved/fixed version in a single fenced code block.\n\`\`\`${l.id}\n${source.slice(0, 3200)}\n\`\`\`${langHint}`;
+
+      try {
+        const reply = await streamWaffleChat({
+          modelId: 'qwen2.5-coder-1.5b',
+          systemPrompt: 'You are an expert, concise code debugger inside CodeHub. Identify the exact bug and give a clean working fix in one fenced code block. Avoid fluff.',
+          messages: [{ role: 'user', content: promptText }],
+          temperature: 0.25,
+          maxTokens: 520,
+          signal: ac.signal,
+          onToken(_, acc) {
+            if (!disposed && aiAbort === ac) {
+              aiBody.innerHTML = formatWaffleMarkdown(acc, true) + '<span class="waffle-cursor" aria-hidden="true">▌</span>';
+            }
+          }
+        });
+        if (!disposed && aiAbort === ac) {
+          aiBody.innerHTML = formatWaffleMarkdown(reply, false);
+          const fixed = extractFirstCodeBlock(reply);
+          if (fixed) {
+            lastFixedCode = fixed;
+            applyFixBtn.hidden = false;
+          }
+          playSparkle();
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError' && !disposed && aiAbort === ac) {
+          aiBody.innerHTML = `<p class="waffle-md-p">AI diagnostics unavailable: ${esc(err.message || err)}</p>`;
+        }
+      } finally {
+        if (aiAbort === ac) aiAbort = null;
+      }
+    }
 
     function buildMoreChips(q) {
       const ql = q.trim().toLowerCase();
@@ -210,6 +305,9 @@ export function mountCode(id, root) {
       stop();
       editor.value = drafts.get(nextId) ?? catalogue.find(l => l.id === nextId).sample;
       result.textContent = '';
+      result.classList.remove('error');
+      aiBox.hidden = true;
+      lastErrorText = '';
       renderMeta();
       if (!moreTray.hidden) buildMoreChips(filterIn.value);
     }
@@ -219,6 +317,8 @@ export function mountCode(id, root) {
       const token = runId, l = catalogue.find(x => x.id === currentLang);
       result.textContent = '';
       result.classList.remove('error');
+      aiBox.hidden = true;
+      lastErrorText = '';
       try {
         if (l.id === 'web') {
           ensure(htmlIn.value); ensure(cssIn.value); ensure(jsIn.value);
@@ -251,6 +351,9 @@ export function mountCode(id, root) {
             new Function('document', 'console', jsIn.value)(scopedDoc, scopedConsole);
           } catch (err) {
             scopedConsole.error(err.message);
+            result.classList.add('error');
+            lastErrorText = err.message;
+            if (aiErrorsOn) diagnoseWithCoderAI(err.message);
           }
           stageTimer = setTimeout(() => { if (runId === token) result.textContent += '\nPreview session idle.'; }, 15000);
         } else {
@@ -268,8 +371,19 @@ export function mountCode(id, root) {
           playSparkle();
         }
       } catch (e) {
-        if (token === runId) { result.textContent += '\nError: ' + e.message; result.classList.add('error'); }
+        if (token === runId) {
+          const msg = e.message || String(e);
+          result.textContent += '\nError: ' + msg;
+          result.classList.add('error');
+          lastErrorText = msg;
+          if (aiErrorsOn) diagnoseWithCoderAI(msg);
+        }
       }
+    });
+
+    const explainBtn = gameBtn('✨ AI Debug / Fix', 'chip', () => {
+      playPop(600);
+      diagnoseWithCoderAI(lastErrorText);
     });
 
     const editorField = gameField('Source Editor', editor);
@@ -293,7 +407,7 @@ export function mountCode(id, root) {
 
     panel.append(
       langChips.el,
-      runnableToggle.el,
+      gEl('div', { class: 'gtabs' }, runnableToggle.el, aiErrorToggle.el),
       gameField(`Search All ${catalogue.length} Languages (42 Runnable Offline)`, filterIn),
       moreTray,
       statusBadge,
@@ -302,12 +416,14 @@ export function mountCode(id, root) {
       webGrid,
       gEl('div', { class: 'gtabs' },
         runBtn,
+        explainBtn,
         gameBtn('⏹ Stop', 'danger', () => { stop(); result.textContent += '\nStopped.'; }),
-        gameBtn('↺ Sample', 'chip', () => { stop(); editor.value = catalogue.find(l => l.id === currentLang).sample; result.textContent = ''; }),
+        gameBtn('↺ Sample', 'chip', () => { stop(); editor.value = catalogue.find(l => l.id === currentLang).sample; result.textContent = ''; result.classList.remove('error'); aiBox.hidden = true; }),
         gameBtn('↓ Save File', 'chip', () => download('codehub-' + currentLang + '.txt', currentLang === 'web' ? `<!doctype html><style>${cssIn.value}</style>${htmlIn.value}<script>${jsIn.value}<\/script>` : editor.value))
       ),
       preview,
-      result
+      result,
+      aiBox
     );
     renderMeta();
 

@@ -2124,6 +2124,25 @@ body.waffle-modal-open {
   justify-content: center;
   padding: 16px;
 }
+.codehub-ai-box {
+  display: grid;
+  gap: 10px;
+  border-color: #d39c5d;
+}
+.codehub-ai-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.codehub-ai-body {
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-x: auto;
+}
+.codehub-ai-actions {
+  justify-content: flex-start;
+}
 .settings-overlay[hidden] { display: none; }
 .settings-card {
   width: min(480px, 100%);

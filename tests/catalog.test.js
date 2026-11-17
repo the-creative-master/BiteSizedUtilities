@@ -123,6 +123,7 @@ test('CodeHub runtimes (Luau, Haskell, Ruby, PHP, SQL, C++, Clojure, Prolog, Was
     'runtimes/vendor/markup-bundle.js'
   ];
   for (const file of vendoredFiles) assert.ok(fs.existsSync(file), `${file} exists`);
+  assert.ok(codeSrc.includes('qwen2.5-coder-1.5b') && codeSrc.includes('AI Error Diagnostics'), 'CodeHub uses Qwen 2.5 Coder 1.5B for AI error diagnostics');
   assert.ok(!appSrc.includes('await import('), 'app.js uses static imports for instant loading');
 });
 

@@ -107,7 +107,15 @@ export default defineConfig({
       'onnxruntime-node': path.resolve('waffle-ort-empty.js')
     }
   },
-  server: { host: '0.0.0.0', allowedHosts: true },
+  server: {
+    host: '0.0.0.0',
+    allowedHosts: true,
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    }
+  },
   preview: { host: '0.0.0.0', allowedHosts: true },
   build: { target: 'es2022', chunkSizeWarningLimit: 1200 },
   plugins: [{
@@ -123,8 +131,14 @@ export default defineConfig({
         } catch {
           return next();
         }
-        if (pathname === '/' || pathname === '/index.html') {
-          res.setHeader('Cache-Control', 'no-store, max-age=0');
+        if (pathname === '/' || pathname === '/index.html' || /\.(js|mjs|css|html)$/i.test(pathname)) {
+          const origWriteHead = res.writeHead.bind(res);
+          res.writeHead = (...args) => {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+            return origWriteHead(...args);
+          };
         }
         if (pathname === '/sw.js' || pathname.endsWith('/sw.js')) {
           res.statusCode = 200;

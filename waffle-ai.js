@@ -335,9 +335,10 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
   };
   const pushWllama = (webgpu, m = cfg) => {
     if (webgpu && !wllamaGpuOk) return;
-    if (m.hfGgufRepo || m.ggufFile) {
-      attempts.push({ kind: 'wllama', gguf: m.ggufFile || 'qwen3-0.6b.gguf', hfRepo: m.hfGgufRepo, hfQuant: m.hfGgufQuant, webgpu, label: m.label });
-    }
+    // Never invent a filename: a guessed GGUF name would quietly run a
+    // different model than the one the user picked.
+    if (!m.hfGgufRepo && !m.ggufFile) return;
+    attempts.push({ kind: 'wllama', gguf: m.ggufFile, hfRepo: m.hfGgufRepo, hfQuant: m.hfGgufQuant, webgpu, label: m.label });
   };
   const pushServer = (id = cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b') => {
     attempts.push({ kind: 'server', id, label: cfg.label });

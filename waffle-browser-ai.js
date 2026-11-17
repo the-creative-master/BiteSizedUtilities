@@ -1081,7 +1081,7 @@ function compatAssetsAvailable() {
 }
 
 export async function streamWllamaChat({
-  ggufFile = 'qwen3-0.6b.gguf',
+  ggufFile = null,
   hfRepo = null,
   hfQuant = null,
   messages,
@@ -1103,7 +1103,9 @@ export async function streamWllamaChat({
   const wasmUrl = resolveAssetUrl('wllama/wllama.wasm');
   const compatJsUrl = resolveAssetUrl('wllama-compat/wllama.js');
   const compatWasmUrl = resolveAssetUrl('wllama-compat/wllama.wasm');
-  const localGgufUrl = resolveAssetUrl(`api/waffle-ai/gguf/${ggufFile}`);
+  // Only meaningful when the caller named a real file; a guessed name would
+  // silently load a different model than the one the user picked.
+  const localGgufUrl = ggufFile ? resolveAssetUrl(`api/waffle-ai/gguf/${ggufFile}`) : null;
   const budget = diag?.wasmBudgetBytes || 0;
 
   // GPU offload aborts the whole WASM module when the adapter has no
@@ -1202,14 +1204,18 @@ export async function streamWllamaChat({
 
     // 3) A GGUF served by this host (the dev server's .cache/waffle-ai).
     let hasLocalGguf = false;
-    try {
-      const probe = await fetch(localGgufUrl, { method: 'HEAD', signal });
-      const ct = probe.headers.get('content-type') || '';
-      const len = Number(probe.headers.get('content-length') || '0');
-      hasLocalGguf = probe.ok && !ct.includes('text/html') && len > 1_000_000;
-    } catch {}
+    if (localGgufUrl) {
+      try {
+        const probe = await fetch(localGgufUrl, { method: 'HEAD', signal });
+        const ct = probe.headers.get('content-type') || '';
+        const len = Number(probe.headers.get('content-length') || '0');
+        hasLocalGguf = probe.ok && !ct.includes('text/html') && len > 1_000_000;
+      } catch {}
+    }
     if (!hasLocalGguf) {
-      throw new Error(`Local GGUF (${ggufFile}) is not served by this host and no HuggingFace GGUF repo is configured.`);
+      throw new Error(ggufFile
+        ? `Local GGUF (${ggufFile}) is not served by this host and no HuggingFace GGUF repo is configured.`
+        : 'No HuggingFace GGUF repo is configured for this model and this host serves no local GGUF.');
     }
     onStatus?.({
       state: 'loading',

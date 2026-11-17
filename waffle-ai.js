@@ -1070,11 +1070,11 @@ function buildOverlay() {
             <span class="waffle-ai-avatar" aria-hidden="true">${waffleMascotSVG('waffle-header-svg')}</span>
             <div>
               <h2 id="waffle-ai-title" class="waffle-ai-title">Waffle AI</h2>
-              <span id="waffle-ai-badge" class="waffle-ai-badge">Qwen 2.5 1.5B · node-llama.cpp · Pre-cached</span>
+              <span id="waffle-ai-badge" class="waffle-ai-badge">Checking runtimes…</span>
             </div>
           </div>
           <div class="waffle-ai-actions">
-            <button type="button" class="gbtn waffle-reset-btn" id="waffle-ai-models-btn" title="Open Settings to switch Chat, Image, or Fallback AI Mode">🤖 Qwen 2.5 1.5B · ⚙</button>
+            <button type="button" class="gbtn waffle-reset-btn" id="waffle-ai-models-btn" title="Open Settings to switch Chat, Image, or Fallback AI Mode">🤖 AI Models · ⚙</button>
             <button type="button" class="gbtn waffle-reset-btn" id="waffle-ai-reset" title="Start a fresh chat">New Chat</button>
             <button type="button" class="window-close-x" id="waffle-ai-close" aria-label="Close Waffle AI">✕</button>
           </div>

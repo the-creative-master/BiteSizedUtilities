@@ -163,6 +163,7 @@ app.innerHTML = `
               <span class="waffle-device-pill is-risk" id="settings-device-pill">Checking WebGPU…</span>
             </div>
             <p class="waffle-disclaimer-copy">${esc(AI_DISCLAIMER_TEXT)}</p>
+            <p class="waffle-device-detail" id="settings-device-detail" hidden></p>
           </div>
           <div class="settings-sub-label">Chat AI Model</div>
           <div class="waffle-pill-grid" id="settings-ai-text-list"></div>
@@ -996,6 +997,23 @@ function renderSettingsModal() {
     if (pill) {
       pill.textContent = d.summaryLabel;
       pill.className = `waffle-device-pill ${d.hasRisk ? 'is-risk' : 'is-ok'}`;
+    }
+    // The facts that decide which models this device can actually run. Without
+    // them a skipped model just looks like a random failure.
+    const detail = $('#settings-device-detail');
+    if (detail) {
+      const gb = n => `${(n / 1024 ** 3).toFixed(1)} GB`;
+      const bits = [
+        `${d.cores || '?'} cores`,
+        d.deviceMemoryGB ? `${d.deviceMemoryGB} GB RAM` : 'RAM unknown',
+        `wasm budget ${gb(d.wasmBudgetBytes || 0)}`,
+        d.hasOPFS ? 'OPFS ok' : 'no OPFS (pre-cache unavailable)',
+        d.storageQuotaMB ? `storage ${Math.round((d.storageUsageMB || 0) / 1024)} / ${Math.round(d.storageQuotaMB / 1024)} GB used` : null,
+        d.wllamaGpuSafe ? 'llama.cpp WebGPU safe' : 'llama.cpp WebGPU blocked (no FP16) → CPU',
+        d.canThread ? 'multi-thread ok' : 'single-thread (no COOP/COEP on static hosts)'
+      ].filter(Boolean);
+      detail.textContent = bits.join(' · ');
+      detail.hidden = false;
     }
   }).catch(() => {});
   detectImageCapabilities().then(caps => {

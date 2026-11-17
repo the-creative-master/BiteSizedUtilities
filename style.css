@@ -2200,6 +2200,19 @@ body.waffle-modal-open {
   line-height: 1.42;
   color: #5c3312;
 }
+.waffle-device-detail {
+  margin: 7px 0 0;
+  padding-top: 6px;
+  border-top: 2px dashed #e6c9a4;
+  font-size: 10.5px;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  color: #7a4a1e;
+  word-break: break-word;
+}
+.waffle-device-detail[hidden] {
+  display: none;
+}
 .waffle-device-pill {
   display: inline-flex;
   align-items: center;

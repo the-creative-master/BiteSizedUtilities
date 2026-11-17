@@ -1,133 +1,534 @@
-/** Local developer utilities. Import as an ES module; mountCode returns a boolean. */
+/** Cozy 2.5D Developer Utilities — zero default HTML select/checkbox/range/color inputs */
+import { gEl, gameBtn, gameTabs, gameToggle, gameSlider, gameColorPicker, gameField, statBox } from './ui-kit.js';
+import { playPop, playSparkle } from './sfx.js';
+
 const runtimeBase = () => new URL('runtimes/', document.baseURI);
 const mounted = new WeakMap();
 const MAX = 1000000;
-const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 const catalogue = [
- ['web','HTML / CSS / JavaScript','executable','Local opaque-origin three-pane iframe',''],
- ['javascript','JavaScript','executable','Browser worker; NOT Node.js','console.log("Hello, JavaScript!");\nconsole.log([1,2,3].map(n => n*n));'],
- ['typescript','TypeScript','executable','TypeScript 5.9 transpilation → browser worker; no type checking','const greeting: string = "Hello, TypeScript!";\nconsole.log(greeting);'],
- ['coffeescript','CoffeeScript','executable','CoffeeScript 2.7 compiler → browser worker','square = (x) -> x * x\nconsole.log square(12)'],
- ['bash','Bash (subset)','subset','BashKit 0.21.0 genuine Bash-compatible WebAssembly; virtual in-memory VFS; not full GNU Bash','echo \"Hello from Bash\"; printf \"%s\\n\" \"$((6*7))\"'],
- ['python','Python','executable','Vendored Pyodide 314.0.7 / CPython WebAssembly; stdlib only','import sys\nprint(sys.version)\nprint(sum(range(10)))'],
- ['lua','Lua','executable','Fengari Lua 5.3 in worker; no OS filesystem','print("Hello, Lua!")\nfor i = 1, 5 do print(i * i) end'],
- ['sql','SQLite SQL','executable','sql.js SQLite WASM; fresh in-memory database per run','CREATE TABLE greetings (name TEXT);\nINSERT INTO greetings VALUES (\'Ada\'), (\'Grace\');\nSELECT * FROM greetings;'],
- ['json','JSON','executable','Strict local parser, not a programming-language runtime','{"hello":"world","items":[1,2,3]}'],
- ['brainfuck','Brainfuck','executable','Local interpreter; 8-bit cells, wrapping 65,536-cell tape','++++++++[>++++++++<-]>+.'],
- ['boolfuck','Boolfuck','executable','Local bit-tape interpreter; little-endian byte I/O','+;+;+;+;+;+;+;+;'],
- ['ook','Ook!','executable','Local Ook → Brainfuck interpreter','Ook. Ook. Ook! Ook.'],
- ['whitespace','Whitespace','executable','Local stack/heap/control-flow interpreter','   \t\n\t\n \t\n\n\n'],
- ['befunge','Befunge-93','executable','Local 80×25 wrapping-grid interpreter','"!dlrow ,olleH">:#,_@'],
- ['basic','BASIC (subset)','subset','Line-numbered BASIC: PRINT, INPUT, LET, IF, GOTO, GOSUB, FOR/NEXT; not full QBASIC','10 FOR I = 1 TO 5\n20 PRINT I * I\n30 NEXT I\n40 END'],
- ['forth','Forth (subset)','subset','Stack arithmetic, definitions, IF/ELSE/THEN, BEGIN/UNTIL; not ANS Forth',': square dup * ;\n12 square . cr'],
- ['lisp','Lisp (educational subset)','subset','Lexical lists, quote, lambda, define, defun, let; not Common Lisp','(define (square x) (* x x))\n(print (square 12))'],
- ['scheme','Scheme (educational subset)','subset','Shared small Lisp evaluator; not R5RS/R7RS conformant','(define (factorial n) (if (= n 0) 1 (* n (factorial (- n 1)))))\n(display (factorial 6))'],
- ...[
- ['nodejs','Node.js','No genuine WebContainer/Node adapter installed; browser JS is not Node'],
- ['java','Java'],['c','C'],['cpp','C++'],['csharp','C#'],['go','Go'],['rust','Rust'],['ruby','Ruby'],['php','PHP'],['swift','Swift'],['kotlin','Kotlin'],['scala','Scala'],['r','R'],['julia','Julia'],['perl','Perl'],['haskell','Haskell'],['ocaml','OCaml'],['fsharp','F#'],['elixir','Elixir'],['erlang','Erlang'],['clojure','Clojure'],['dart','Dart'],['groovy','Groovy'],['powershell','PowerShell'],['zsh','Zsh'],['fish','Fish'],['sh','POSIX shell'],['objectivec','Objective-C'],['pascal','Pascal'],['fortran','Fortran'],['cobol','COBOL'],['ada','Ada'],['d','D'],['nim','Nim'],['zig','Zig'],['v','V'],['crystal','Crystal'],['smalltalk','Smalltalk'],['prolog','Prolog'],['racket','Racket'],['elm','Elm'],['purescript','PureScript'],['reason','Reason'],['solidity','Solidity'],['vyper','Vyper'],['assembly','Assembly'],['wasm','WebAssembly text'],['matlab','MATLAB / Octave'],['vhdl','VHDL'],['verilog','Verilog'],['graphql','GraphQL'],['yaml','YAML'],['toml','TOML'],['xml','XML'],['markdown','Markdown'],['css','CSS (standalone)'],['html','HTML (standalone)']
- ].map(([id,name,note])=>[id,name,'editor-only',note||'No local compiler/interpreter installed; edit/copy/download only',''])
-].map(([id,name,status,note,sample])=>({id,name,status,note,sample}));
-const ids = new Set(['codehub','json-validator','regex-tester','uuid-generator','timestamp','base-converter','html-entities','jwt-decoder','css-minifier','js-formatter','sql-formatter','hash-playground','color-tokens','git-cheatsheet','http-status']);
-function element(tag, cls, text) { const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e; }
-function workerJob(scope,op,code,options={},input='',timeout=5000,onLog) {
- return new Promise((resolve,reject)=>{let worker,timer,finished=false;const cleanup=()=>{clearTimeout(timer);worker?.terminate();scope.jobs.delete(cancel);};const end=(err,value)=>{if(finished)return;finished=true;cleanup();err?reject(err):resolve(value);};const cancel=()=>end(Error('Execution stopped.'));scope.jobs.add(cancel);
- try {worker=new Worker(new URL(op==='python'?'python-worker.js':'worker.js',runtimeBase()),op==='python'?{type:'module'}:undefined);timer=setTimeout(()=>end(Error(`Execution timed out after ${timeout/1000}s; worker terminated.`)),timeout);worker.onmessage=({data:d})=>{if(d.type==='log')onLog?.(d.text);else if(d.type==='error')end(Error(d.text));else if(d.type==='done')end(null,d.value);};worker.onerror=e=>{e.preventDefault();end(Error(e.message||'Runtime could not load. Serve the app over HTTP(S), not file://.'));};worker.postMessage({op,code,options,input});}catch(e){end(e);}
- });
+  ['web', 'HTML / CSS / JS', 'executable', 'Local opaque-origin three-pane sandbox', ''],
+  ['javascript', 'JavaScript', 'executable', 'Browser worker (ES2022)', 'console.log("Hello, JavaScript!");\nconsole.log([1,2,3].map(n => n*n));'],
+  ['typescript', 'TypeScript', 'executable', 'TypeScript 5.9 → worker', 'const greeting: string = "Hello, TypeScript!";\nconsole.log(greeting);'],
+  ['coffeescript', 'CoffeeScript', 'executable', 'CoffeeScript 2.7 → worker', 'square = (x) -> x * x\nconsole.log square(12)'],
+  ['bash', 'Bash', 'subset', 'BashKit 0.21.0 WASM VFS', 'echo "Hello from Bash"; printf "%s\\n" "$((6*7))"'],
+  ['python', 'Python', 'executable', 'Pyodide CPython WASM', 'import sys\nprint(sys.version.split()[0])\nprint(sum(range(10)))'],
+  ['lua', 'Lua', 'executable', 'Fengari Lua 5.3 worker', 'print("Hello, Lua!")\nfor i = 1, 5 do print(i * i) end'],
+  ['sql', 'SQLite SQL', 'executable', 'sql.js SQLite WASM', "CREATE TABLE greetings (name TEXT);\nINSERT INTO greetings VALUES ('Ada'), ('Grace');\nSELECT * FROM greetings;"],
+  ['json', 'JSON', 'executable', 'Strict local parser', '{"hello":"world","items":[1,2,3]}'],
+  ['brainfuck', 'Brainfuck', 'executable', '65,536-cell tape VM', '++++++++[>++++++++<-]>+.'],
+  ['boolfuck', 'Boolfuck', 'executable', 'Bit-tape VM', '+;+;+;+;+;+;+;+;'],
+  ['ook', 'Ook!', 'executable', 'Ook → Brainfuck VM', 'Ook. Ook. Ook! Ook.'],
+  ['whitespace', 'Whitespace', 'executable', 'Stack/heap VM', '   \t\n\t\n \t\n\n\n'],
+  ['befunge', 'Befunge-93', 'executable', '80×25 2D grid VM', '"!dlrow ,olleH">:#,_@'],
+  ['basic', 'BASIC', 'subset', 'Line-numbered BASIC', '10 FOR I = 1 TO 5\n20 PRINT I * I\n30 NEXT I\n40 END'],
+  ['forth', 'Forth', 'subset', 'Stack VM', ': square dup * ;\n12 square . cr'],
+  ['lisp', 'Lisp', 'subset', 'Lexical Lisp evaluator', '(define (square x) (* x x))\n(print (square 12))'],
+  ['scheme', 'Scheme', 'subset', 'Shared Lisp evaluator', '(define (factorial n) (if (= n 0) 1 (* n (factorial (- n 1)))))\n(display (factorial 6))'],
+  ...[
+    ['nodejs', 'Node.js'], ['java', 'Java'], ['c', 'C'], ['cpp', 'C++'], ['csharp', 'C#'], ['go', 'Go'],
+    ['rust', 'Rust'], ['ruby', 'Ruby'], ['php', 'PHP'], ['swift', 'Swift'], ['kotlin', 'Kotlin'],
+    ['scala', 'Scala'], ['r', 'R'], ['julia', 'Julia'], ['perl', 'Perl'], ['haskell', 'Haskell'],
+    ['ocaml', 'OCaml'], ['fsharp', 'F#'], ['elixir', 'Elixir'], ['erlang', 'Erlang'], ['clojure', 'Clojure'],
+    ['dart', 'Dart'], ['groovy', 'Groovy'], ['powershell', 'PowerShell'], ['zsh', 'Zsh'], ['fish', 'Fish'],
+    ['sh', 'POSIX shell'], ['objectivec', 'Objective-C'], ['pascal', 'Pascal'], ['fortran', 'Fortran'],
+    ['cobol', 'COBOL'], ['ada', 'Ada'], ['d', 'D'], ['nim', 'Nim'], ['zig', 'Zig'], ['v', 'V'],
+    ['crystal', 'Crystal'], ['smalltalk', 'Smalltalk'], ['prolog', 'Prolog'], ['racket', 'Racket'],
+    ['elm', 'Elm'], ['purescript', 'PureScript'], ['reason', 'Reason'], ['solidity', 'Solidity'],
+    ['vyper', 'Vyper'], ['assembly', 'Assembly'], ['wasm', 'WebAssembly text'], ['matlab', 'MATLAB'],
+    ['vhdl', 'VHDL'], ['verilog', 'Verilog'], ['graphql', 'GraphQL'], ['yaml', 'YAML'],
+    ['toml', 'TOML'], ['xml', 'XML'], ['markdown', 'Markdown'], ['css', 'CSS'], ['html', 'HTML']
+  ].map(([id, name]) => [id, name, 'editor-only', 'Editor / download only (no local compiler installed)', ''])
+].map(([id, name, status, note, sample]) => ({ id, name, status, note, sample }));
+
+const ids = new Set([
+  'codehub', 'json-validator', 'regex-tester', 'uuid-generator', 'timestamp', 'base-converter',
+  'html-entities', 'jwt-decoder', 'css-minifier', 'js-formatter', 'sql-formatter',
+  'hash-playground', 'color-tokens', 'git-cheatsheet', 'http-status'
+]);
+
+function workerJob(scope, op, code, options = {}, input = '', timeout = 5000, onLog) {
+  return new Promise((resolve, reject) => {
+    let worker, timer, finished = false;
+    const cleanup = () => { clearTimeout(timer); worker?.terminate(); scope.jobs.delete(cancel); };
+    const end = (err, value) => { if (finished) return; finished = true; cleanup(); err ? reject(err) : resolve(value); };
+    const cancel = () => end(Error('Execution stopped.'));
+    scope.jobs.add(cancel);
+    try {
+      worker = new Worker(new URL(op === 'python' ? 'python-worker.js' : 'worker.js', runtimeBase()), op === 'python' ? { type: 'module' } : undefined);
+      timer = setTimeout(() => end(Error(`Execution timed out after ${timeout / 1000}s.`)), timeout);
+      worker.onmessage = ({ data: d }) => {
+        if (d.type === 'log') onLog?.(d.text);
+        else if (d.type === 'error') end(Error(d.text));
+        else if (d.type === 'done') end(null, d.value);
+      };
+      worker.onerror = e => { e.preventDefault(); end(Error(e.message || 'Runtime could not load over file://; serve over HTTP.')); };
+      worker.postMessage({ op, code, options, input });
+    } catch (e) { end(e); }
+  });
 }
-function field(parent,label,value='',type='textarea') {const wrap=element('label','field');wrap.append(element('span','',label));const input=element(type==='textarea'?'textarea':'input');if(type!=='textarea')input.type=type;input.setAttribute('aria-label',label);input.value=value;if(type==='textarea'){input.rows=8;input.spellcheck=false;}wrap.append(input);parent.append(wrap);return input;}
-function select(parent,label,items,value) {const wrap=element('label','field');wrap.append(element('span','',label));const s=element('select');s.setAttribute('aria-label',label);for(const [v,t]of items){const o=element('option','',t);o.value=v;s.append(o);}if(value!==undefined)s.value=value;wrap.append(s);parent.append(wrap);return s;}
-function button(parent,label,fn,signal){const b=element('button','action',label);b.type='button';b.addEventListener('click',fn,{signal});parent.append(b);return b;}
-function check(parent,label,value=false){const wrap=element('label','field');const c=element('input');c.type='checkbox';c.checked=value;wrap.append(c,document.createTextNode(label));parent.append(wrap);return c;}
-function notice(parent,text){parent.append(element('p','',text));}
-function output(parent){const p=element('pre','output');p.setAttribute('role','status');p.setAttribute('aria-live','polite');p.style.whiteSpace='pre-wrap';p.style.overflowWrap='anywhere';parent.append(p);return p;}
-function ensure(s){if(s.length>MAX)throw Error('Input exceeds 1 MB limit.');return s;}
-function assert(ok,msg){if(!ok)throw Error(msg);}
-function download(name,text){const url=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-function copy(text){assert(navigator.clipboard?.writeText,'Clipboard unavailable. Use HTTPS/localhost or select the output manually.');return navigator.clipboard.writeText(text);}
-export function mountCode(id,root) {
- if(!ids.has(id)||!root?.replaceChildren)return false;
- mounted.get(root)?.();
- const controller=new AbortController(),{signal}=controller,scope={jobs:new Set()},cleanups=[];let disposed=false;
- const dispose=()=>{if(disposed)return;disposed=true;controller.abort();for(const cancel of [...scope.jobs])cancel();for(const clean of cleanups)clean();observer.disconnect();mounted.delete(root);};
- const observer=new MutationObserver(()=>{if(!root.isConnected)dispose();});observer.observe(root.ownerDocument.documentElement,{childList:true,subtree:true});
- mounted.set(root,dispose);root.replaceChildren();root.addEventListener('tool-dispose',dispose,{signal});
- const container=element('section','panel'),form=element('div','tool-form');root.append(container);container.append(element('h2','',id==='codehub'?'CodeHub':id.split('-').map(s=>s[0].toUpperCase()+s.slice(1)).join(' ')),form);
- const runAction=(target,fn)=>async()=>{target.dataset.state='busy';target.textContent='Working…';try{const result=await fn();if(!disposed){target.textContent=typeof result==='string'?result:JSON.stringify(result,null,2);target.dataset.state='success';}}catch(e){if(!disposed){target.textContent='Error: '+(e.message||e);target.dataset.state='error';}}};
- const action=(label,target,fn)=>button(form,label,runAction(target,fn),signal);
- const job=(op,code,opts={},input='',timeout=5000,onLog)=>workerJob(scope,op,ensure(code),opts,input,timeout,onLog);
- const copyOut=target=>button(form,'Copy output',async()=>{try{await copy(target.textContent);}catch(e){target.textContent+='\n'+e.message;}},signal);
- if(id==='codehub'){
-  notice(form,`${catalogue.length}-entry catalogue. Executable ≠ subset ≠ editor-only. All installed assets are local; no CDN. Editor-only entries never claim to run.`);
-  const filter=field(form,'Filter catalogue','','search'),lang=select(form,'Language',catalogue.map(l=>[l.id,`${l.name} — ${l.status}`]),'javascript'),status=element('p','output');form.append(status);
-  const catalogueDetails=element('details');catalogueDetails.append(element('summary','',`Runtime matrix (${catalogue.length} entries)`));const table=element('table');table.innerHTML='<thead><tr><th>Language</th><th>Status</th><th>Runtime / limitation</th></tr></thead>';const tbody=element('tbody');for(const l of catalogue){const row=element('tr');for(const v of[l.name,l.status,l.note])row.append(element('td','',v));tbody.append(row);}table.append(tbody);catalogueDetails.append(table);form.append(catalogueDetails);
-  const editor=field(form,'Source',catalogue.find(l=>l.id==='javascript').sample),input=field(form,'Standard input / JS input string','');input.rows=3;
-  const web=element('div','two-col');web.style.gridTemplateColumns='repeat(auto-fit,minmax(220px,1fr))';form.append(web);
-  const html=field(web,'HTML','<h1>Hello, sandbox!</h1>\n<button id="hello">Click me</button>'),css=field(web,'CSS','body { font-family: system-ui; padding: 20px; }\nh1 { color: rebeccapurple; }'),js=field(web,'JavaScript','document.querySelector("#hello").onclick = () => {\n  console.log("Button clicked");\n  document.querySelector("h1").textContent = "It works!";\n};\nconsole.log("Preview ready");');
-  const warning=element('p','',''),buttons=element('div','tool-form');form.append(warning,buttons);
-  const result=output(form);result.setAttribute('aria-label','Program output');const preview=element('div','panel');form.append(preview);let frame=null,frameTimer=null,runId=0;const drafts=new Map();let selected=lang.value;
-  const clearFrame=()=>{clearTimeout(frameTimer);frame?.remove();frame=null;preview.replaceChildren();};cleanups.push(clearFrame);
-  const stop=()=>{runId++;for(const c of [...scope.jobs])c();clearFrame();};
-  const render=()=>{const l=catalogue.find(l=>l.id===lang.value);status.textContent=`${l.name}: ${l.status}. ${l.note}`;const isWeb=l.id==='web';web.hidden=!isWeb;editor.parentElement.hidden=isWeb;input.parentElement.hidden=isWeb;run.disabled=l.status==='editor-only';run.textContent=isWeb?'Run HTML / CSS / JS':'Run in isolated worker';warning.textContent=isWeb?'Opaque-origin sandbox: no parent DOM access. Preview expires after 15s. Arbitrary iframe JavaScript can still hang a browser tab; use Stop or reload if necessary.':l.status==='editor-only'?'Editing only. No run button or simulated compiler output.':l.id==='python'?'Python is vendored and runs offline. First start may take time; external Python packages are not bundled.':'Worker execution is terminated after 5s. No host eval. Browser JavaScript is not Node.js. Workers are execution isolation, not a security boundary against hostile network requests.';};
-  filter.addEventListener('input',()=>{const q=filter.value.toLowerCase();for(const option of lang.options)option.hidden=!option.textContent.toLowerCase().includes(q);for(const row of tbody.rows)row.hidden=!row.textContent.toLowerCase().includes(q);},{signal});
-  lang.addEventListener('change',()=>{drafts.set(selected,editor.value);selected=lang.value;stop();editor.value=drafts.get(selected)??catalogue.find(l=>l.id===selected).sample;result.textContent='';render();},{signal});
-  const run=button(buttons,'Run',async()=>{stop();const token=runId,l=catalogue.find(l=>l.id===lang.value);result.textContent='';result.dataset.state='busy';try{if(l.id==='web'){
-    ensure(html.value);ensure(css.value);ensure(js.value);frame=element('iframe');frame.title='HTML CSS JavaScript sandbox preview';frame.setAttribute('sandbox','allow-scripts');frame.setAttribute('referrerpolicy','no-referrer');frame.style.cssText='width:100%;min-height:320px;border:1px solid #888';
-    const nonce=crypto.randomUUID(),channel=crypto.randomUUID();frame.dataset.channel=channel;
-    const bridge=`(()=>{const channel=${JSON.stringify(channel)};const send=(text)=>parent.postMessage({channel,text:String(text)},'*');const format=v=>{try{return typeof v==='string'?v:JSON.stringify(v)}catch{return String(v)}};for(const level of ['log','info','warn','error','debug'])console[level]=(...a)=>send(level+': '+a.map(format).join(' '));addEventListener('error',e=>send('Error: '+e.message));addEventListener('unhandledrejection',e=>send('Unhandled rejection: '+e.reason));})();`;
-    const safeJS=js.value.replace(/<\/script/gi,'<\\/script');
-    // HTML/CSS are parsed by the browser, never inserted into the host DOM.
-    frame.srcdoc=`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' blob:; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; font-src data:; frame-src 'none'; form-action 'none'; base-uri 'none'"><script nonce="${nonce}">${bridge}<\/script><style>${css.value.replace(/<\/style/gi,'<\\/style')}</style></head><body>${html.value}<script nonce="${nonce}" >${safeJS}<\/script></body></html>`;
-    preview.append(frame);frameTimer=setTimeout(()=>{if(runId===token){clearFrame();result.textContent+='\nPreview expired (15s). Run again to restart.';}},15000);result.textContent='Preview running. Console output below:';
-   }else{assert(l.status!=='editor-only','No runtime installed.');await job(l.id,editor.value,{},input.value,l.id==='python'?45000:5000,s=>{if(token===runId&&result.textContent.length<100000)result.textContent+=s+'\n';});if(token===runId&&!result.textContent)result.textContent='Completed (no output).';}if(token===runId)result.dataset.state='success';}catch(e){if(token===runId){result.textContent+='\nError: '+e.message;result.dataset.state='error';}}},signal);
-  button(buttons,'Stop',()=>{stop();result.textContent+='\nStopped; runtime discarded.';},signal);
-  button(buttons,'Reset example',()=>{stop();editor.value=catalogue.find(l=>l.id===lang.value).sample;result.textContent='';},signal);
-  button(buttons,'Copy source',async()=>{try{await copy(lang.value==='web'?`<!-- HTML -->\n${html.value}\n<!-- CSS -->\n<style>${css.value}</style>\n<!-- JavaScript -->\n<script>${js.value}<\/script>`:editor.value);}catch(e){result.textContent=e.message;}},signal);
-  button(buttons,'Download source',()=>download('codehub-'+lang.value+'.txt',lang.value==='web'?`<!doctype html>\n<style>${css.value}</style>\n${html.value}\n<script>${js.value}<\/script>`:editor.value),signal);
-  window.addEventListener('message',e=>{if(frame&&e.source===frame.contentWindow&&e.data?.channel===frame.dataset.channel){if(result.textContent.length<100000)result.textContent+='\n'+String(e.data.text).slice(0,10000);}},{signal});render();
- }else if(id==='json-validator'){
-  const source=field(form,'JSON','{"hello":"world","items":[1,2,3]}'),indent=select(form,'Indent',[['2','2 spaces'],['4','4 spaces'],['tab','Tabs']]);const out=output(form);
-  const parse=()=>{try{return JSON.parse(ensure(source.value));}catch(e){let location='';const pos=e.message.match(/position (\d+)/);if(pos){const p=+pos[1],before=source.value.slice(0,p);location=` (line ${before.split('\n').length}, column ${p-(before.lastIndexOf('\n')+1)+1})`;}throw Error(e.message+location);}};
-  action('Validate',out,()=>{const v=parse();return 'Valid JSON · '+(v===null?'null':Array.isArray(v)?`array (${v.length} items)`:typeof v);});action('Format',out,()=>JSON.stringify(parse(),null,indent.value==='tab'?'\t':+indent.value));action('Minify',out,()=>JSON.stringify(parse()));copyOut(out);
- }else if(id==='regex-tester'){
-  const pattern=field(form,'Pattern (without / delimiters)','\\b\\w+\\b','text'),flags=field(form,'Flags','g','text'),source=field(form,'Test text','Hello, world!'),replacement=field(form,'Replacement','$&','text');const out=output(form);notice(form,'Runs in a disposable worker with a 2s timeout; maximum 1,000 matches. Empty matches advance safely.');
-  const opts=replace=>({pattern:pattern.value,flags:flags.value,replacement:replacement.value,replace});action('Test',out,()=>job('regex',source.value,opts(false),'',2000));action('Replace',out,()=>job('regex',source.value,opts(true),'',2000));copyOut(out);
- }else if(id==='uuid-generator'){
-  const count=field(form,'Count (1–1000)','5','number'),version=select(form,'UUID version',[['4','v4 — random'],['7','v7 — timestamp + randomness']]);count.min='1';count.max='1000';const out=output(form);
-  action('Generate',out,()=>{const n=Number(count.value);assert(Number.isInteger(n)&&n>=1&&n<=1000,'Count must be an integer from 1 to 1000.');assert(globalThis.crypto?.getRandomValues,'Secure random generator unavailable.');return Array.from({length:n},()=>{const b=crypto.getRandomValues(new Uint8Array(16));if(version.value==='7'){let t=BigInt(Date.now());for(let i=5;i>=0;i--){b[i]=Number(t&255n);t>>=8n;}b[6]=(b[6]&15)|112;}else b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;const h=Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');return[h.slice(0,8),h.slice(8,12),h.slice(12,16),h.slice(16,20),h.slice(20)].join('-');}).join('\n');});notice(form,'v4/v7 use Web Crypto random bytes. v7 is not guaranteed monotonic within one millisecond.');copyOut(out);
- }else if(id==='timestamp'){
-  const source=field(form,'Unix timestamp or ISO 8601 date',String(Math.floor(Date.now()/1000)),'text'),unit=select(form,'Numeric input unit',[['s','Seconds'],['ms','Milliseconds'],['us','Microseconds'],['ns','Nanoseconds']]);const out=output(form);
-  action('Convert',out,()=>{let ms;if(/^[+-]?\d+$/.test(source.value.trim())){const v=BigInt(source.value.trim());const scale={s:1000n,ms:1n,us:1000n,ns:1000000n}[unit.value];ms=Number(unit.value==='s'?v*scale:unit.value==='ms'?v:v/scale);}else{assert(/^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d{1,3})?)?(?:Z|[+-]\d\d:\d\d)$/.test(source.value.trim()),'Use ISO 8601 with explicit timezone, e.g. 2026-11-15T12:00:00Z.');const day=source.value.slice(0,10),parts=day.split('-').map(Number);assert(parts[1]>=1&&parts[1]<=12&&parts[2]>=1&&parts[2]<=new Date(Date.UTC(parts[0],parts[1],0)).getUTCDate(),'Invalid calendar date.');ms=Date.parse(source.value);}assert(Number.isSafeInteger(ms)&&Math.abs(ms)<=8640000000000000,'Date is outside JavaScript’s supported range.');const d=new Date(ms);return`ISO (UTC): ${d.toISOString()}\nLocal: ${d.toString()}\nUnix seconds: ${Math.floor(ms/1000)}\nMilliseconds: ${ms}\nMicroseconds: ${BigInt(ms)*1000n}\nNanoseconds: ${BigInt(ms)*1000000n}\nPrecision: milliseconds (sub-ms input is truncated).`;});button(form,'Now',()=>{unit.value='ms';source.value=String(Date.now());},signal);copyOut(out);
- }else if(id==='base-converter'){
-  const source=field(form,'Signed integer (prefixes 0x / 0b / 0o optional)','FF','text'),from=field(form,'Input base (2–36)','16','number'),to=field(form,'Output base (2–36)','10','number'),out=output(form);
-  action('Convert',out,()=>{const a=+from.value,b=+to.value;assert(Number.isInteger(a)&&a>=2&&a<=36&&Number.isInteger(b)&&b>=2&&b<=36,'Bases must be integers from 2 to 36.');let s=source.value.trim().toLowerCase();assert(s.length<=10000,'Maximum 10,000 digits.');let sign=1n;if(s[0]==='-'||s[0]==='+'){if(s[0]==='-')sign=-1n;s=s.slice(1);}if((a===16&&s.startsWith('0x'))||(a===2&&s.startsWith('0b'))||(a===8&&s.startsWith('0o')))s=s.slice(2);assert(s,'Enter an integer.');let n=0n;for(const c of s){const v='0123456789abcdefghijklmnopqrstuvwxyz'.indexOf(c);assert(v>=0&&v<a,`Invalid digit “${c}” for base ${a}.`);n=n*BigInt(a)+BigInt(v);}n*=sign;return`Base ${b}: ${n.toString(b)}\nBinary: ${n.toString(2)}\nOctal: ${n.toString(8)}\nDecimal: ${n}\nHex: ${n.toString(16)}`;});notice(form,'Arbitrary-precision integer conversion with BigInt; no floating-point rounding.');copyOut(out);
- }else if(id==='html-entities'){
-  const source=field(form,'Text / HTML entities','<div title="hello">Tom & Jerry © 😀</div>'),all=check(form,'Encode all code points as numeric entities'),out=output(form);
-  action('Encode',out,()=>{const s=ensure(source.value);return all.checked?Array.from(s,c=>'&#'+c.codePointAt(0)+';').join(''):esc(s);});
-  action('Decode',out,()=>{const s=ensure(source.value);const parser=new DOMParser();return s.replace(/&(?:#[xX][0-9a-fA-F]+;?|#\d+;?|[A-Za-z][A-Za-z0-9]+;)/g,entity=>{const doc=parser.parseFromString('<!doctype html><body>'+entity,'text/html');return doc.body.textContent;});});notice(form,'Decoded markup is displayed as text, never injected into this page. Named entities require a semicolon.');copyOut(out);
- }else if(id==='jwt-decoder'){
-  const source=field(form,'JWT (decoded locally, never sent to a server)',''),out=output(form);notice(form,'Decode only — signatures are NOT verified. Treat every claim as untrusted. JWE (5-part encrypted tokens) is not supported.');
-  action('Decode',out,()=>{const parts=ensure(source.value.trim()).split('.');assert(parts.length===3,'Expected a three-part JWS/JWT: header.payload.signature.');const decode=s=>{assert(/^[\w-]+$/.test(s)&&s.length%4!==1,'Invalid base64url segment.');const bytes=Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-s.length%4)%4)),c=>c.charCodeAt(0));return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));};const header=decode(parts[0]),payload=decode(parts[1]);assert(header&&typeof header==='object'&&!Array.isArray(header),'JWT header must be an object.');assert(payload&&typeof payload==='object'&&!Array.isArray(payload),'JWT claims must be an object.');assert(/^[\w-]*$/.test(parts[2]),'Invalid signature encoding.');const now=Date.now()/1000,dates={};for(const k of['iat','nbf','exp'])if(k in payload){assert(typeof payload[k]==='number'&&Number.isFinite(payload[k]),`${k} must be a NumericDate.`);const d=new Date(payload[k]*1000);assert(Number.isFinite(d.getTime()),`${k} is outside supported date range.`);dates[k]=d.toISOString();}return{warning:'UNVERIFIED — no signature validation',header,payload,dates,expired:typeof payload.exp==='number'?now>=payload.exp:null,notYetValid:typeof payload.nbf==='number'?now<payload.nbf:null};});copyOut(out);
- }else if(['css-minifier','js-formatter','sql-formatter'].includes(id)){
-  const sample={'css-minifier':'/* Example */\n.card { padding: 10px 20px; color: red; }','js-formatter':'const greet=(name)=>{console.log(`Hello, ${name}!`)};greet("world")','sql-formatter':'select id,name from users where active=1 order by name;'}[id];const source=field(form,'Source',sample);let dialect,ts;if(id==='sql-formatter')dialect=select(form,'SQL dialect',[['sql','Standard SQL'],['sqlite','SQLite'],['postgresql','PostgreSQL'],['mysql','MySQL'],['transactsql','SQL Server'],['bigquery','BigQuery'],['plsql','PL/SQL']]);if(id==='js-formatter')ts=check(form,'Parse as TypeScript');const out=output(form);action(id==='css-minifier'?'Minify':'Format',out,async()=>{const result=await job({'css-minifier':'css-minify','js-formatter':'js-format','sql-formatter':'sql-format'}[id],source.value,{dialect:dialect?.value,typescript:ts?.checked});return id==='css-minifier'?`${result}\n\n/* ${new TextEncoder().encode(source.value).length} → ${new TextEncoder().encode(result).length} UTF-8 bytes; whitespace minification, no semantic optimization */`:result;});copyOut(out);
- }else if(id==='hash-playground'){
-  const source=field(form,'UTF-8 text','Hello, world!'),algo=select(form,'Algorithm',[['SHA-256','SHA-256'],['SHA-384','SHA-384'],['SHA-512','SHA-512'],['SHA-1','SHA-1 (legacy; not secure)']]),format=select(form,'Digest encoding',[['hex','Hex'],['base64','Base64']]),out=output(form);
-  action('Hash',out,async()=>{assert(crypto.subtle,'Web Crypto requires HTTPS or localhost.');const bytes=new Uint8Array(await crypto.subtle.digest(algo.value,new TextEncoder().encode(ensure(source.value))));return format.value==='hex'?Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join(''):btoa(String.fromCharCode(...bytes));});notice(form,'Cryptographic digests, not encryption or password hashing. SHA-1 is for legacy compatibility only.');copyOut(out);
- }else if(id==='color-tokens'){
-  const source=field(form,'Hex color (#RGB or #RRGGBB)','#663399','text'),name=field(form,'Token prefix','brand','text'),out=output(form),swatches=element('div','two-col');form.append(swatches);
-  action('Generate tokens',out,()=>{assert(/^#[\da-f]{3}(?:[\da-f]{3})?$/i.test(source.value.trim()),'Enter #RGB or #RRGGBB.');assert(/^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(name.value),'Use a valid CSS token prefix (letters, digits, _, -).');let h=source.value.trim().slice(1);if(h.length===3)h=Array.from(h,c=>c+c).join('');const rgb=[0,2,4].map(i=>parseInt(h.slice(i,i+2),16)),[r,g,b]=rgb.map(n=>n/255),max=Math.max(r,g,b),min=Math.min(r,g,b),delta=max-min,l=(max+min)/2;let hue=0;if(delta){if(max===r)hue=((g-b)/delta)%6;else if(max===g)hue=(b-r)/delta+2;else hue=(r-g)/delta+4;hue=(hue*60+360)%360;}const saturation=delta===0?0:delta/(1-Math.abs(2*l-1));const lum=rgb.map(v=>{const x=v/255;return x<=.04045?x/12.92:((x+.055)/1.055)**2.4;}).reduce((a,v,i)=>a+v*[.2126,.7152,.0722][i],0),black=(lum+.05)/.05,white=1.05/(lum+.05);swatches.replaceChildren();const tokens={};for(const [key,light]of [['50',97],['100',93],['200',85],['300',75],['400',65],['500',55],['600',45],['700',35],['800',25],['900',15]]){const color=`hsl(${hue.toFixed(1)} ${(saturation*100).toFixed(1)}% ${light}%)`;tokens[`--${name.value}-${key}`]=color;const swatch=element('div','panel',key);swatch.style.backgroundColor=color;swatch.style.color=light>=55?'black':'white';swatch.style.padding='16px';swatches.append(swatch);}return`:root {\n  --${name.value}: #${h};\n${Object.entries(tokens).map(([k,v])=>'  '+k+': '+v+';').join('\n')}\n}\n\n/* Base RGB: ${rgb.join(', ')}\n   Base HSL: ${hue.toFixed(1)} ${(saturation*100).toFixed(1)}% ${(l*100).toFixed(1)}%\n   WCAG base contrast: black ${black.toFixed(2)}:1 (${black>=4.5?'AA normal pass':'AA normal fail'}); white ${white.toFixed(2)}:1 (${white>=4.5?'AA normal pass':'AA normal fail'})\n   Recommended base text: ${black>=white?'black':'white'}\n   Palette uses fixed HSL lightness; not perceptually uniform or contrast-guaranteed. */`;});copyOut(out);
- }else if(id==='git-cheatsheet'){
-  notice(form,'Reference only: commands are never executed. Destructive operations are labeled.');const query=field(form,'Search Git commands','','search'),list=element('div');form.append(list);const entries=[
- ['Setup','git config --global user.name "Your Name"','Set author name'],['Setup','git config --global user.email "you@example.com"','Set author email'],['Start','git init','Initialize repository'],['Start','git clone <url>','Clone repository'],['Inspect','git status --short','Working tree status'],['Inspect','git diff','Unstaged changes'],['Inspect','git diff --staged','Staged changes'],['Inspect','git log --oneline --graph --decorate --all','Commit graph'],['Inspect','git show <commit>','Inspect a commit'],['Inspect','git blame <file>','Line authorship'],['Stage','git add <file>','Stage one file'],['Stage','git add -p','Interactively stage hunks'],['Stage','git restore --staged <file>','Unstage without deleting work'],['Commit','git commit -m "message"','Commit staged changes'],['Commit','git commit --amend','Rewrites most recent commit; avoid on shared history'],['Branch','git branch --list','List local branches'],['Branch','git switch -c <branch>','Create and switch branch'],['Branch','git switch <branch>','Switch branch'],['Branch','git branch -d <branch>','Delete merged branch'],['Sync','git remote -v','List remotes'],['Sync','git fetch --prune','Fetch updates; remove stale tracking refs'],['Sync','git pull --ff-only','Pull only if fast-forward is possible'],['Sync','git push -u origin HEAD','Push and track current branch'],['Merge','git merge <branch>','Merge another branch'],['Merge','git merge --abort','Abort conflicted merge'],['Rebase','git rebase <branch>','Rewrites commits; avoid shared history'],['Rebase','git rebase --continue','Continue after resolving conflicts'],['Rebase','git rebase --abort','Abort rebase'],['Undo','git revert <commit>','Create a new inverse commit; shared-history friendly'],['Undo','git restore <file>','DESTRUCTIVE: discard unstaged changes in file'],['Undo','git reset --hard <commit>','DESTRUCTIVE: discard tracked working/staged changes'],['Undo','git clean -nd','Dry run: preview untracked files to remove'],['Undo','git clean -fd','DESTRUCTIVE: remove untracked files/directories'],['Recover','git reflog','Find previously referenced commits'],['Stash','git stash push -m "work in progress"','Save tracked uncommitted work'],['Stash','git stash push -u','Also stash untracked files'],['Stash','git stash list','List stashes'],['Stash','git stash pop','Apply and remove latest stash if successful'],['Tag','git tag -a v1.0.0 -m "Release"','Create annotated tag'],['Tag','git push origin v1.0.0','Push a specific tag'],['Pick','git cherry-pick <commit>','Apply a commit on current branch'],['Debug','git bisect start','Start binary search; use good/bad then reset'],['Debug','git bisect reset','Finish bisect session']];
-  const render=()=>{list.replaceChildren();const q=query.value.toLowerCase();let found=0;for(const [category,command,desc]of entries){if(![category,command,desc].join(' ').toLowerCase().includes(q))continue;found++;const p=element('article','panel');p.append(element('strong','',category),element('pre','output',command),element('p','',desc));button(p,'Copy command',async()=>{try{await copy(command);}catch(e){p.append(element('p','',e.message));}},signal);list.append(p);}if(!found)notice(list,'No matching commands.');};query.addEventListener('input',render,{signal});render();
- }else if(id==='http-status'){
-  const query=field(form,'Search status code or meaning','','search'),list=element('div');form.append(list);notice(form,'Standard/common status reference. Nonstandard vendor codes are explicitly labeled. No network requests are made.');
-  const statuses=[
- [100,'Continue','Interim response: client may continue sending the request body.'],[101,'Switching Protocols','Server accepts a protocol upgrade.'],[102,'Processing','WebDAV interim processing response (legacy).'],[103,'Early Hints','Preliminary headers, often Link preloads.'],
- [200,'OK','Request succeeded.'],[201,'Created','A resource was created; Location often identifies it.'],[202,'Accepted','Accepted for processing, not necessarily completed.'],[203,'Non-Authoritative Information','Transforming proxy modified the origin response.'],[204,'No Content','Success without response content.'],[205,'Reset Content','Success; reset the document view.'],[206,'Partial Content','Successful range response.'],[207,'Multi-Status','WebDAV: multiple resource statuses.'],[208,'Already Reported','WebDAV: member already enumerated.'],[226,'IM Used','Delta encoding instance manipulation applied.'],
- [300,'Multiple Choices','Multiple representations are available.'],[301,'Moved Permanently','Permanent redirect; some clients change POST to GET.'],[302,'Found','Temporary redirect; some clients change POST to GET.'],[303,'See Other','Retrieve another resource, normally with GET.'],[304,'Not Modified','Conditional request: reuse cached representation; no response body.'],[305,'Use Proxy','Deprecated proxy redirection.'],[307,'Temporary Redirect','Temporary redirect preserving method and body.'],[308,'Permanent Redirect','Permanent redirect preserving method and body.'],
- [400,'Bad Request','Invalid request syntax, framing, or routing.'],[401,'Unauthorized','Authentication required; WWW-Authenticate challenge.'],[402,'Payment Required','Reserved for future use; application-specific usage.'],[403,'Forbidden','Server refuses the request; authentication may not help.'],[404,'Not Found','Resource not found, or existence intentionally concealed.'],[405,'Method Not Allowed','Method unsupported here; Allow lists supported methods.'],[406,'Not Acceptable','No acceptable representation for content negotiation.'],[407,'Proxy Authentication Required','Authentication required by an intermediary proxy.'],[408,'Request Timeout','Server timed out receiving request.'],[409,'Conflict','Request conflicts with current resource state.'],[410,'Gone','Resource intentionally unavailable, likely permanently.'],[411,'Length Required','Content-Length required.'],[412,'Precondition Failed','A request header precondition failed.'],[413,'Content Too Large','Request content exceeds server limits.'],[414,'URI Too Long','Target URI exceeds accepted length.'],[415,'Unsupported Media Type','Request content format or encoding is unsupported.'],[416,'Range Not Satisfiable','Requested byte range cannot be served.'],[417,'Expectation Failed','Server cannot meet Expect header.'],[418,'Unused / historic teapot','Reserved unused in HTTP core; historic April Fools teapot code, not normal application semantics.'],[421,'Misdirected Request','Server cannot produce authoritative response for target origin.'],[422,'Unprocessable Content','Syntax understood; instructions cannot be processed.'],[423,'Locked','WebDAV resource is locked.'],[424,'Failed Dependency','WebDAV operation failed because a dependency failed.'],[425,'Too Early','Server refuses replay-risk early data; retry without early data.'],[426,'Upgrade Required','Upgrade to an indicated protocol.'],[428,'Precondition Required','Conditional request required to avoid lost updates.'],[429,'Too Many Requests','Rate limited; honor Retry-After when present.'],[431,'Request Header Fields Too Large','Headers exceed server limits.'],[451,'Unavailable For Legal Reasons','Access denied for legal reasons.'],
- [500,'Internal Server Error','Unexpected server failure.'],[501,'Not Implemented','Server lacks required functionality.'],[502,'Bad Gateway','Gateway received an invalid upstream response.'],[503,'Service Unavailable','Temporary overload/maintenance; Retry-After may be given.'],[504,'Gateway Timeout','Gateway timed out waiting for upstream.'],[505,'HTTP Version Not Supported','HTTP version unsupported.'],[506,'Variant Also Negotiates','Content negotiation configuration error.'],[507,'Insufficient Storage','WebDAV server cannot store required representation.'],[508,'Loop Detected','WebDAV processing loop detected.'],[510,'Not Extended (obsolete)','Obsolete experimental HTTP extension response.'],[511,'Network Authentication Required','Network access authentication required (e.g. captive portal).'],[499,'Client Closed Request (nonstandard)','Nginx logging convention; not an IANA standard HTTP response.'],[520,'Unknown Error (nonstandard)','Cloudflare-specific origin error.'],[521,'Web Server Is Down (nonstandard)','Cloudflare-specific origin connection failure.'],[522,'Connection Timed Out (nonstandard)','Cloudflare-specific connection timeout.'],[523,'Origin Is Unreachable (nonstandard)','Cloudflare-specific origin routing failure.'],[524,'A Timeout Occurred (nonstandard)','Cloudflare-specific upstream response timeout.'],[525,'SSL Handshake Failed (nonstandard)','Cloudflare-specific origin TLS handshake failure.'],[526,'Invalid SSL Certificate (nonstandard)','Cloudflare-specific origin certificate validation failure.']];
-  const render=()=>{list.replaceChildren();const q=query.value.toLowerCase();const found=statuses.filter(row=>row.join(' ').toLowerCase().includes(q));for(const [code,name,desc]of found){const p=element('article','panel');p.append(element('h3','',`${code} ${name}`),element('p','',desc));list.append(p);}if(!found.length)notice(list,'No matching status. Unassigned codes are not invented.');};query.addEventListener('input',render,{signal});render();
- }
- return id==='codehub'?dispose:true;
+
+function ensure(s) { if (s.length > MAX) throw Error('Input exceeds 1 MB limit.'); return s; }
+function assert(ok, msg) { if (!ok) throw Error(msg); }
+function download(name, text) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+  const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function copy(text) {
+  assert(navigator.clipboard?.writeText, 'Clipboard unavailable.');
+  return navigator.clipboard.writeText(text);
+}
+function codeArea(value = '', rows = 7) {
+  return gEl('textarea', { class: 'gfield-input code-area', rows, spellcheck: 'false', value });
+}
+function textIn(value = '', placeholder = '') {
+  return gEl('input', { type: 'text', class: 'gfield-input', value: String(value), placeholder });
+}
+
+export function mountCode(id, root) {
+  if (!ids.has(id) || !root?.replaceChildren) return false;
+  mounted.get(root)?.();
+  const controller = new AbortController(), { signal } = controller, scope = { jobs: new Set() }, cleanups = [];
+  let disposed = false;
+  const dispose = () => {
+    if (disposed) return; disposed = true;
+    controller.abort();
+    for (const cancel of [...scope.jobs]) cancel();
+    for (const clean of cleanups) clean();
+    observer.disconnect();
+    mounted.delete(root);
+  };
+  const observer = new MutationObserver(() => { if (!root.isConnected) dispose(); });
+  observer.observe(root.ownerDocument.documentElement, { childList: true, subtree: true });
+  mounted.set(root, dispose);
+  root.replaceChildren();
+  root.addEventListener('tool-dispose', dispose, { signal });
+
+  const panel = gEl('section', { class: 'game-panel' });
+  root.append(panel);
+
+  const outConsole = () => gEl('pre', { class: 'output code-console-tray', role: 'status', 'aria-live': 'polite' });
+  const runTo = (target, fn) => async () => {
+    target.dataset.state = 'busy';
+    target.textContent = 'Working…';
+    try {
+      const res = await fn();
+      if (!disposed) {
+        target.textContent = typeof res === 'string' ? res : JSON.stringify(res, null, 2);
+        target.dataset.state = 'success';
+        target.classList.remove('error');
+        playSparkle();
+      }
+    } catch (e) {
+      if (!disposed) {
+        target.textContent = 'Error: ' + (e.message || e);
+        target.dataset.state = 'error';
+        target.classList.add('error');
+      }
+    }
+  };
+  const copyBtn = target => gameBtn('📋 Copy Output', 'chip', async () => {
+    try { await copy(target.textContent); } catch (e) { target.textContent += '\n' + e.message; }
+  });
+
+  if (id === 'codehub') {
+    const featuredIds = ['javascript', 'typescript', 'python', 'sql', 'lua', 'bash', 'web', 'json', 'brainfuck', 'lisp', 'forth', 'basic'];
+    let currentLang = 'javascript';
+    const drafts = new Map();
+
+    const filterIn = textIn('', 'Filter all 75 languages… e.g. rust, python, sql');
+    const langChips = gameTabs(
+      featuredIds.map(lid => [lid, catalogue.find(x => x.id === lid).name]),
+      currentLang,
+      val => switchLang(val),
+      'Quick Runtime Switcher'
+    );
+    const moreTray = gEl('div', { class: 'gtabs code-lang-drawer', hidden: true });
+    const statusBadge = gEl('div', { class: 'pastel-card peach' });
+
+    const editor = codeArea(catalogue.find(x => x.id === 'javascript').sample, 9);
+    const stdinIn = codeArea('', 2);
+    const webGrid = gEl('div', { class: 'two-col', hidden: true });
+    const htmlIn = codeArea('<h1>Hello, Kitchen Sandbox!</h1>\n<button id="hello">Tap Me</button>', 6);
+    const cssIn = codeArea('body { font-family: system-ui; padding: 18px; background: #fff9ec; color: #4f2f23; }\nh1 { color: #c98550; }', 6);
+    const jsIn = codeArea('document.querySelector("#hello").onclick = () => {\n  console.log("Button tapped!");\n  document.querySelector("h1").textContent = "It works!";\n};', 6);
+    webGrid.append(gameField('HTML', htmlIn), gameField('CSS', cssIn), gameField('JavaScript', jsIn));
+
+    const result = outConsole();
+    const preview = gEl('div', { class: 'pastel-card cream', hidden: true });
+    let frame = null, frameTimer = null, runId = 0;
+
+    const clearFrame = () => { clearTimeout(frameTimer); frame?.remove(); frame = null; preview.replaceChildren(); preview.hidden = true; };
+    cleanups.push(clearFrame);
+    const stop = () => { runId++; for (const c of [...scope.jobs]) c(); clearFrame(); };
+
+    function buildMoreChips(q) {
+      const ql = q.trim().toLowerCase();
+      moreTray.hidden = !ql;
+      if (!ql) return;
+      const matches = catalogue.filter(l => l.name.toLowerCase().includes(ql) || l.id.includes(ql)).slice(0, 24);
+      moreTray.replaceChildren(...matches.map(l => {
+        const b = gameBtn(`${l.name} (${l.status})`, l.id === currentLang ? 'primary' : 'chip', () => switchLang(l.id));
+        return b;
+      }));
+    }
+
+    function switchLang(nextId) {
+      drafts.set(currentLang, editor.value);
+      currentLang = nextId;
+      if (featuredIds.includes(nextId)) langChips.value = nextId;
+      stop();
+      editor.value = drafts.get(nextId) ?? catalogue.find(l => l.id === nextId).sample;
+      result.textContent = '';
+      renderMeta();
+    }
+
+    const runBtn = gameBtn('▶ Run Code', 'primary', async () => {
+      stop();
+      const token = runId, l = catalogue.find(x => x.id === currentLang);
+      result.textContent = '';
+      result.classList.remove('error');
+      try {
+        if (l.id === 'web') {
+          ensure(htmlIn.value); ensure(cssIn.value); ensure(jsIn.value);
+          preview.hidden = false;
+          frame = gEl('iframe', { class: 'arcade-iframe', title: 'HTML CSS JS sandbox preview', sandbox: 'allow-scripts', referrerPolicy: 'no-referrer' });
+          frame.style.height = '280px';
+          const nonce = crypto.randomUUID(), channel = crypto.randomUUID();
+          frame.dataset.channel = channel;
+          const bridge = `(()=>{const ch=${JSON.stringify(channel)};const send=t=>parent.postMessage({channel:ch,text:String(t)},'*');const fmt=v=>{try{return typeof v==='string'?v:JSON.stringify(v)}catch{return String(v)}};for(const lvl of['log','info','warn','error'])console[lvl]=(...a)=>send(lvl+': '+a.map(fmt).join(' '));addEventListener('error',e=>send('Error: '+e.message));})();`;
+          const safeJS = jsIn.value.replace(/<\/script/gi, '<\\/script');
+          frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' blob:; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; font-src data:; frame-src 'none'; form-action 'none'; base-uri 'none'"><script nonce="${nonce}">${bridge}<\/script><style>${cssIn.value.replace(/<\/style/gi, '<\\/style')}</style></head><body>${htmlIn.value}<script nonce="${nonce}">${safeJS}<\/script></body></html>`;
+          preview.replaceChildren(frame);
+          frameTimer = setTimeout(() => { if (runId === token) { clearFrame(); result.textContent += '\nPreview expired (15s).'; } }, 15000);
+          result.textContent = 'Sandbox preview running:';
+        } else {
+          assert(l.status !== 'editor-only', 'No local compiler installed for this language (editing only).');
+          await workerJob(scope, l.id, ensure(editor.value), {}, stdinIn.value, l.id === 'python' ? 45000 : 5000, s => {
+            if (token === runId && result.textContent.length < 100000) result.textContent += s + '\n';
+          });
+          if (token === runId && !result.textContent) result.textContent = 'Completed (no output).';
+          playSparkle();
+        }
+      } catch (e) {
+        if (token === runId) { result.textContent += '\nError: ' + e.message; result.classList.add('error'); }
+      }
+    });
+
+    const editorField = gameField('Source Editor', editor);
+    const stdinField = gameField('Standard Input (stdin)', stdinIn);
+
+    function renderMeta() {
+      const l = catalogue.find(x => x.id === currentLang);
+      const isWeb = l.id === 'web';
+      webGrid.hidden = !isWeb;
+      editorField.hidden = isWeb;
+      stdinField.hidden = isWeb;
+      runBtn.disabled = l.status === 'editor-only';
+      runBtn.textContent = isWeb ? '▶ Run Web Preview' : l.status === 'editor-only' ? '📝 Editor Only' : `▶ Run ${l.name}`;
+      statusBadge.replaceChildren(
+        gEl('div', { class: 'gslider-head' }, gEl('strong', {}, `${l.name}`), gEl('span', { class: 'gbadge' }, l.status.toUpperCase())),
+        gEl('small', {}, l.note)
+      );
+    }
+
+    filterIn.addEventListener('input', () => buildMoreChips(filterIn.value), { signal });
+    window.addEventListener('message', e => {
+      if (frame && e.source === frame.contentWindow && e.data?.channel === frame.dataset.channel) {
+        if (result.textContent.length < 100000) result.textContent += '\n' + String(e.data.text).slice(0, 10000);
+      }
+    }, { signal });
+
+    panel.append(
+      langChips.el,
+      gameField(`Search All ${catalogue.length} Languages`, filterIn),
+      moreTray,
+      statusBadge,
+      editorField,
+      stdinField,
+      webGrid,
+      gEl('div', { class: 'gtabs' },
+        runBtn,
+        gameBtn('⏹ Stop', 'danger', () => { stop(); result.textContent += '\nStopped.'; }),
+        gameBtn('↺ Sample', 'chip', () => { stop(); editor.value = catalogue.find(l => l.id === currentLang).sample; result.textContent = ''; }),
+        gameBtn('↓ Save File', 'chip', () => download('codehub-' + currentLang + '.txt', currentLang === 'web' ? `<!doctype html><style>${cssIn.value}</style>${htmlIn.value}<script>${jsIn.value}<\/script>` : editor.value))
+      ),
+      preview,
+      result
+    );
+    renderMeta();
+
+  } else if (id === 'json-validator') {
+    const src = codeArea('{"hello":"world","items":[1,2,3],"cozy":true}', 7);
+    const indent = gameTabs([['2', '2 Spaces'], ['4', '4 Spaces'], ['tab', 'Tab']], '2', null, 'Indent');
+    const stType = statBox('Type', 'Object', 'peach'), stItems = statBox('Keys / Items', '3', 'cream'), stSize = statBox('Bytes', '—', 'cream');
+    const out = outConsole();
+    const parse = () => {
+      try { return JSON.parse(ensure(src.value)); }
+      catch (e) {
+        let loc = '';
+        const m = e.message.match(/position (\d+)/);
+        if (m) { const p = +m[1], pre = src.value.slice(0, p); loc = ` (line ${pre.split('\n').length}, col ${p - pre.lastIndexOf('\n')})`; }
+        throw Error(e.message + loc);
+      }
+    };
+    const updateStats = v => {
+      stType.set(v === null ? 'null' : Array.isArray(v) ? 'Array' : typeof v);
+      stItems.set(v && typeof v === 'object' ? (Array.isArray(v) ? v.length : Object.keys(v).length) : 1);
+      stSize.set(new TextEncoder().encode(src.value).length + ' B');
+    };
+    panel.append(
+      gameField('JSON Input', src),
+      indent.el,
+      gEl('div', { class: 'gtabs' },
+        gameBtn('✓ Validate', 'primary', runTo(out, () => { const v = parse(); updateStats(v); return 'Valid JSON!'; })),
+        gameBtn('✨ Format', '', runTo(out, () => { const v = parse(); updateStats(v); return JSON.stringify(v, null, indent.value === 'tab' ? '\t' : +indent.value); })),
+        gameBtn('⚡ Minify', 'chip', runTo(out, () => { const v = parse(); updateStats(v); return JSON.stringify(v); })),
+        copyBtn(out)
+      ),
+      gEl('div', { class: 'stat-grid' }, stType.el, stItems.el, stSize.el),
+      out
+    );
+
+  } else if (id === 'regex-tester') {
+    const pat = textIn('\\b\\w+\\b'), rep = textIn('$&'), src = codeArea('Hello, cozy kitchen! 123 waffles & 45 cookies.', 5);
+    const flG = gameToggle('Global (g)', true), flI = gameToggle('Ignore Case (i)', false), flM = gameToggle('Multiline (m)', false);
+    const out = outConsole();
+    const getFlags = () => (flG.checked ? 'g' : '') + (flI.checked ? 'i' : '') + (flM.checked ? 'm' : '');
+    panel.append(
+      gEl('div', { class: 'two-col' }, gameField('Regex Pattern', pat), gameField('Replacement', rep)),
+      gEl('div', { class: 'gtabs' }, flG.el, flI.el, flM.el),
+      gameField('Test Text', src),
+      gEl('div', { class: 'gtabs' },
+        gameBtn('🔍 Test Matches', 'primary', runTo(out, () => workerJob(scope, 'regex', ensure(src.value), { pattern: pat.value, flags: getFlags(), replacement: rep.value, replace: false }, '', 2000))),
+        gameBtn('🪄 Replace', '', runTo(out, () => workerJob(scope, 'regex', ensure(src.value), { pattern: pat.value, flags: getFlags(), replacement: rep.value, replace: true }, '', 2000))),
+        copyBtn(out)
+      ),
+      out
+    );
+
+  } else if (id === 'uuid-generator') {
+    const countSl = gameSlider({ label: 'How Many UUIDs', min: 1, max: 30, step: 1, value: 5, color: '#8fc487' });
+    const ver = gameTabs([['4', 'v4 (Random)'], ['7', 'v7 (Timestamp)']], '4', null, 'UUID Version');
+    const list = gEl('div', { class: 'uuid-pill-list' });
+    const gen = () => {
+      playSparkle();
+      const n = countSl.num;
+      const vals = Array.from({ length: n }, () => {
+        const b = crypto.getRandomValues(new Uint8Array(16));
+        if (ver.value === '7') { let t = BigInt(Date.now()); for (let i = 5; i >= 0; i--) { b[i] = Number(t & 255n); t >>= 8n; } b[6] = (b[6] & 15) | 112; }
+        else b[6] = (b[6] & 15) | 64;
+        b[8] = (b[8] & 63) | 128;
+        const h = Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+        return [h.slice(0, 8), h.slice(8, 12), h.slice(12, 16), h.slice(16, 20), h.slice(20)].join('-');
+      });
+      list.replaceChildren(...vals.map(u => gameBtn(`📋 ${u}`, 'chip', () => copy(u))));
+    };
+    panel.append(ver.el, countSl.el, gEl('div', { class: 'gtabs' }, gameBtn('🎲 Generate UUIDs', 'primary', gen)), list);
+    gen();
+
+  } else if (id === 'timestamp') {
+    const src = textIn(String(Math.floor(Date.now() / 1000)));
+    const unit = gameTabs([['s', 'Seconds'], ['ms', 'Milliseconds'], ['us', 'µs'], ['ns', 'ns']], 's', () => convert(), 'Numeric Unit');
+    const stIso = statBox('ISO UTC', '—', 'peach'), stLoc = statBox('Local Time', '—', 'cream'), stSec = statBox('Unix s', '—', 'cream'), stMs = statBox('Unix ms', '—', 'cream');
+    const errBox = gEl('p', { class: 'output error', hidden: true });
+    const convert = () => {
+      try {
+        errBox.hidden = true;
+        let ms;
+        const raw = src.value.trim();
+        if (/^[+-]?\d+$/.test(raw)) {
+          const v = BigInt(raw), sc = { s: 1000n, ms: 1n, us: 1000n, ns: 1000000n }[unit.value];
+          ms = Number(unit.value === 's' ? v * sc : unit.value === 'ms' ? v : v / sc);
+        } else {
+          ms = Date.parse(raw);
+          assert(Number.isFinite(ms), 'Use Unix integer or ISO 8601 date.');
+        }
+        const d = new Date(ms);
+        stIso.set(d.toISOString()); stLoc.set(d.toLocaleString()); stSec.set(Math.floor(ms / 1000)); stMs.set(ms);
+      } catch (e) { errBox.hidden = false; errBox.textContent = e.message; }
+    };
+    src.addEventListener('input', convert);
+    panel.append(gameField('Timestamp or ISO Date', src), unit.el, gEl('div', { class: 'gtabs' }, gameBtn('⏱ Use Now', 'primary', () => { unit.value = 'ms'; src.value = String(Date.now()); convert(); })), errBox, gEl('div', { class: 'stat-grid' }, stIso.el, stLoc.el, stSec.el, stMs.el));
+    convert();
+
+  } else if (id === 'base-converter') {
+    const src = textIn('FF');
+    const fromTabs = gameTabs([['2', 'Bin 2'], ['8', 'Oct 8'], ['10', 'Dec 10'], ['16', 'Hex 16'], ['36', 'Base 36']], '16', () => update(), 'Input Base');
+    const stBin = statBox('Binary (2)', '—', 'cream'), stOct = statBox('Octal (8)', '—', 'cream'), stDec = statBox('Decimal (10)', '—', 'peach'), stHex = statBox('Hex (16)', '—', 'cream');
+    const errBox = gEl('p', { class: 'output error', hidden: true });
+    function update() {
+      try {
+        errBox.hidden = true;
+        const a = Number(fromTabs.value);
+        let s = src.value.trim().toLowerCase(), sign = 1n;
+        if (s[0] === '-' || s[0] === '+') { if (s[0] === '-') sign = -1n; s = s.slice(1); }
+        if ((a === 16 && s.startsWith('0x')) || (a === 2 && s.startsWith('0b')) || (a === 8 && s.startsWith('0o'))) s = s.slice(2);
+        assert(s, 'Enter an integer.');
+        let n = 0n;
+        for (const c of s) { const v = '0123456789abcdefghijklmnopqrstuvwxyz'.indexOf(c); assert(v >= 0 && v < a, `Invalid digit "${c}" for base ${a}.`); n = n * BigInt(a) + BigInt(v); }
+        n *= sign;
+        stBin.set(n.toString(2)); stOct.set(n.toString(8)); stDec.set(n.toString(10)); stHex.set(n.toString(16).toUpperCase());
+      } catch (e) { errBox.hidden = false; errBox.textContent = e.message; }
+    }
+    src.addEventListener('input', update);
+    panel.append(fromTabs.el, gameField('Integer Input', src), errBox, gEl('div', { class: 'stat-grid' }, stBin.el, stOct.el, stDec.el, stHex.el));
+    update();
+
+  } else if (id === 'html-entities') {
+    const src = codeArea('<div title="hello">Tom & Jerry © 😀</div>', 5);
+    const allTog = gameToggle('Numeric Entities for All Code Points', false);
+    const out = outConsole();
+    panel.append(
+      gameField('Text / HTML Entities', src),
+      allTog.el,
+      gEl('div', { class: 'gtabs' },
+        gameBtn('Encode →', 'primary', runTo(out, () => { const s = ensure(src.value); return allTog.checked ? Array.from(s, c => '&#' + c.codePointAt(0) + ';').join('') : esc(s); })),
+        gameBtn('← Decode', '', runTo(out, () => { const s = ensure(src.value), p = new DOMParser(); return s.replace(/&(?:#[xX][0-9a-fA-F]+;?|#\d+;?|[A-Za-z][A-Za-z0-9]+;)/g, e => p.parseFromString('<!doctype html><body>' + e, 'text/html').body.textContent); })),
+        copyBtn(out)
+      ),
+      out
+    );
+
+  } else if (id === 'jwt-decoder') {
+    const src = codeArea('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ3YWZmbGUtMDEiLCJuYW1lIjoiU2lyIFdhZmZsZSIsImlhdCI6MTcwMDAwMDAwMH0.demo-sig', 4);
+    const hCard = gEl('div', { class: 'pastel-card peach' }), pCard = gEl('div', { class: 'pastel-card cream' }), errBox = gEl('p', { class: 'output error', hidden: true });
+    function decode() {
+      try {
+        errBox.hidden = true;
+        const parts = ensure(src.value.trim()).split('.');
+        assert(parts.length === 3, 'Expected 3-part JWT (header.payload.signature).');
+        const dec = s => JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - s.length % 4) % 4)), c => c.charCodeAt(0))));
+        const header = dec(parts[0]), payload = dec(parts[1]);
+        hCard.replaceChildren(gEl('span', { class: 'gbadge' }, 'HEADER (UNVERIFIED)'), gEl('pre', { class: 'output' }, JSON.stringify(header, null, 2)));
+        pCard.replaceChildren(gEl('span', { class: 'gbadge' }, 'PAYLOAD CLAIMS'), gEl('pre', { class: 'output' }, JSON.stringify(payload, null, 2)));
+      } catch (e) { errBox.hidden = false; errBox.textContent = e.message; }
+    }
+    src.addEventListener('input', decode);
+    panel.append(gameField('JWT Token (Decoded Locally Only)', src), errBox, gEl('div', { class: 'two-col' }, hCard, pCard));
+    decode();
+
+  } else if (['css-minifier', 'js-formatter', 'sql-formatter'].includes(id)) {
+    const sample = {
+      'css-minifier': '/* Cozy card */\n.card {\n  padding: 12px 20px;\n  color: #4f2f23;\n  background: #fff9ec;\n}',
+      'js-formatter': 'const bake=(waffles)=>{console.log(`Serving ${waffles} waffles!`)};bake(5)',
+      'sql-formatter': 'select id, name, flavor from pantry where ready = 1 order by name;'
+    }[id];
+    const src = codeArea(sample, 6);
+    const dialect = id === 'sql-formatter' ? gameTabs([['sql', 'SQL'], ['sqlite', 'SQLite'], ['postgresql', 'Postgres'], ['mysql', 'MySQL']], 'sql', null, 'SQL Dialect') : null;
+    const tsTog = id === 'js-formatter' ? gameToggle('Parse as TypeScript', false) : null;
+    const out = outConsole();
+    panel.append(
+      gameField('Source Code', src),
+      dialect ? dialect.el : null,
+      tsTog ? tsTog.el : null,
+      gEl('div', { class: 'gtabs' },
+        gameBtn(id === 'css-minifier' ? '⚡ Minify CSS' : '✨ Format Code', 'primary', runTo(out, async () => {
+          const res = await workerJob(scope, { 'css-minifier': 'css-minify', 'js-formatter': 'js-format', 'sql-formatter': 'sql-format' }[id], ensure(src.value), { dialect: dialect?.value, typescript: tsTog?.checked });
+          return id === 'css-minifier' ? `${res}\n\n/* ${new TextEncoder().encode(src.value).length} → ${new TextEncoder().encode(res).length} bytes */` : res;
+        })),
+        copyBtn(out)
+      ),
+      out
+    );
+
+  } else if (id === 'hash-playground') {
+    const src = codeArea('Hello, kitchen!', 4);
+    const algo = gameTabs([['SHA-256', 'SHA-256'], ['SHA-384', 'SHA-384'], ['SHA-512', 'SHA-512'], ['SHA-1', 'SHA-1']], 'SHA-256', null, 'Hash Algorithm');
+    const enc = gameTabs([['hex', 'Hex'], ['base64', 'Base64']], 'hex', null, 'Encoding');
+    const out = outConsole();
+    panel.append(
+      gameField('UTF-8 Text', src), algo.el, enc.el,
+      gEl('div', { class: 'gtabs' },
+        gameBtn('🔐 Compute Hash', 'primary', runTo(out, async () => {
+          const bytes = new Uint8Array(await crypto.subtle.digest(algo.value, new TextEncoder().encode(ensure(src.value))));
+          return enc.value === 'hex' ? Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('') : btoa(String.fromCharCode(...bytes));
+        })),
+        copyBtn(out)
+      ),
+      out
+    );
+
+  } else if (id === 'color-tokens') {
+    const picker = gameColorPicker('Seed Brand Color', '#e78167', () => gen());
+    const nameIn = textIn('waffle');
+    const swatches = gEl('div', { class: 'token-swatch-shelf' });
+    const stWcag = statBox('Text Contrast', '—', 'peach');
+    const out = outConsole();
+    function gen() {
+      const hex = picker.value.slice(1);
+      const rgb = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16));
+      const [r, g, b] = rgb.map(n => n / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, l = (mx + mn) / 2;
+      let hue = 0; if (d) { hue = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; hue = (hue * 60 + 360) % 360; }
+      const sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+      const lum = rgb.map(v => { const x = v / 255; return x <= .04045 ? x / 12.92 : ((x + .055) / 1.055) ** 2.4; }).reduce((a, v, i) => a + v * [.2126, .7152, .0722][i], 0);
+      const black = (lum + .05) / .05, white = 1.05 / (lum + .05);
+      stWcag.set(black >= white ? `Dark ink (${black.toFixed(1)}:1)` : `Light ink (${white.toFixed(1)}:1)`);
+      const prefix = /^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(nameIn.value.trim()) ? nameIn.value.trim() : 'brand';
+      const tokens = {};
+      swatches.replaceChildren(...[['50', 96], ['100', 91], ['200', 83], ['300', 73], ['400', 63], ['500', 53], ['600', 43], ['700', 33], ['800', 24], ['900', 15]].map(([k, light]) => {
+        const col = `hsl(${hue.toFixed(1)} ${(sat * 100).toFixed(1)}% ${light}%)`;
+        tokens[`--${prefix}-${k}`] = col;
+        return gEl('div', { class: 'token-chip', style: { background: col, color: light >= 55 ? '#222' : '#fff' } }, k);
+      }));
+      out.textContent = `:root {\n${Object.entries(tokens).map(([k, v]) => `  ${k}: ${v};`).join('\n')}\n}`;
+    }
+    nameIn.addEventListener('input', gen);
+    panel.append(picker.el, gameField('CSS Variable Prefix', nameIn), stWcag.el, swatches, out, copyBtn(out));
+    gen();
+
+  } else if (id === 'git-cheatsheet') {
+    const entries = [
+      ['Setup', 'git init', 'Initialize repository'], ['Inspect', 'git status --short', 'Working tree status'],
+      ['Inspect', 'git diff', 'Unstaged changes'], ['Inspect', 'git log --oneline --graph --all', 'Commit graph'],
+      ['Stage', 'git add <file>', 'Stage one file'], ['Stage', 'git restore --staged <file>', 'Unstage safely'],
+      ['Commit', 'git commit -m "message"', 'Create commit'], ['Branch', 'git switch -c <branch>', 'Create & switch branch'],
+      ['Sync', 'git fetch --prune', 'Fetch & prune stale branches'], ['Sync', 'git push -u origin HEAD', 'Push current branch'],
+      ['Undo', 'git revert <commit>', 'Safe inverse commit'], ['Undo', 'git reset --hard <commit>', 'DESTRUCTIVE: discard changes'],
+      ['Stash', 'git stash push -u', 'Stash tracked + untracked'], ['Stash', 'git stash pop', 'Restore latest stash']
+    ];
+    const qIn = textIn('', 'Search git commands…');
+    const catTabs = gameTabs([['', 'All'], ['Inspect', 'Inspect'], ['Stage', 'Stage'], ['Branch', 'Branch'], ['Sync', 'Sync'], ['Undo', 'Undo'], ['Stash', 'Stash']], '', () => render(), 'Category');
+    const deck = gEl('div', { class: 'two-col' });
+    const render = () => {
+      const q = qIn.value.toLowerCase(), cat = catTabs.value;
+      const items = entries.filter(([c, cmd, d]) => (!cat || c === cat) && [c, cmd, d].join(' ').toLowerCase().includes(q));
+      deck.replaceChildren(...items.map(([c, cmd, d]) => gEl('div', { class: 'pastel-card cream' },
+        gEl('div', { class: 'gslider-head' }, gEl('span', { class: 'gbadge' }, c), gameBtn('📋 Copy', 'chip', () => copy(cmd))),
+        gEl('pre', { class: 'output' }, cmd),
+        gEl('small', {}, d)
+      )));
+    };
+    qIn.addEventListener('input', render);
+    panel.append(gameField('Search Git', qIn), catTabs.el, deck);
+    render();
+
+  } else if (id === 'http-status') {
+    const statuses = [
+      [100, 'Continue', 'Client may continue sending body.'], [101, 'Switching Protocols', 'Protocol upgrade accepted.'],
+      [200, 'OK', 'Request succeeded.'], [201, 'Created', 'New resource created.'], [204, 'No Content', 'Success, empty body.'],
+      [301, 'Moved Permanently', 'Permanent redirect.'], [302, 'Found', 'Temporary redirect.'], [304, 'Not Modified', 'Reuse cached version.'],
+      [400, 'Bad Request', 'Malformed syntax or routing.'], [401, 'Unauthorized', 'Authentication required.'], [403, 'Forbidden', 'Server refuses access.'],
+      [404, 'Not Found', 'Resource not found.'], [418, "I'm a Teapot", 'Classic April Fools RFC 2324 code!'], [429, 'Too Many Requests', 'Rate limited; check Retry-After.'],
+      [500, 'Internal Server Error', 'Unexpected server failure.'], [502, 'Bad Gateway', 'Invalid upstream response.'], [503, 'Service Unavailable', 'Temporary overload/maintenance.'], [504, 'Gateway Timeout', 'Upstream timed out.']
+    ];
+    const qIn = textIn('', 'Search code or meaning… e.g. 404, redirect, teapot');
+    const grpTabs = gameTabs([['', 'All'], ['1', '1xx'], ['2', '2xx'], ['3', '3xx'], ['4', '4xx'], ['5', '5xx']], '', () => render(), 'Status Group');
+    const deck = gEl('div', { class: 'two-col' });
+    const render = () => {
+      const q = qIn.value.toLowerCase(), grp = grpTabs.value;
+      const items = statuses.filter(([code, name, desc]) => (!grp || String(code).startsWith(grp)) && `${code} ${name} ${desc}`.toLowerCase().includes(q));
+      deck.replaceChildren(...items.map(([code, name, desc]) => gEl('div', { class: `pastel-card ${code >= 500 ? 'peach' : 'cream'}` },
+        gEl('div', { class: 'gslider-head' }, gEl('strong', {}, `${code} ${name}`), gEl('span', { class: 'gbadge' }, `${String(code)[0]}xx`)),
+        gEl('small', {}, desc)
+      )));
+    };
+    qIn.addEventListener('input', render);
+    panel.append(gameField('Search HTTP Status', qIn), grpTabs.el, deck);
+    render();
+  }
+
+  return id === 'codehub' ? dispose : true;
 }

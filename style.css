@@ -1292,28 +1292,256 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 .seq-num-chip small { font-size: 10px; color: var(--ink-soft); }
 
 /* ==========================================================================
-   COMPATIBILITY GAME SKIN FOR OTHER CUPBOARD TOOLS
+   2.5D UI KIT & TOYS FOR SCIENCE, CODE, TEXT & ART CUPBOARDS
    ========================================================================== */
 
-.tool-workspace .panel { background: #fffbf2; border: var(--outline-thin); border-radius: 20px; padding: 16px; box-shadow: 0 6px 0 #d4b483; }
-.tool-workspace h2, .tool-workspace h3 { font-family: var(--display); margin-top: 0; }
-.tool-workspace .tool-form { display: flex; flex-direction: column; gap: 12px; }
-.tool-workspace label, .tool-workspace .field { display: flex; flex-direction: column; gap: 6px; font-family: var(--display); font-size: 14px; }
-.tool-workspace input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=range]):not(.calc-expr-input):not(.gfield-input):not(.frac-input):not(.face-edit-input),
-.tool-workspace textarea,
-.tool-workspace select {
-  width: 100%; border: var(--outline-thin); border-radius: 14px; background: #fffdf8; color: var(--ink); padding: 10px 12px; font-size: 15px; appearance: none;
+.toy-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
+  border: var(--outline-thin);
+  background: #fff9ec;
 }
-.tool-workspace .action,
-.tool-workspace button:not(.gbtn):not(.gtab):not(.gtoggle):not(.die-25d):not(.seq-tile):not(.shelf-object):not(.favorite-sticker):not(.window-close-x) {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  min-height: 42px; padding: 9px 15px; border-radius: 15px;
-  background: var(--sage); border: var(--outline-thin); box-shadow: 0 5px 0 #79a870;
-  font-family: var(--display); font-size: 14px;
+
+.split-meter {
+  display: flex;
+  height: 24px;
+  border-radius: 999px;
+  border: var(--outline-thin);
+  overflow: hidden;
+  background: var(--parchment);
 }
-.tool-workspace button.secondary, .tool-workspace .action.secondary { background: var(--parchment); box-shadow: 0 5px 0 #c9a775; }
-.tool-workspace .toolbar, .tool-workspace .tabs { display: flex; flex-wrap: wrap; gap: 8px; }
-.tool-workspace canvas { max-width: 100%; border-radius: 14px; border: var(--outline-thin); }
+.meter-fill { height: 100%; transition: width 0.2s ease; }
+.meter-fill.ke { background: #e78167; }
+.meter-fill.pe { background: #7ec3d4; }
+
+/* Periodic table 2.5D tiles */
+.periodic-scroll {
+  overflow-x: auto;
+  padding: 6px 2px;
+}
+.periodic-grid-25d {
+  display: grid;
+  grid-template-columns: repeat(18, minmax(46px, 1fr));
+  gap: 5px;
+  min-width: 900px;
+}
+.elem-tile-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 2px;
+  border-radius: 11px;
+  border: 2.5px solid var(--ink);
+  box-shadow: 0 4px 0 rgba(79, 47, 35, 0.25);
+  font-family: var(--display);
+  color: var(--ink);
+  transition: transform 0.14s;
+}
+.elem-tile-btn:active { transform: translateY(3px); }
+.elem-tile-btn.is-picked {
+  transform: translateY(-4px) scale(1.06);
+  box-shadow: 0 7px 0 var(--ink);
+}
+.elem-tile-btn small { font-size: 9px; font-weight: 800; line-height: 1; }
+.elem-tile-btn strong { font-size: 14px; line-height: 1.15; }
+
+.elem-spotlight-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 20px;
+  border: var(--outline);
+  box-shadow: 0 6px 0 rgba(79, 47, 35, 0.22);
+}
+.elem-big-tile {
+  width: 78px;
+  height: 78px;
+  border-radius: 18px;
+  background: var(--cream);
+  border: var(--outline);
+  box-shadow: 0 5px 0 rgba(79, 47, 35, 0.2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--display);
+}
+.elem-big-tile strong { font-size: 28px; line-height: 1; }
+.elem-info h3 { margin: 0 0 8px; font-family: var(--display); font-size: 22px; }
+
+/* Science visual toys */
+.force-crate-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: #e9f4d8;
+  border: var(--outline-thin);
+  border-radius: 18px;
+  padding: 18px;
+}
+.wooden-crate-box {
+  padding: 16px 24px;
+  border-radius: 14px;
+  background: var(--wood-top);
+  color: #fffdf8;
+  border: var(--outline);
+  box-shadow: 0 6px 0 var(--wood-mid);
+  font-family: var(--display);
+  font-size: 20px;
+}
+.circuit-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--parchment);
+  border: var(--outline-thin);
+  border-radius: 16px;
+  padding: 10px 14px;
+  font-family: var(--display);
+}
+.bulb-badge {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: var(--outline-thin);
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+}
+.float-tank {
+  position: relative;
+  height: 124px;
+  border-radius: 18px;
+  background: #cbe9f7;
+  border: var(--outline);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+}
+.float-cube {
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: var(--butter);
+  border: var(--outline-thin);
+  box-shadow: 0 5px 0 #c99d38;
+  font-family: var(--display);
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.thermo-bar {
+  height: 26px;
+  border-radius: 999px;
+  border: var(--outline-thin);
+  background: var(--parchment);
+  overflow: hidden;
+  padding: 3px;
+}
+.thermo-fill {
+  height: 100%;
+  border-radius: 999px;
+  border-right: 3px solid var(--ink);
+  transition: width 0.2s ease, background 0.2s ease;
+}
+.atom-decay-grid {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 8px;
+  background: var(--parchment);
+  border: var(--outline-thin);
+  border-radius: 18px;
+  padding: 14px;
+}
+.atom-dot {
+  width: 20px;
+  height: 20px;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 2.5px solid var(--ink);
+  transition: transform 0.2s, background 0.2s;
+}
+.atom-dot.is-live { background: #8fc487; box-shadow: 0 3px 0 #5f9458; }
+.atom-dot.is-decayed { background: #e8dac0; opacity: 0.45; transform: scale(0.8); }
+
+/* Code, Text & Art UI kit controls */
+.code-area {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.45;
+  resize: vertical;
+  min-height: 84px;
+}
+.code-console-tray {
+  background: #3d2419;
+  color: #fff3da;
+  border: var(--outline);
+  box-shadow: inset 0 4px 0 #26150e;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+}
+.code-console-tray.error { background: #7b2920; color: #ffebe8; }
+.code-lang-drawer {
+  background: var(--parchment);
+  border: var(--outline-thin);
+  border-radius: 16px;
+  padding: 10px;
+}
+.uuid-pill-list { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.color-picker-tray { display: flex; align-items: center; gap: 10px; }
+.color-chip-preview {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2.5px solid var(--ink);
+  flex-shrink: 0;
+}
+.color-swatch-row { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 4px; }
+.swatch-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2.5px solid var(--ink);
+  box-shadow: 0 3px 0 rgba(79, 47, 35, 0.25);
+  transition: transform 0.14s;
+}
+.swatch-btn.is-active { transform: scale(1.16); box-shadow: 0 4px 0 var(--ink); }
+
+.file-pill-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.file-drop-pill { cursor: pointer; }
+.file-pill-name {
+  background: var(--parchment);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.token-swatch-shelf {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
+  gap: 8px;
+}
+.token-chip {
+  min-height: 54px;
+  border-radius: 14px;
+  border: var(--outline-thin);
+  display: grid;
+  place-items: center;
+  font-family: var(--display);
+  font-size: 14px;
+  box-shadow: 0 4px 0 rgba(79, 47, 35, 0.2);
+}
+
+.diff-tray { background: #fffbf2; }
+.diff-add { display: block; background: #d6f5cf; color: #204e18; border-radius: 6px; padding: 1px 6px; }
+.diff-del { display: block; background: #ffd8d2; color: #7a1e16; border-radius: 6px; padding: 1px 6px; }
 
 #toast {
   position: fixed; bottom: 20px; left: 50%; transform: translate(-50%, 20px);

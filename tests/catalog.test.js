@@ -168,10 +168,17 @@ test('Waffle AI chatbot, streaming code boxes, DOCX creation/parsing, single Waf
   assert.ok(TEXT_MODELS.some(m => m.id === 'qwen3.5-0.8b'), 'Qwen 3.5 0.8B available');
   assert.ok(TEXT_MODELS.some(m => m.id === 'qwen2.5-coder-1.5b'), 'Qwen 2.5 Coder 1.5B available');
 
-  const { APP_LANGUAGES } = await import('../i18n.js');
+  const { APP_LANGUAGES, tUI } = await import('../i18n.js');
+  const { EN_KEYS, NATIVE_DICTS } = await import('../i18n-dicts.js');
   assert.ok(APP_LANGUAGES.length >= 12, 'Settings supports many languages');
   const i18nSrc = fs.readFileSync('i18n.js', 'utf8');
   assert.ok(i18nSrc.includes('#waffle-ai-overlay'), 'i18n skips Waffle AI modal');
+  assert.ok(!i18nSrc.includes('translate.googleapis.com'), 'i18n uses native translations instead of Google Translate API');
+  for (const lang of APP_LANGUAGES.filter(l => l.code !== 'en')) {
+    assert.equal(NATIVE_DICTS[lang.code]?.length, EN_KEYS.length, `Native dictionary complete for ${lang.code}`);
+  }
+  assert.equal(tUI('Settings', 'es'), 'Ajustes');
+  assert.equal(tUI('10 UTILITIES', 'fr'), '10 OUTILS');
 
   const { IMAGE_MODELS } = await import('../waffle-image-gen.js');
   assert.ok(IMAGE_MODELS.some(m => m.id === 'sdxs-512') && IMAGE_MODELS.some(m => m.id === 'sd-turbo'), 'Waffle AI exposes SDXS-512 and SD-Turbo image generation');

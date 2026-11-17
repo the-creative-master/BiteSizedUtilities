@@ -1,3 +1,5 @@
+import { EN_KEYS, NATIVE_DICTS } from './i18n-dicts.js';
+
 export const APP_LANGUAGES = [
   { name: 'English', native: 'English', code: 'en' },
   { name: 'Spanish', native: 'Español', code: 'es' },
@@ -17,9 +19,24 @@ export const APP_LANGUAGES = [
 ];
 
 const LANG_KEY = 'bite-app-language';
-const CACHE_PREFIX = 'bite-i18n-v1:';
-const SEP = '\n[[[BITE_SEP]]]\n';
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'SVG', 'PATH', 'PRE', 'CODE', 'NOSCRIPT', 'CANVAS', 'IFRAME']);
+
+const COUNT_WORDS = {
+  es: { utilities: 'HERRAMIENTAS', games: 'JUEGOS', schoolgames: 'juegos de SchoolGames', controls: 'Controles' },
+  fr: { utilities: 'OUTILS', games: 'JEUX', schoolgames: 'jeux de SchoolGames', controls: 'Contrôles' },
+  de: { utilities: 'WERKZEUGE', games: 'SPIELE', schoolgames: 'Spiele von SchoolGames', controls: 'Steuerung' },
+  ar: { utilities: 'أداة', games: 'ألعاب', schoolgames: 'لعبة من SchoolGames', controls: 'التحكم' },
+  ja: { utilities: '個のツール', games: '本のゲーム', schoolgames: '本のSchoolGamesゲーム', controls: '操作' },
+  ko: { utilities: '개 도구', games: '개 게임', schoolgames: '개 SchoolGames 게임', controls: '조작법' },
+  'zh-CN': { utilities: '个工具', games: '款游戏', schoolgames: '款 SchoolGames 游戏', controls: '操作方式' },
+  pt: { utilities: 'FERRAMENTAS', games: 'JOGOS', schoolgames: 'jogos do SchoolGames', controls: 'Controles' },
+  it: { utilities: 'STRUMENTI', games: 'GIOCHI', schoolgames: 'giochi da SchoolGames', controls: 'Comandi' },
+  ru: { utilities: 'ИНСТРУМЕНТОВ', games: 'ИГР', schoolgames: 'игр из SchoolGames', controls: 'Управление' },
+  hi: { utilities: 'टूल्स', games: 'गेम्स', schoolgames: 'SchoolGames गेम्स', controls: 'नियंत्रण' },
+  tr: { utilities: 'ARAÇ', games: 'OYUN', schoolgames: 'SchoolGames oyunu', controls: 'Kontroller' },
+  nl: { utilities: 'TOOLS', games: 'SPELLEN', schoolgames: 'spellen van SchoolGames', controls: 'Besturing' },
+  vi: { utilities: 'CÔNG CỤ', games: 'TRÒ CHƠI', schoolgames: 'trò chơi từ SchoolGames', controls: 'Điều khiển' }
+};
 
 let currentLang = 'English';
 try {
@@ -29,10 +46,28 @@ try {
 
 const origTextMap = new WeakMap();
 const origAttrMap = new WeakMap();
-const memCache = new Map();
+const dictCache = new Map();
 let observer = null;
 let translateTimer = null;
-let translating = false;
+
+function getDict(code) {
+  if (dictCache.has(code)) return dictCache.get(code);
+  const exact = new Map();
+  const lower = new Map();
+  const list = NATIVE_DICTS[code];
+  if (list) {
+    EN_KEYS.forEach((src, i) => {
+      const dst = list[i];
+      if (dst) {
+        exact.set(src, dst);
+        if (!lower.has(src.toLowerCase())) lower.set(src.toLowerCase(), dst);
+      }
+    });
+  }
+  const bundle = { exact, lower, words: COUNT_WORDS[code] || {} };
+  dictCache.set(code, bundle);
+  return bundle;
+}
 
 export function getAppLanguage() {
   return currentLang;
@@ -42,21 +77,52 @@ export function getAppLanguageMeta() {
   return APP_LANGUAGES.find(l => l.name === currentLang) || APP_LANGUAGES[0];
 }
 
-function loadLangCache(code) {
-  if (memCache.has(code)) return memCache.get(code);
-  let obj = {};
-  try {
-    obj = JSON.parse(localStorage.getItem(CACHE_PREFIX + code) || '{}') || {};
-  } catch {}
-  memCache.set(code, obj);
-  return obj;
-}
+export function tUI(text, code = getAppLanguageMeta().code) {
+  if (!text || code === 'en') return text;
+  const trimmed = String(text).trim();
+  if (!trimmed) return text;
 
-function saveLangCache(code, obj) {
-  try {
-    const entries = Object.entries(obj).slice(-800);
-    localStorage.setItem(CACHE_PREFIX + code, JSON.stringify(Object.fromEntries(entries)));
-  } catch {}
+  const { exact, lower, words } = getDict(code);
+  if (exact.has(trimmed)) return exact.get(trimmed);
+  if (lower.has(trimmed.toLowerCase())) return lower.get(trimmed.toLowerCase());
+
+  // Dynamic patterns: counts & labels
+  let m = trimmed.match(/^(\d+)\s+UTILITIES$/i);
+  if (m && words.utilities) return `${m[1]} ${words.utilities}`;
+
+  m = trimmed.match(/^(\d+)\s+GAMES$/i);
+  if (m && words.games) return `${m[1]} ${words.games}`;
+
+  m = trimmed.match(/^(All|Action|Puzzle|Casual|Fancade)\s*·\s*(\d+)$/);
+  if (m) return `${exact.get(m[1]) || m[1]} · ${m[2]}`;
+
+  m = trimmed.match(/^(ACTION|PUZZLE|CASUAL|FANCADE)\s*·\s*SCHOOLGAMES$/i);
+  if (m) {
+    const cap = m[1][0].toUpperCase() + m[1].slice(1).toLowerCase();
+    return `${(exact.get(cap) || cap).toUpperCase()} · SCHOOLGAMES`;
+  }
+
+  m = trimmed.match(/^(\d+)\s+games\s+from\s+the-creative-master\/SchoolGames$/i);
+  if (m && words.schoolgames) return `${m[1]} ${words.schoolgames}`;
+
+  m = trimmed.match(/^Controls:\s*(.+)$/i);
+  if (m && words.controls) return `${words.controls}: ${m[1]}`;
+
+  m = trimmed.match(/^([A-Za-z &/+.-]+):\s*(.+)$/);
+  if (m) {
+    const head = exact.get(m[1].trim()) || lower.get(m[1].trim().toLowerCase());
+    const tail = exact.get(m[2].trim()) || lower.get(m[2].trim().toLowerCase()) || m[2].trim();
+    if (head) return `${head}: ${tail}`;
+  }
+
+  // Strip trailing colon for label lookup
+  if (trimmed.endsWith(':')) {
+    const base = trimmed.slice(0, -1).trim();
+    const hit = exact.get(base) || lower.get(base.toLowerCase());
+    if (hit) return `${hit}:`;
+  }
+
+  return text;
 }
 
 function shouldSkipElement(el) {
@@ -115,62 +181,7 @@ function restoreEnglish(root) {
   walk(root);
 }
 
-async function fetchTranslationsBatch(strings, targetCode) {
-  const cache = loadLangCache(targetCode);
-  const missing = strings.filter(s => !(s in cache));
-  if (!missing.length) return cache;
-
-  // Group into safe URL-length chunks
-  let chunk = [];
-  let charSum = 0;
-  const batches = [];
-  for (const s of missing) {
-    if (chunk.length && (charSum + s.length > 900 || chunk.length >= 18)) {
-      batches.push(chunk);
-      chunk = [];
-      charSum = 0;
-    }
-    chunk.push(s);
-    charSum += s.length + SEP.length;
-  }
-  if (chunk.length) batches.push(chunk);
-
-  for (const b of batches) {
-    try {
-      const joined = b.join(SEP);
-      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${encodeURIComponent(targetCode)}&dt=t&q=${encodeURIComponent(joined)}`;
-      const res = await fetch(url);
-      if (!res.ok) continue;
-      const data = await res.json();
-      const fullOut = (Array.isArray(data?.[0]) ? data[0] : [])
-        .map(part => (Array.isArray(part) && typeof part[0] === 'string' ? part[0] : ''))
-        .join('');
-      const pieces = fullOut.split(/\[\[\[?\s*BITE_SEP\s*\]?\]\]/i);
-      if (pieces.length === b.length) {
-        b.forEach((src, i) => {
-          cache[src] = (pieces[i] || src).trim();
-        });
-      } else {
-        // Fallback single-item translation if delimiter shifted
-        await Promise.all(b.map(async src => {
-          try {
-            const u = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${encodeURIComponent(targetCode)}&dt=t&q=${encodeURIComponent(src)}`;
-            const r = await fetch(u);
-            if (!r.ok) return;
-            const d = await r.json();
-            const out = (Array.isArray(d?.[0]) ? d[0] : []).map(p => p?.[0] || '').join('').trim();
-            if (out) cache[src] = out;
-          } catch {}
-        }));
-      }
-    } catch {}
-  }
-
-  saveLangCache(targetCode, cache);
-  return cache;
-}
-
-export async function applyAppLanguage(root = document.querySelector('#app')) {
+export function applyAppLanguage(root = document.querySelector('#app')) {
   if (typeof document === 'undefined' || !root) return;
   const meta = getAppLanguageMeta();
   document.documentElement.lang = meta.code;
@@ -181,41 +192,20 @@ export async function applyAppLanguage(root = document.querySelector('#app')) {
     return;
   }
 
-  if (translating) return;
-  translating = true;
-  try {
-    const { textNodes, attrs } = collectTargets(root);
-    const uniqueStrings = new Set();
-    for (const n of textNodes) {
-      const t = (origTextMap.get(n) || '').trim();
-      if (t) uniqueStrings.add(t);
+  const { textNodes, attrs } = collectTargets(root);
+  for (const n of textNodes) {
+    const orig = origTextMap.get(n) || '';
+    const trimmed = orig.trim();
+    const tr = tUI(trimmed, meta.code);
+    if (tr && tr !== trimmed) {
+      const lead = orig.match(/^\s*/)?.[0] || '';
+      const trail = orig.match(/\s*$/)?.[0] || '';
+      n.nodeValue = lead + tr + trail;
     }
-    for (const a of attrs) {
-      const t = a.orig.trim();
-      if (t) uniqueStrings.add(t);
-    }
-    if (!uniqueStrings.size) return;
-
-    const cache = await fetchTranslationsBatch([...uniqueStrings], meta.code);
-    if (currentLang !== meta.name) return;
-
-    for (const n of textNodes) {
-      const orig = origTextMap.get(n);
-      if (!orig) continue;
-      const key = orig.trim();
-      const tr = cache[key];
-      if (tr && tr !== n.nodeValue?.trim()) {
-        const lead = orig.match(/^\s*/)?.[0] || '';
-        const trail = orig.match(/\s*$/)?.[0] || '';
-        n.nodeValue = `${lead}${tr}${trail}`;
-      }
-    }
-    for (const a of attrs) {
-      const tr = cache[a.orig.trim()];
-      if (tr) a.node.setAttribute(a.attr, tr);
-    }
-  } finally {
-    translating = false;
+  }
+  for (const a of attrs) {
+    const tr = tUI(a.orig.trim(), meta.code);
+    if (tr) a.node.setAttribute(a.attr, tr);
   }
 }
 
@@ -226,17 +216,16 @@ export function setAppLanguage(langName) {
   applyAppLanguage();
 }
 
-export function initAppI18n() {
-  if (typeof MutationObserver === 'undefined' || observer) return;
-  const appRoot = document.querySelector('#app');
-  if (!appRoot) return;
+export function initAppI18n(root = document.querySelector('#app')) {
+  if (typeof document === 'undefined' || !root) return;
+  applyAppLanguage(root);
+  if (observer) observer.disconnect();
   observer = new MutationObserver(muts => {
     if (currentLang === 'English') return;
-    const relevant = muts.some(m => !m.target?.closest?.('#waffle-ai-overlay'));
+    const relevant = muts.some(m => !shouldSkipElement(m.target));
     if (!relevant) return;
     clearTimeout(translateTimer);
-    translateTimer = setTimeout(() => applyAppLanguage(appRoot), 60);
+    translateTimer = setTimeout(() => applyAppLanguage(root), 30);
   });
-  observer.observe(appRoot, { childList: true, subtree: true });
-  if (currentLang !== 'English') applyAppLanguage(appRoot);
+  observer.observe(root, { childList: true, subtree: true });
 }

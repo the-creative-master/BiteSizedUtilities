@@ -31,6 +31,40 @@ export const cupboards = [
   ['flashcard-maker','Language Flashcards','Interactive flip-card study decks'],
   ['pronunciation-coach','Pronunciation & IPA','Syllables, stress & phonetic tips'],
   ['dialogue-practice','Conversation Practice','Live AI roleplay in any language']
+]},
+{id:'music',name:'Music & Composing',short:'Synths, rhythms & Waffle Music Lab',icon:'♪',color:'#f9cfa6',trim:'#c97b49',star:'waffle-music-lab',tools:[
+  ['waffle-music-lab','Waffle Music Lab','Song Maker, Kandinsky, Rhythm & Chords'],
+  ['beat-sequencer','808 Beat Maker','16-step multi-track drum machine'],
+  ['chord-progression','Chord Progression Builder','Generate & audition musical progressions'],
+  ['piano-synth','2-Octave Poly Synth','Playable QWERTY & ADSR synthesizer'],
+  ['metronome-pro','Tap Tempo & Metronome','Pendulum click, time signatures & tap BPM'],
+  ['guitar-tuner','Chromatic Tuner','Mic pitch detector & tuning reference'],
+  ['circle-of-fifths','Circle of Fifths','Interactive key signature & chord wheel'],
+  ['scale-finder','Scale & Mode Finder','Explore modes on piano & guitar neck'],
+  ['audio-visualizer','Waveform & Spectrum Lab','Real-time audio bars, mirror & radial FX'],
+  ['sfx-creator','8-Bit SFX Maker','Design retro game sounds & export WAV'],
+  ['bpm-delay-calc','BPM Delay & Reverb Calc','Exact ms & Hz for notes, dotted & triplets'],
+  ['poly-rhythm','Polyrhythm Wheel','Spinning geometric polyrhythm chimes'],
+  ['ear-trainer','Interval & Pitch Trainer','Quiz intervals, triads & ear accuracy'],
+  ['chord-chart','Guitar & Uke Chord Chart','Interactive SVG chord shapes with strum'],
+  ['lyrics-rhymepad','Songwriter Lyric Pad','Syllable counter, bar ruler & rhyme tags']
+]},
+{id:'video',name:'Videography & Editing',short:'Waffle Studio & 14 pro cinema tools',icon:'🎬',color:'#b8d8f8',trim:'#5589c4',star:'waffle-studio',tools:[
+  ['waffle-studio','Waffle Studio','Multi-layer Photo & Video NLE + WebM export'],
+  ['storyboard-board','Storyboard & Shot List','Sketch panels, camera moves & shoot sheet'],
+  ['teleprompter','Studio Teleprompter','Smooth scroll, WPM speed & mirror mode'],
+  ['subtitle-studio','SRT & VTT Subtitle Editor','Live video captions, shift timing & export'],
+  ['kinetic-titles','Kinetic Title & Lower-Thirds','Animated broadcast titles & PNG/WebM export'],
+  ['green-screen-key','Chroma Key Studio','Real-time green/blue screen key & spill control'],
+  ['timelapse-builder','Timelapse & Stop-Motion','Turn photo sequences into WebM video'],
+  ['gif-video-loop','Boomerang Loop Maker','Reverse-loop clips & export smooth WebM'],
+  ['aspect-safe-guide','Social Safe-Zone Guide','TikTok, Reels, YouTube & 2.39:1 frame overlays'],
+  ['lut-cube-lab','3D LUT & Film Emulation','Film stocks, split wipe & real .cube export'],
+  ['frame-extractor','Frame Grabber & Contact Sheet','Step -1/+1 frame, save PNG & 3x3 grids'],
+  ['bitrate-calc','Bitrate & Storage Calc','Codec sizes for H.264, ProRes, AV1 & RAW'],
+  ['dof-focal-calc','DoF & Focal Length Lab','Sensor bokeh visualizer & hyperfocal math'],
+  ['exposure-triangle','Exposure & Shutter Lab','ISO, aperture, 180° shutter & ND stop calc'],
+  ['audio-loudness-sync','Audio Slate & Sync Tool','SMPTE beep leader, LUFS meter & WAV sync']
 ]}
 ];
 export const allTools=cupboards.flatMap(c=>c.tools.map(([id,name,description])=>({id,name,description,cupboard:c.id,star:id===c.star,icon:c.icon,color:c.color})));

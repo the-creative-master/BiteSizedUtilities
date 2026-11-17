@@ -5,6 +5,8 @@ import { mountMathScience } from '../tools-math-science.js';
 import { mountCode } from '../tools-code.js';
 import { mountTextArt } from '../tools-text-art.js';
 import { mountEnglish } from '../tools-english.js';
+import { mountMusic } from '../tools-music.js';
+import { mountVideo } from '../tools-video.js';
 
 function makeDOMShim() {
   class FakeEvent {
@@ -141,9 +143,9 @@ function makeDOMShim() {
   return { FakeElement };
 }
 
-test('all 85 utilities across all 6 cupboards render with cozy 2.5D game UI and zero default HTML select/range/checkbox/color controls', () => {
+test('all 115 utilities across all 8 cupboards render with cozy 2.5D game UI and zero default HTML select/range/checkbox/color controls', () => {
   const { FakeElement } = makeDOMShim();
-  assert.equal(allTools.length, 85);
+  assert.equal(allTools.length, 115);
 
   for (const t of allTools) {
     const root = new FakeElement('div');
@@ -151,6 +153,8 @@ test('all 85 utilities across all 6 cupboards render with cozy 2.5D game UI and 
     if (t.cupboard === 'math' || t.cupboard === 'science') ok = mountMathScience(t.id, root);
     else if (t.cupboard === 'code') ok = mountCode(t.id, root);
     else if (t.cupboard === 'english') ok = mountEnglish(t.id, root);
+    else if (t.cupboard === 'music') ok = mountMusic(t.id, root);
+    else if (t.cupboard === 'video') ok = mountVideo(t.id, root);
     else ok = mountTextArt(t.id, root);
 
     assert.ok(ok, `${t.cupboard}/${t.id} should mount cleanly`);

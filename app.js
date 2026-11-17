@@ -6,6 +6,8 @@ import { mountMathScience } from './tools-math-science.js';
 import { mountCode } from './tools-code.js';
 import { mountTextArt } from './tools-text-art.js';
 import { mountEnglish } from './tools-english.js';
+import { mountMusic } from './tools-music.js';
+import { mountVideo } from './tools-video.js';
 import { mountGames } from './games.js';
 import { openWaffleAI, warmupWaffleAI } from './waffle-ai.js';
 import { APP_LANGUAGES, getAppLanguage, setAppLanguage, initAppI18n } from './i18n.js';
@@ -71,6 +73,8 @@ const CUPBOARD_THEME = {
   art:     { color: '#e895bf', trim: '#b8638e', doodles: ['✿', '◈'], tagline: 'MAKE A COLORFUL MESS.' },
   science: { color: '#94c496', trim: '#609362', doodles: ['⚛', '⚖'], tagline: 'FEED YOUR CURIOSITY.' },
   english: { color: '#f3be72', trim: '#b87d32', doodles: ['Aa', '文'], tagline: 'ENGLISH & LANGUAGES.' },
+  music:   { color: '#f3b07c', trim: '#ba6e3a', doodles: ['♪', '♫'], tagline: 'COMPOSE. PLAY. GROOVE.' },
+  video:   { color: '#84b4eb', trim: '#4b78b3', doodles: ['🎬', '✦'], tagline: 'EDIT. GRADE. RENDER.' },
   games:   { color: '#d7b5eb', trim: '#9875b4', doodles: ['★', '♧'], tagline: '45 GAMES + ROPER FANCADE' }
 };
 
@@ -596,7 +600,11 @@ function openTool(id) {
         ? mountCode(id, rootEl)
         : t.cupboard === 'english'
           ? mountEnglish(id, rootEl)
-          : mountTextArt(id, rootEl);
+          : t.cupboard === 'music'
+            ? mountMusic(id, rootEl)
+            : t.cupboard === 'video'
+              ? mountVideo(id, rootEl)
+              : mountTextArt(id, rootEl);
     if (typeof result === 'function') toolCleanup = result;
     if (!result) rootEl.textContent = 'This toy could not be opened.';
   } catch (e) {

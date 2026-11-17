@@ -548,6 +548,25 @@
     "controls": "Keyboard / Mouse / Touch"
   },
   {
+    "id": "roper",
+    "title": "Roper",
+    "category": "Fancade",
+    "tags": [
+      "Fancade",
+      "Action",
+      "Platformer"
+    ],
+    "description": "Tap to hook, swing across gaps, and dash through Fancade obstacle courses.",
+    "emoji": "🪢",
+    "featured": true,
+    "origin": "github",
+    "repo": "https://github.com/louis141414/playyyy",
+    "website": "https://martinmagni.com/fancade",
+    "license": "Fancade (Martin Magni)",
+    "entrypoint": "games/schoolgames/roper/index.html",
+    "controls": "Space / Click / Tap to jump & grapple"
+  },
+  {
     "id": "sand-game",
     "title": "Sand Game",
     "category": "Casual",

@@ -1,4 +1,4 @@
-/** 2.5D Offline Arcade — All 44 Games from the-creative-master/SchoolGames */
+/** 2.5D Offline Arcade — 45 Games (SchoolGames + Roper Fancade) */
 import { gamePropSVG } from './icons-25d.js';
 import { playPop, playSquish, playSparkle } from './sfx.js';
 
@@ -28,7 +28,7 @@ export async function mountGames(root) {
   const searchWrap = make('div', '', 'gfield-tray arcade-search-tray');
   const search = make('input', '', 'gfield-input');
   search.type = 'text';
-  search.placeholder = 'Search Bloons TD, Drive Mad, Impossible Quiz, Retro Bowl, BitLife, 2048…';
+  search.placeholder = 'Search Roper, Bloons TD, Drive Mad, Impossible Quiz, Retro Bowl, BitLife…';
   search.setAttribute('aria-label', 'Search games');
   searchWrap.append(search);
 

@@ -24,7 +24,7 @@ const WAFFLE_QUIPS = [
   'Boing! Sweet math!',
   'Tap a cupboard door!',
   'Freshly baked utilities!',
-  '44 SchoolGames ready to play!',
+  '45 Arcade & Fancade hits ready to play!',
   'Waffle power!',
   'Pick a toy off the shelf!'
 ];
@@ -38,12 +38,12 @@ const CUPBOARD_THEME = {
   text:    { color: '#a595c4', trim: '#756495', doodles: ['Aa', '✎'], tagline: 'A PLACE FOR EVERY WORD.' },
   art:     { color: '#e895bf', trim: '#b8638e', doodles: ['✿', '◈'], tagline: 'MAKE A COLORFUL MESS.' },
   science: { color: '#94c496', trim: '#609362', doodles: ['⚛', '⚖'], tagline: 'FEED YOUR CURIOSITY.' },
-  games:   { color: '#d7b5eb', trim: '#9875b4', doodles: ['★', '♧'], tagline: 'ALL 44 GAMES FROM SCHOOLGAMES' }
+  games:   { color: '#d7b5eb', trim: '#9875b4', doodles: ['★', '♧'], tagline: '45 GAMES + ROPER FANCADE' }
 };
 
 const ALL_CUPBOARDS = [
   ...cupboards,
-  { id: 'games', name: 'Games & Fun', short: '44 SchoolGames arcade hits', icon: '♧', color: '#d7b5eb', trim: '#9875b4', star: 'games', tools: [] }
+  { id: 'games', name: 'Games & Fun', short: '45 SchoolGames & Fancade hits', icon: '♧', color: '#d7b5eb', trim: '#9875b4', star: 'games', tools: [] }
 ];
 
 const app = $('#app');
@@ -171,7 +171,7 @@ function woodenSignboardHTML({ kicker, title, leftDoodle = '', rightDoodle = '',
 
 function cupboardCard(c) {
   const theme = CUPBOARD_THEME[c.id] || { color: c.color, trim: c.trim };
-  const countText = c.id === 'games' ? '44 GAMES' : `${c.tools.length} UTILITIES`;
+  const countText = c.id === 'games' ? '45 GAMES' : `${c.tools.length} UTILITIES`;
   return `
     <article class="cupboard-card" style="--cup:${theme.color};--trim:${theme.trim}" data-cupboard="${c.id}">
       <div class="cupboard-crown" aria-hidden="true"></div>
@@ -301,7 +301,7 @@ async function collection(id) {
         <div class="cabinet-bookcase arcade-bookcase">
           <div class="cabinet-crown" aria-hidden="true"></div>
           <div class="cabinet-interior" id="game-root">
-            <p class="empty-msg">Loading 44 SchoolGames…</p>
+            <p class="empty-msg">Loading 45 Arcade & Fancade games…</p>
           </div>
         </div>
       </section>

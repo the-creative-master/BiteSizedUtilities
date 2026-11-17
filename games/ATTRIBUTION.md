@@ -1,6 +1,6 @@
 # Games & Fun — Attribution
 
-All 44 games in GameHub were imported directly from [the-creative-master/SchoolGames](https://github.com/the-creative-master/SchoolGames) ([the-creative-master.github.io/SchoolGames](https://the-creative-master.github.io/SchoolGames)) with permission from the repository owner.
+All 45 games in GameHub come from [the-creative-master/SchoolGames](https://github.com/the-creative-master/SchoolGames) ([the-creative-master.github.io/SchoolGames](https://the-creative-master.github.io/SchoolGames)) and Fancade mirror (`louis141414/playyyy` for Roper).
 
 | Title | Category | Entrypoint |
 | --- | --- | --- |
@@ -36,6 +36,7 @@ All 44 games in GameHub were imported directly from [the-creative-master/SchoolG
 | Recoil | Fancade | `games/schoolgames/recoil/index.html` |
 | Retro Bowl | Action | `games/schoolgames/retro-bowl.html` |
 | Rolling Forests | Casual | `games/schoolgames/rollingforests.html` |
+| Roper | Fancade | `games/schoolgames/roper/index.html` |
 | Sand Game | Casual | `games/schoolgames/sand-game.html` |
 | Soccer Random | Action | `games/schoolgames/soccer-random.htm` |
 | Speed King | Fancade | `games/schoolgames/speed-king/index.html` |

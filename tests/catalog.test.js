@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { cupboards, allTools } from '../catalog.js';
-import { toolPropSVG } from '../icons-25d.js';
+import { toolPropSVG, gamePropSVG } from '../icons-25d.js';
 
 test('Math & Numbers cupboard contains exact 10 utilities and other four cupboards contain 15 each', () => {
   assert.equal(cupboards.length, 5);
@@ -56,11 +56,12 @@ test('all utility identifiers have implementation dispatch cases', () => {
   }
 });
 
-test('all 44 games in catalog come from the-creative-master/SchoolGames with valid entrypoints and no iframe embedding', () => {
+test('all 45 games (including Roper) have valid entrypoints, unique logos, and no iframe embedding', () => {
   const gamesSrc = fs.readFileSync('games.js', 'utf8');
   assert.ok(!gamesSrc.includes('iframe'), 'games.js must not iframe the game sites');
   const games = JSON.parse(fs.readFileSync('games/catalog.json', 'utf8'));
-  assert.equal(games.length, 44);
+  assert.equal(games.length, 45);
+  assert.ok(games.some(g => g.id === 'roper' && g.category === 'Fancade'));
   assert.ok(!fs.existsSync('games/arcade'));
   assert.ok(!fs.existsSync('games/original'));
   assert.ok(!fs.existsSync('games/fetched'));
@@ -68,12 +69,14 @@ test('all 44 games in catalog come from the-creative-master/SchoolGames with val
   assert.ok(fs.existsSync('games/ATTRIBUTION.md'));
   for (const g of games) {
     assert.equal(g.origin, 'github', g.id + ' must come from GitHub');
-    assert.equal(g.repo, 'https://github.com/the-creative-master/SchoolGames');
+    assert.ok(g.repo.startsWith('https://github.com/'), g.id + ' must have GitHub repo');
     assert.ok(g.title);
     assert.ok(g.license);
     assert.ok(fs.existsSync(g.entrypoint), g.id + ' entrypoint exists');
     assert.ok(fs.statSync(g.entrypoint).size > 200, g.id + ' entrypoint nonempty');
   }
+  const gameLogos = games.map(g => gamePropSVG(g, g.category));
+  assert.equal(new Set(gameLogos).size, 45, 'Every game in the arcade must have a unique 2.5D logo');
 });
 
 test('CodeHub runtimes (Luau, Haskell, Ruby, PHP, SQL, C++, Clojure, Prolog, Wasm, etc.) and instant tool loading are wired', () => {

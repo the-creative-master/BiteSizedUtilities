@@ -1,6 +1,6 @@
 # Offline game sources, licenses and audit
 
-25 playable games from 13 GitHub repositories. LittleJS entries are distinct upstream games, not separate source repositories.
+68 real playable open-source HTML5 games fetched directly from GitHub repositories (zero custom or synthetic games).
 
 ## Redistribution scope
 
@@ -63,15 +63,50 @@ Game ZIPs are prebuilt and SHA-256 hashes are recorded in ZIP-MANIFEST.json. No 
 SMOKE-TEST.json records startup and basic interaction checks, not complete playthroughs or cross-browser certification.
 
 
-## First-party original games
+## Additional real games fetched from GitHub
 
-The catalog also includes 75 original, locally authored browser mini-games in `games/original/` (25 focused mechanics, each with distinct rules, level structure, and scenario). They are explicitly labeled `first-party`, licensed MIT, and use the reusable local `engine.js` plus a per-game launcher/configuration. Their titles, descriptions, puzzles, and art are original. This collection is not affiliated with commercial games such as Drive Mad or BitLife and contains no copied names, artwork, questions, wording, game code, or unofficial downloads. Broad genres (physics driving, life choices, original trivia, and tower defense) informed some themes only.
-
-Each original game has a standalone launcher, unique rules/scenario, keyboard and touch/mouse input where applicable, pause/restart, score/progress, deterministic seeded setup, and no external dependencies. Each per-game ZIP preserves `games/original/<slug>/index.html`, includes its shared-engine dependency at `games/original/engine.js`, a full MIT LICENSE, and README/attribution. `games/zips/original-games.zip` is a complete offline collection with a root `index.html` launcher and all relative paths preserved.
-
-Original game count: 75. Combined catalog: 100 games (25 GitHub-sourced games + 75 first-party originals).
-
-
-## First-party validation summary
-
-The expanded catalog and every ZIP were checked for readable manifests, preserved entrypoint paths, included MIT license, and ZIP integrity. All 75 first-party launchers were opened in headless Chromium from `file://`; each initialized its canvas, configuration, status, and reset control with zero page errors. The Vite app menu reported 100 games; search found a first-party title; its iframe used `sandbox="allow-scripts"`; a game launched; and no non-local network requests or host page errors were observed. This was a smoke test, not a full playthrough of all possible levels, accessibility certification, or cross-browser QA.
+| Game | Source | License | Notes |
+| --- | --- | --- | --- |
+| Chrome Dino Runner | [wayou/t-rex-runner](https://github.com/wayou/t-rex-runner) | BSD-3-Clause | Fetched directly from https://github.com/wayou/t-rex-runner (BSD-3-Clause). Runs offline in sandboxed iframe. |
+| Floppy Bird | [nebez/floppybird](https://github.com/nebez/floppybird) | Apache-2.0 | Fetched directly from https://github.com/nebez/floppybird (Apache-2.0). Runs offline in sandboxed iframe. |
+| Hextris | [Hextris/hextris](https://github.com/Hextris/hextris) | GPL-3.0 | Fetched directly from https://github.com/Hextris/hextris (GPL-3.0). Runs offline in sandboxed iframe. |
+| OutRun Racer | [jakesgordon/javascript-racer](https://github.com/jakesgordon/javascript-racer) | MIT | Fetched directly from https://github.com/jakesgordon/javascript-racer (MIT). Runs offline in sandboxed iframe. |
+| Gauntlet Dungeon | [jakesgordon/javascript-gauntlet](https://github.com/jakesgordon/javascript-gauntlet) | MIT | Fetched directly from https://github.com/jakesgordon/javascript-gauntlet (MIT). Runs offline in sandboxed iframe. |
+| Delta Space Shooter | [jakesgordon/javascript-delta](https://github.com/jakesgordon/javascript-delta) | MIT | Fetched directly from https://github.com/jakesgordon/javascript-delta (MIT). Runs offline in sandboxed iframe. |
+| Snakes & Ladders | [jakesgordon/javascript-snakes](https://github.com/jakesgordon/javascript-snakes) | MIT | Fetched directly from https://github.com/jakesgordon/javascript-snakes (MIT). Runs offline in sandboxed iframe. |
+| Astray 3D Maze | [wwwtyro/Astray](https://github.com/wwwtyro/Astray) | Unlicense | Fetched directly from https://github.com/wwwtyro/Astray (Unlicense). Runs offline in sandboxed iframe. |
+| A Dark Room | [doublespeakgames/adarkroom](https://github.com/doublespeakgames/adarkroom) | MPL-2.0 | Fetched directly from https://github.com/doublespeakgames/adarkroom (MPL-2.0). Runs offline in sandboxed iframe. |
+| Tower Bloxx | [iamkun/tower_game](https://github.com/iamkun/tower_game) | MIT | Fetched directly from https://github.com/iamkun/tower_game (MIT). Runs offline in sandboxed iframe. |
+| Pac-Man Classic | [mumuy/pacman](https://github.com/mumuy/pacman) | MIT | Fetched directly from https://github.com/mumuy/pacman (MIT). Runs offline in sandboxed iframe. |
+| Star Battle | [gd4Ark/star-battle](https://github.com/gd4Ark/star-battle) | MIT | Fetched directly from https://github.com/gd4Ark/star-battle (MIT). Runs offline in sandboxed iframe. |
+| HTML5 Asteroids | [dmcinnes/HTML5-Asteroids](https://github.com/dmcinnes/HTML5-Asteroids) | MIT | Fetched directly from https://github.com/dmcinnes/HTML5-Asteroids (MIT). Runs offline in sandboxed iframe. |
+| Bubble Shooter | [rembound/Bubble-Shooter-HTML5](https://github.com/rembound/Bubble-Shooter-HTML5) | MIT | Fetched directly from https://github.com/rembound/Bubble-Shooter-HTML5 (MIT). Runs offline in sandboxed iframe. |
+| 2048 Cupcakes | [0x0800/2048-CUPCAKES](https://github.com/0x0800/2048-CUPCAKES) | MIT | Fetched directly from https://github.com/0x0800/2048-CUPCAKES (MIT). Runs offline in sandboxed iframe. |
+| Block Blast | [dffge552/block-blast](https://github.com/dffge552/block-blast) | MIT | Fetched directly from https://github.com/dffge552/block-blast (MIT). Runs offline in sandboxed iframe. |
+| Pinball Arcade | [gamelabz/html5-game-pinball](https://github.com/gamelabz/html5-game-pinball) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-pinball (MIT). Runs offline in sandboxed iframe. |
+| Air Hockey | [gamelabz/html5-game-air-hockey](https://github.com/gamelabz/html5-game-air-hockey) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-air-hockey (MIT). Runs offline in sandboxed iframe. |
+| Mini Golf | [gamelabz/html5-game-mini-golf](https://github.com/gamelabz/html5-game-mini-golf) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-mini-golf (MIT). Runs offline in sandboxed iframe. |
+| Connect Four | [gamelabz/html5-game-connect-four](https://github.com/gamelabz/html5-game-connect-four) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-connect-four (MIT). Runs offline in sandboxed iframe. |
+| Checkers | [gamelabz/html5-game-checkers](https://github.com/gamelabz/html5-game-checkers) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-checkers (MIT). Runs offline in sandboxed iframe. |
+| Endless Runner | [gamelabz/html5-game-endless-runner](https://github.com/gamelabz/html5-game-endless-runner) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-endless-runner (MIT). Runs offline in sandboxed iframe. |
+| Balloon Pop | [gamelabz/html5-game-balloon-pop](https://github.com/gamelabz/html5-game-balloon-pop) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-balloon-pop (MIT). Runs offline in sandboxed iframe. |
+| Nonogram Picross | [gamelabz/html5-game-nonogram](https://github.com/gamelabz/html5-game-nonogram) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-nonogram (MIT). Runs offline in sandboxed iframe. |
+| Color Flood | [gamelabz/html5-game-color-flood](https://github.com/gamelabz/html5-game-color-flood) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-color-flood (MIT). Runs offline in sandboxed iframe. |
+| Dots & Boxes | [gamelabz/html5-game-dots-and-boxes](https://github.com/gamelabz/html5-game-dots-and-boxes) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-dots-and-boxes (MIT). Runs offline in sandboxed iframe. |
+| Platform Jump | [gamelabz/html5-game-platform-jump](https://github.com/gamelabz/html5-game-platform-jump) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-platform-jump (MIT). Runs offline in sandboxed iframe. |
+| Memory Cards | [gamelabz/html5-game-memory-cards](https://github.com/gamelabz/html5-game-memory-cards) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-memory-cards (MIT). Runs offline in sandboxed iframe. |
+| Hangman | [gamelabz/html5-game-hangman](https://github.com/gamelabz/html5-game-hangman) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-hangman (MIT). Runs offline in sandboxed iframe. |
+| Neon Pacman | [gamelabz/html5-game-pacman](https://github.com/gamelabz/html5-game-pacman) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-pacman (MIT). Runs offline in sandboxed iframe. |
+| Brick Breaker | [gamelabz/html5-game-brick-breaker](https://github.com/gamelabz/html5-game-brick-breaker) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-brick-breaker (MIT). Runs offline in sandboxed iframe. |
+| Space Asteroids | [gamelabz/html5-game-asteroids](https://github.com/gamelabz/html5-game-asteroids) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-asteroids (MIT). Runs offline in sandboxed iframe. |
+| Math Master Quiz | [gamelabz/html5-game-math-master](https://github.com/gamelabz/html5-game-math-master) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-math-master (MIT). Runs offline in sandboxed iframe. |
+| Gomoku | [gamelabz/html5-game-gomoku](https://github.com/gamelabz/html5-game-gomoku) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-gomoku (MIT). Runs offline in sandboxed iframe. |
+| Aim Trainer | [gamelabz/html5-game-aim-trainer](https://github.com/gamelabz/html5-game-aim-trainer) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-aim-trainer (MIT). Runs offline in sandboxed iframe. |
+| Fruit Catcher | [gamelabz/html5-game-fruit-catcher](https://github.com/gamelabz/html5-game-fruit-catcher) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-fruit-catcher (MIT). Runs offline in sandboxed iframe. |
+| Keepy Up | [gamelabz/html5-game-keepy-up](https://github.com/gamelabz/html5-game-keepy-up) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-keepy-up (MIT). Runs offline in sandboxed iframe. |
+| Cozy Bubble Pop | [gamelabz/html5-game-bubble-shooter](https://github.com/gamelabz/html5-game-bubble-shooter) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-bubble-shooter (MIT). Runs offline in sandboxed iframe. |
+| Color Match | [gamelabz/html5-game-color-match](https://github.com/gamelabz/html5-game-color-match) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-color-match (MIT). Runs offline in sandboxed iframe. |
+| Click The Target | [gamelabz/html5-game-click-the-target](https://github.com/gamelabz/html5-game-click-the-target) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-click-the-target (MIT). Runs offline in sandboxed iframe. |
+| Number Guess | [gamelabz/html5-game-number-guess](https://github.com/gamelabz/html5-game-number-guess) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-number-guess (MIT). Runs offline in sandboxed iframe. |
+| Flappy Canvas | [gamelabz/html5-game-flappy-bird](https://github.com/gamelabz/html5-game-flappy-bird) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-flappy-bird (MIT). Runs offline in sandboxed iframe. |
+| Match 3 Gems | [gamelabz/html5-game-match-3](https://github.com/gamelabz/html5-game-match-3) | MIT | Fetched directly from https://github.com/gamelabz/html5-game-match-3 (MIT). Runs offline in sandboxed iframe. |

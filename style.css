@@ -2222,6 +2222,13 @@ body.waffle-modal-open {
 
 /* English & Languages AI Tools */
 .eng-ai-banner { margin-bottom: 6px; }
+.eng-area {
+  font-family: var(--body), sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 88px;
+}
 .eng-output-card { padding: 14px; }
 .eng-output-body { font-size: 14.5px; line-height: 1.52; }
 .eng-out-actions { margin-top: 10px; }

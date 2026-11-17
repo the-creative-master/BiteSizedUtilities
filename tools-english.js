@@ -43,13 +43,13 @@ CODE_NAMES['zh-cn'] = 'Mandarin Chinese';
 CODE_NAMES['zh-tw'] = 'Traditional Chinese';
 
 function area(val = '', rows = 5, placeholder = '') {
-  const t = gEl('textarea', { class: 'ginput', rows: String(rows), placeholder });
+  const t = gEl('textarea', { class: 'gfield-input eng-area', rows: String(rows), placeholder });
   t.value = val;
   return t;
 }
 
 function lineInput(val = '', placeholder = '') {
-  const i = gEl('input', { type: 'text', class: 'ginput', placeholder });
+  const i = gEl('input', { type: 'text', class: 'gfield-input', placeholder });
   i.value = val;
   return i;
 }
@@ -414,8 +414,11 @@ export function mountEnglish(id, root) {
   root.replaceChildren();
 
   const form = gEl('section', { class: 'game-panel tool-form' });
+  const badgeText = id === 'waffle-translate'
+    ? '🌐 GOOGLE TRANSLATE + WAFFLE AI'
+    : '✨ POWERED BY WAFFLE AI · QWEN 2.5 1.5B (PRE-CACHED)';
   const badge = gEl('div', { class: 'eng-ai-banner' },
-    gEl('span', { class: 'gbadge' }, '✨ POWERED BY WAFFLE AI · QWEN 2.5 1.5B (PRE-CACHED)')
+    gEl('span', { class: 'gbadge' }, badgeText)
   );
   form.append(badge);
   root.append(form);

@@ -40,7 +40,9 @@
 
   if (window.__arcadeControlsInstalled) return;
   window.__arcadeControlsInstalled = true;
-  if (window.top !== window.self) return;
+
+  const scriptEl = document.currentScript;
+  const appRoot = scriptEl?.src ? new URL('../#games', scriptEl.src).href : '/#games';
 
   function mount() {
     if (!document.body || document.getElementById('offline-arcade-controls')) return;
@@ -50,9 +52,15 @@
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.style.cssText = 'background:#4f2f23;color:#fff8e8;border:2px solid #f7d996;border-radius:10px;padding:7px 11px;cursor:pointer;font:inherit';
-    btn.textContent = '✕ Close Tab';
-    btn.setAttribute('aria-label', 'Close game tab');
-    btn.addEventListener('click', () => { try { window.close(); } catch {} if (history.length > 1) history.back(); });
+    btn.textContent = window.opener ? '✕ Close Tab' : '← Back to Arcade';
+    btn.setAttribute('aria-label', window.opener ? 'Close game tab' : 'Back to Arcade');
+    btn.addEventListener('click', () => {
+      if (window.opener) {
+        try { window.close(); } catch {}
+      }
+      if (history.length > 1) history.back();
+      else location.assign(appRoot);
+    });
     box.appendChild(btn);
     document.body.appendChild(box);
   }

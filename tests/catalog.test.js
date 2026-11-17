@@ -56,7 +56,9 @@ test('all utility identifiers have implementation dispatch cases', () => {
   }
 });
 
-test('all 44 games in catalog come from the-creative-master/SchoolGames with valid entrypoints', () => {
+test('all 44 games in catalog come from the-creative-master/SchoolGames with valid entrypoints and no iframe embedding', () => {
+  const gamesSrc = fs.readFileSync('games.js', 'utf8');
+  assert.ok(!gamesSrc.includes('iframe'), 'games.js must not iframe the game sites');
   const games = JSON.parse(fs.readFileSync('games/catalog.json', 'utf8'));
   assert.equal(games.length, 44);
   assert.ok(!fs.existsSync('games/arcade'));

@@ -121,11 +121,9 @@ export async function mountGames(root) {
     titleGroup.append(iconBox, titleText);
 
     const actions = make('div', '', 'window-head-actions');
-    const restart = make('button', '↻ Restart', 'gbtn gbtn-chip');
-    restart.type = 'button';
-    const big = make('button', '⛶ Big', 'gbtn gbtn-chip');
-    big.type = 'button';
-    const fullTab = make('a', '↗ Full Tab', 'gbtn gbtn-chip');
+    const playHere = make('a', '▶ Play Game', 'gbtn gbtn-primary');
+    playHere.href = assetURL(game.entrypoint);
+    const fullTab = make('a', '↗ New Tab', 'gbtn gbtn-chip');
     fullTab.href = assetURL(game.entrypoint);
     fullTab.target = '_blank';
     fullTab.rel = 'noopener';
@@ -136,40 +134,40 @@ export async function mountGames(root) {
     close.type = 'button';
     close.setAttribute('aria-label', 'Close game');
     close.addEventListener('click', stop);
-    actions.append(restart, big, fullTab, dl, close);
+    actions.append(playHere, fullTab, dl, close);
     headRow.append(titleGroup, actions);
     header.append(grab, headRow);
 
     const body = make('div', '', 'tool-window-body');
-    const isMultiAsset = ['bitlife', 'recoil', 'monster-match', 'speed-king'].includes(game.id);
     const controlsNote = make(
       'p',
-      `${game.description || 'Ready to play!'} · ${game.controls || 'Keyboard / Mouse / Touch'}${isMultiAsset ? ' · Tip: Use ↗ Full Tab if Unity/WASM assets need full-origin loading.' : ''}`,
+      `${game.description || 'Ready to play!'} · ${game.controls || 'Keyboard / Mouse / Touch'} · Launches directly without iframing.`,
       'arcade-player-controls'
     );
-    const frame = document.createElement('iframe');
-    frame.className = 'arcade-iframe';
-    frame.title = `${game.title} — SchoolGames`;
-    frame.setAttribute('sandbox', 'allow-scripts allow-pointer-lock');
-    frame.setAttribute('referrerpolicy', 'no-referrer');
-    frame.src = assetURL(game.entrypoint);
+    const launcher = make('div', '', 'arcade-launcher-card');
+    const art = make('div', '', 'arcade-launcher-art');
+    art.innerHTML = gamePropSVG(game, genre(game));
+    const meta = make('div', '', 'arcade-launcher-meta');
+    meta.append(
+      make('h3', game.title, 'arcade-launcher-title'),
+      make('p', game.description || 'Ready to play offline directly from local assets.', 'arcade-launcher-desc'),
+      make('p', `Controls: ${game.controls || 'Keyboard / Mouse / Touch'}`, 'arcade-launcher-controls')
+    );
+    const launchBtns = make('div', '', 'arcade-launcher-actions');
+    const primaryPlay = make('a', '▶ Play Now (Direct)', 'gbtn gbtn-primary');
+    primaryPlay.href = assetURL(game.entrypoint);
+    const tabPlay = make('a', '↗ Open in New Tab', 'gbtn gbtn-chip');
+    tabPlay.href = assetURL(game.entrypoint);
+    tabPlay.target = '_blank';
+    tabPlay.rel = 'noopener';
+    launchBtns.append(primaryPlay, tabPlay);
+    meta.append(launchBtns);
+    launcher.append(art, meta);
 
-    let expanded = false;
-    big.addEventListener('click', () => {
-      playPop(580);
-      expanded = !expanded;
-      frame.classList.toggle('is-tall', expanded);
-      big.textContent = expanded ? '⊟ Normal' : '⛶ Big';
-    });
-    restart.addEventListener('click', () => {
-      playSquish();
-      frame.src = assetURL(game.entrypoint);
-    });
-
-    body.append(controlsNote, frame);
+    body.append(controlsNote, launcher);
     player.append(header, body);
     player.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-    close.focus();
+    primaryPlay.focus();
   }
 
   random.addEventListener('click', () => {

@@ -993,6 +993,61 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   font-size: 13px;
 }
 
+.arcade-launcher-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px;
+  padding: 20px;
+  border: var(--outline);
+  border-radius: 20px;
+  background: linear-gradient(180deg, #fffdf7 0%, #f9ebd0 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.9), 0 6px 0 #d5b482;
+}
+
+.arcade-launcher-art {
+  flex: 0 0 112px;
+  width: 112px;
+  height: 112px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: var(--cream);
+  border: var(--outline-thin);
+  box-shadow: 0 4px 0 #c9a775;
+}
+
+.arcade-launcher-art svg {
+  width: 84px;
+  height: 84px;
+}
+
+.arcade-launcher-meta {
+  flex: 1 1 260px;
+  display: grid;
+  gap: 8px;
+}
+
+.arcade-launcher-title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 22px;
+}
+
+.arcade-launcher-desc,
+.arcade-launcher-controls {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.arcade-launcher-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+
 .arcade-iframe {
   display: block;
   width: 100%;

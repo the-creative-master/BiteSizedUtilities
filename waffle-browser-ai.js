@@ -2,26 +2,38 @@ export const TEXT_MODELS = [
   {
     id: 'qwen2.5-1.5b',
     label: 'Qwen 2.5 1.5B',
-    badge: 'Server · Balanced',
+    badge: 'Balanced · Server / Browser',
     kind: 'server',
+    hfId: 'onnx-community/Qwen2.5-1.5B-Instruct',
+    dtype: 'q4f16',
+    hfGgufRepo: 'Qwen/Qwen2.5-1.5B-Instruct-GGUF',
+    hfGgufQuant: 'Q4_K_M',
     ggufFile: 'qwen2.5-1.5b.gguf',
-    desc: 'Pre-cached on server via llama.cpp (works on all devices, even without WebGPU)'
+    desc: 'Qwen 2.5 1.5B via local llama.cpp when cached, or ONNX/WLlama in browser'
   },
   {
     id: 'qwen2.5-coder-1.5b',
     label: 'Qwen 2.5 Coder 1.5B',
-    badge: 'Server · Coding',
+    badge: 'Coding · Server / Browser',
     kind: 'server',
+    hfId: 'onnx-community/Qwen2.5-Coder-1.5B-Instruct',
+    dtype: 'q4f16',
+    hfGgufRepo: 'Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF',
+    hfGgufQuant: 'Q4_K_M',
     ggufFile: 'qwen2.5-1.5b.gguf',
-    desc: 'Pre-cached Qwen 2.5 Coder 1.5B on server via llama.cpp'
+    desc: 'Qwen 2.5 Coder 1.5B for coding & debugging (local server or browser fallback)'
   },
   {
     id: 'qwen3-0.6b',
     label: 'Qwen 3 0.6B',
-    badge: 'Server · Light 462 MB',
+    badge: 'Light · Server / Browser',
     kind: 'server',
+    hfId: 'onnx-community/Qwen3-0.6B-ONNX',
+    dtype: 'q4f16',
+    hfGgufRepo: 'unsloth/Qwen3-0.6B-GGUF',
+    hfGgufQuant: 'Q4_K_M',
     ggufFile: 'qwen3-0.6b.gguf',
-    desc: 'Fast, lightweight 462 MB GGUF model via llama.cpp or WLlama'
+    desc: 'Fast, lightweight Qwen 3 0.6B via llama.cpp, ONNX, or WLlama'
   },
   {
     id: 'llama3.2-1b',
@@ -30,13 +42,15 @@ export const TEXT_MODELS = [
     kind: 'browser',
     hfId: 'onnx-community/Llama-3.2-1B-Instruct-ONNX',
     dtype: 'q4f16',
+    hfGgufRepo: 'bartowski/Llama-3.2-1B-Instruct-GGUF',
+    hfGgufQuant: 'Q4_K_M',
     ggufFile: 'qwen3-0.6b.gguf',
     desc: 'Meta Llama 3.2 1B in-browser (~750 MB, requires decent device / WebGPU)'
   },
   {
     id: 'qwen3.5-0.8b',
     label: 'Qwen 3.5 0.8B',
-    badge: 'Browser · Compact',
+    badge: 'Browser · Vision + Chat',
     kind: 'browser',
     loader: 'qwen3_5',
     hfId: 'onnx-community/Qwen3.5-0.8B-ONNX',
@@ -44,7 +58,7 @@ export const TEXT_MODELS = [
     hfGgufRepo: 'unsloth/Qwen3.5-0.8B-GGUF',
     hfGgufQuant: 'Q4_K_M',
     ggufFile: 'qwen3-0.6b.gguf',
-    desc: 'Qwen 3.5 0.8B in-browser (~550 MB, auto-falls back if WebGPU missing)'
+    desc: 'Qwen 3.5 0.8B multimodal & chat in-browser (~550 MB, auto-falls back if WebGPU missing)'
   },
   {
     id: 'smollm2-360m',
@@ -53,6 +67,8 @@ export const TEXT_MODELS = [
     kind: 'browser',
     hfId: 'HuggingFaceTB/SmolLM2-360M-Instruct',
     dtype: 'q4',
+    hfGgufRepo: 'bartowski/SmolLM2-360M-Instruct-GGUF',
+    hfGgufQuant: 'Q4_K_M',
     ggufFile: 'qwen3-0.6b.gguf',
     desc: 'Compact in-browser WebGPU/WASM model (~250 MB)'
   },
@@ -63,16 +79,20 @@ export const TEXT_MODELS = [
     kind: 'browser',
     hfId: 'onnx-community/Qwen2.5-0.5B-Instruct',
     dtype: 'q4',
+    hfGgufRepo: 'Qwen/Qwen2.5-0.5B-Instruct-GGUF',
+    hfGgufQuant: 'Q4_K_M',
     ggufFile: 'qwen3-0.6b.gguf',
     desc: 'Nimble multilingual model in-browser (~400 MB)'
   },
   {
     id: 'deepseek-r1-1.5b',
     label: 'DeepSeek R1 1.5B',
-    badge: 'Browser · Heavy',
+    badge: 'Browser · Reasoning',
     kind: 'browser',
     hfId: 'onnx-community/DeepSeek-R1-Distill-Qwen-1.5B-ONNX',
     dtype: 'q4f16',
+    hfGgufRepo: 'bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF',
+    hfGgufQuant: 'Q4_K_M',
     ggufFile: 'qwen2.5-1.5b.gguf',
     desc: 'DeepSeek R1 reasoning model (~1.1 GB — strong WebGPU device required)'
   }
@@ -199,12 +219,25 @@ const pipeCache = new Map();
 let wllamaInstance = null;
 let wllamaLoadedFile = null;
 
+function resolveAssetUrl(relPath) {
+  const base = typeof document !== 'undefined' && document.baseURI
+    ? document.baseURI
+    : (typeof window !== 'undefined' ? window.location.href : 'http://localhost/');
+  return new URL(relPath, base).href;
+}
+
 async function getTransformers() {
   const mod = await import('@huggingface/transformers');
   if (mod.env) {
     mod.env.allowLocalModels = false;
     if (mod.env.backends?.onnx?.wasm) {
-      mod.env.backends.onnx.wasm.wasmPaths = new URL('./ort/', window.location.href).href;
+      const ortBase = resolveAssetUrl('ort/');
+      const diag = await detectDeviceDiagnostics().catch(() => ({ hasWebGPU: false, isOldIOS: false }));
+      const suffix = diag.isOldIOS && !diag.hasWebGPU ? '' : '.asyncify';
+      mod.env.backends.onnx.wasm.wasmPaths = {
+        mjs: `${ortBase}ort-wasm-simd-threaded${suffix}.mjs`,
+        wasm: `${ortBase}ort-wasm-simd-threaded${suffix}.wasm`
+      };
     }
   }
   return mod;
@@ -296,7 +329,7 @@ export async function streamBrowserChat({
   onToken
 }) {
   const cfg = TEXT_MODELS.find(m => m.id === modelId);
-  if (!cfg || cfg.kind !== 'browser') throw new Error(`Unknown browser model: ${modelId}`);
+  if (!cfg || !cfg.hfId) throw new Error(`No browser ONNX model configured for: ${modelId}`);
 
   const diag = await detectDeviceDiagnostics();
   const device = preferredDevice || (diag.hasWebGPU ? 'webgpu' : 'wasm');
@@ -336,7 +369,8 @@ export async function streamBrowserChat({
     callback_function(text) {
       if (signal?.aborted) return;
       acc += text;
-      onToken?.(text, acc);
+      const cleaned = acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*$/, '');
+      onToken?.(text, cleaned);
     }
   });
 
@@ -401,9 +435,9 @@ export async function streamBrowserChat({
     const last = out[0].generated_text;
     const text = Array.isArray(last) ? (last[last.length - 1]?.content || '') : String(last);
     acc = text;
-    onToken?.(text, acc);
+    onToken?.(text, acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*$/, ''));
   }
-  return acc.trim();
+  return acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*$/, '').trim();
 }
 
 export async function streamWllamaChat({
@@ -420,10 +454,10 @@ export async function streamWllamaChat({
   onToken
 }) {
   const { Wllama } = await import('@wllama/wllama');
-  const wasmUrl = new URL('./wllama/wllama.wasm', window.location.href).href;
-  const compatJsUrl = new URL('./wllama-compat/wllama.js', window.location.href).href;
-  const compatWasmUrl = new URL('./wllama-compat/wllama.wasm', window.location.href).href;
-  const ggufUrl = new URL(`./api/waffle-ai/gguf/${ggufFile}`, window.location.href).href;
+  const wasmUrl = resolveAssetUrl('wllama/wllama.wasm');
+  const compatJsUrl = resolveAssetUrl('wllama-compat/wllama.js');
+  const compatWasmUrl = resolveAssetUrl('wllama-compat/wllama.wasm');
+  const ggufUrl = resolveAssetUrl(`api/waffle-ai/gguf/${ggufFile}`);
   const targetKey = `${hfRepo ? `${hfRepo}:${hfQuant}` : ggufFile}:${useWebGPU}`;
 
   const createFreshWllama = async () => {
@@ -453,6 +487,7 @@ export async function streamWllamaChat({
     };
 
     let loadedOk = false;
+    let hfErr = null;
     if (hfRepo) {
       const inst = await createFreshWllama();
       onStatus?.({
@@ -465,6 +500,7 @@ export async function streamWllamaChat({
         loadedOk = true;
       } catch (err) {
         if (err.name === 'AbortError' || signal?.aborted) throw err;
+        hfErr = err;
         try { await inst.exit?.(); } catch {}
         wllamaInstance = null;
         wllamaLoadedFile = null;
@@ -472,6 +508,16 @@ export async function streamWllamaChat({
     }
 
     if (!loadedOk) {
+      let hasLocalGguf = false;
+      try {
+        const probe = await fetch(ggufUrl, { method: 'HEAD', signal });
+        const ct = probe.headers.get('content-type') || '';
+        const len = Number(probe.headers.get('content-length') || '0');
+        hasLocalGguf = probe.ok && !ct.includes('text/html') && len > 1_000_000;
+      } catch {}
+      if (!hasLocalGguf) {
+        throw hfErr || new Error(`Local GGUF (${ggufFile}) is not cached on this host and HuggingFace GGUF download failed.`);
+      }
       const inst = await createFreshWllama();
       onStatus?.({
         state: 'loading',

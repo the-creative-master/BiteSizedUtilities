@@ -235,7 +235,7 @@ async function getOrt(preferWebGPU = true) {
   const ort = useGpu
     ? await import('onnxruntime-web/webgpu')
     : await import('onnxruntime-web/wasm');
-  ort.env.wasm.wasmPaths = new URL('./ort/', window.location.href).href;
+  ort.env.wasm.wasmPaths = new URL('ort/', typeof document !== 'undefined' && document.baseURI ? document.baseURI : window.location.href).href;
   ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;
   ort.env.logLevel = 'error';
   ortState = { ort, backend: useGpu ? 'webgpu' : 'wasm', hasF16: caps.hasF16 };

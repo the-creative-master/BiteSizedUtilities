@@ -66,7 +66,15 @@ function attachLocalModelRoutes(middlewares) {
         res.end('Forbidden');
         return;
       }
-      if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return next();
+      if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+        if (pathname.startsWith('/api/waffle-ai/')) {
+          res.statusCode = 404;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(JSON.stringify({ error: 'Local model asset not cached on disk' }));
+          return;
+        }
+        return next();
+      }
       const stat = fs.statSync(file);
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Cache-Control', cacheCtl);

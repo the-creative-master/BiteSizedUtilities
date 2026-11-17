@@ -49,7 +49,7 @@ let messages = [WELCOME_MSG];
 let attachments = [];
 let isGenerating = false;
 let activeAbort = null;
-let modelState = { preCached: true, loaded: false, loading: false };
+let modelState = { preCached: false, loaded: false, loading: false, serverReachable: null, available: [] };
 let codeArtifacts = [];
 let imageMode = false;
 let webSearchMode = false;
@@ -307,64 +307,94 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
   const mode = getSelectedExecutionMode();
   const diag = await detectDeviceDiagnostics().catch(() => ({ hasWebGPU: false }));
   const hasImages = Array.isArray(imageUrls) && imageUrls.length > 0;
+  const serverInfo = modelState.available?.find(a => a.id === cfg.id);
+  const canTryServer = modelState.serverReachable !== false && (serverInfo ? serverInfo.preCached !== false : true);
 
-  // Build ordered automatic fallback chain without surfacing internal tier names
+  // Build ordered automatic fallback chain preserving the selected model (never swap models unless images require Vision)
   const attempts = [];
+  const pushBrowser = (dev, id = cfg.id) => {
+    const m = TEXT_MODELS.find(x => x.id === id);
+    if (m?.hfId) attempts.push({ kind: 'browser', id: m.id, dev });
+  };
+  const pushWllama = webgpu => {
+    if (cfg.hfGgufRepo || cfg.ggufFile) {
+      attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu });
+    }
+  };
+  const pushServer = (id = cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b') => {
+    attempts.push({ kind: 'server', id });
+  };
+
   if (hasImages) {
     // Images MUST go to multimodal Vision (Qwen 3.5 0.8B) — never fall back to blind text-only models
     if (diag.hasWebGPU) attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'webgpu', vision: true });
     attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'wasm', vision: true });
   } else if (mode === 'server') {
-    attempts.push({ kind: 'server', id: cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b' });
-    if (diag.hasWebGPU) attempts.push({ kind: 'browser', id: cfg.kind === 'browser' ? cfg.id : 'qwen2.5-0.5b', dev: 'webgpu' });
-    attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: false });
-    attempts.push({ kind: 'browser', id: cfg.kind === 'browser' ? cfg.id : 'qwen2.5-0.5b', dev: 'wasm' });
+    if (canTryServer) pushServer(cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b');
+    if (diag.hasWebGPU) {
+      pushBrowser('webgpu');
+      pushWllama(true);
+    }
+    pushWllama(false);
+    pushBrowser('wasm');
   } else if (mode === 'webgpu') {
     if (diag.hasWebGPU) {
-      attempts.push({ kind: 'browser', id: cfg.kind === 'browser' ? cfg.id : 'qwen3.5-0.8b', dev: 'webgpu' });
-      attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: true });
+      pushBrowser('webgpu');
+      pushWllama(true);
     }
-    attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: false });
-    attempts.push({ kind: 'browser', id: cfg.kind === 'browser' ? cfg.id : 'qwen2.5-0.5b', dev: 'wasm' });
-    attempts.push({ kind: 'server', id: cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b' });
+    pushWllama(false);
+    pushBrowser('wasm');
+    if (canTryServer) pushServer();
   } else if (mode === 'wllama') {
-    if (diag.hasWebGPU) attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: true });
-    attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: false });
-    attempts.push({ kind: 'browser', id: 'qwen2.5-0.5b', dev: 'wasm' });
-    attempts.push({ kind: 'server', id: cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b' });
+    if (diag.hasWebGPU) pushWllama(true);
+    pushWllama(false);
+    if (diag.hasWebGPU) pushBrowser('webgpu');
+    pushBrowser('wasm');
+    if (canTryServer) pushServer();
   } else if (mode === 'wasm') {
-    attempts.push({ kind: 'browser', id: cfg.kind === 'browser' ? cfg.id : 'qwen2.5-0.5b', dev: 'wasm' });
-    attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: false });
-    attempts.push({ kind: 'server', id: cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b' });
+    pushBrowser('wasm');
+    pushWllama(false);
+    if (canTryServer) pushServer();
   } else {
-    // Auto fallback chain
-    if (cfg.kind === 'browser') {
+    // Auto fallback chain — always try the user's chosen model on its best available runtime first
+    if (cfg.kind === 'server' && canTryServer) {
+      pushServer(cfg.id);
       if (diag.hasWebGPU) {
-        attempts.push({ kind: 'browser', id: cfg.id, dev: 'webgpu' });
+        pushBrowser('webgpu');
+        pushWllama(true);
       }
-      attempts.push({ kind: 'browser', id: cfg.id, dev: 'wasm' });
+      pushWllama(false);
+      pushBrowser('wasm');
+    } else if (cfg.kind === 'server') {
       if (diag.hasWebGPU) {
-        attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: true });
+        pushBrowser('webgpu');
+        pushWllama(true);
       }
-      attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: false });
-      attempts.push({ kind: 'server', id: 'qwen2.5-1.5b' });
+      pushWllama(false);
+      pushBrowser('wasm');
+      if (modelState.serverReachable !== false) pushServer(cfg.id);
     } else {
-      attempts.push({ kind: 'server', id: cfg.id });
       if (diag.hasWebGPU) {
-        attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'webgpu' });
-        attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: true });
+        pushBrowser('webgpu');
+        pushWllama(true);
       }
-      attempts.push({ kind: 'wllama', gguf: cfg.ggufFile || 'qwen3-0.6b.gguf', hfRepo: cfg.hfGgufRepo, hfQuant: cfg.hfGgufQuant, webgpu: false });
-      attempts.push({ kind: 'browser', id: 'qwen2.5-0.5b', dev: 'wasm' });
+      pushBrowser('wasm');
+      pushWllama(false);
+      if (canTryServer) pushServer('qwen2.5-1.5b');
     }
   }
 
-  let lastErr = null;
+  const errors = [];
   for (let i = 0; i < attempts.length; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const step = attempts[i];
+    const stepLabel = step.kind === 'wllama'
+      ? `WLlama (${step.webgpu ? 'WebGPU' : 'WASM'})`
+      : step.kind === 'browser'
+        ? `${cfg.label} (${step.dev.toUpperCase()})`
+        : 'Server';
     if (i > 0) {
-      onStatus?.({ state: 'loading', detail: `Switching to fallback (${step.kind === 'wllama' ? 'WLlama' : step.dev ? step.dev.toUpperCase() : 'Server'})…` });
+      onStatus?.({ state: 'loading', detail: `Switching to ${stepLabel}…` });
     }
     try {
       if (step.kind === 'server') {
@@ -376,23 +406,29 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
       return await streamBrowserChat({ modelId: step.id, messages: msgList, imageUrls: step.vision ? imageUrls : [], systemPrompt, maxTokens, temperature, preferredDevice: step.dev, signal, onStatus, onToken });
     } catch (err) {
       if (err.name === 'AbortError' || signal?.aborted) throw err;
-      lastErr = err;
+      errors.push(`${stepLabel}: ${err.message || err}`);
     }
   }
   if (hasImages) {
-    throw new Error(`Image vision requires Qwen 3.5 0.8B Vision in the browser (${lastErr?.message || 'vision model unavailable'}). Text-only fallback is disabled for images so the AI won’t guess.`);
+    throw new Error(`Image vision requires Qwen 3.5 0.8B Vision in the browser (${errors[errors.length - 1] || 'vision model unavailable'}). Text-only fallback is disabled for images so the AI won’t guess.`);
   }
-  throw lastErr || new Error('All AI runtimes failed on this device.');
+  throw new Error(errors.length ? `Could not run ${cfg.label} (${errors.join(' | ')})` : 'All AI runtimes failed on this device.');
 }
 
 async function fetchStatus() {
   try {
     const r = await fetch('./api/waffle-ai/status', { cache: 'no-store' });
-    if (r.ok) {
-      modelState = await r.json();
-      updateStatusBadge();
+    const ct = r.headers.get('content-type') || '';
+    if (r.ok && ct.includes('application/json')) {
+      const data = await r.json();
+      modelState = { ...data, serverReachable: true };
+    } else {
+      modelState = { preCached: false, loaded: false, loading: false, serverReachable: false, available: [] };
     }
-  } catch {}
+  } catch {
+    modelState = { preCached: false, loaded: false, loading: false, serverReachable: false, available: [] };
+  }
+  updateStatusBadge();
 }
 
 export async function warmupWaffleAI() {
@@ -446,18 +482,23 @@ function updateStatusBadge(customNote) {
     badge.className = isGenerating ? 'waffle-ai-badge is-busy' : 'waffle-ai-badge is-ready';
     return;
   }
-  if (modelState.error) {
-    badge.textContent = `${tCfg.label} · ${modelState.error}`;
-    badge.className = 'waffle-ai-badge is-warn';
-  } else if (isGenerating) {
+  if (isGenerating) {
     badge.textContent = `${tCfg.label} · Thinking…`;
     badge.className = 'waffle-ai-badge is-busy';
   } else if (modelState.loaded && modelState.modelId === tCfg.id) {
     badge.textContent = `${tCfg.label} · Ready`;
     badge.className = 'waffle-ai-badge is-ready';
+  } else if (modelState.serverReachable && modelState.preCached) {
+    if (modelState.error) {
+      badge.textContent = `${tCfg.label} · ${modelState.error}`;
+      badge.className = 'waffle-ai-badge is-warn';
+    } else {
+      badge.textContent = `${tCfg.label} · Pre-cached`;
+      badge.className = 'waffle-ai-badge';
+    }
   } else {
-    badge.textContent = `${tCfg.label} · Pre-cached`;
-    badge.className = 'waffle-ai-badge';
+    badge.textContent = `${tCfg.label} · ${deviceDiag.hasWebGPU ? 'Browser WebGPU' : 'Browser WASM'}`;
+    badge.className = 'waffle-ai-badge is-ready';
   }
 }
 
@@ -863,7 +904,7 @@ async function sendMessage(rawText) {
 
   const effectiveSystemPrompt = imageUrls.length
     ? 'You are a helpful, accurate vision assistant. Describe and answer strictly based on what is actually visible in the attached image(s). Do not guess or invent objects that are not clearly shown.'
-    : (tCfg.kind === 'browser'
+    : (tCfg.kind === 'browser' || !modelState.serverReachable || !modelState.preCached
       ? 'You are a helpful, accurate assistant. Answer clearly in Markdown. If a file is included between --- BEGIN FILE --- and --- END FILE ---, read and use its exact contents directly.'
       : undefined);
 
@@ -885,8 +926,8 @@ async function sendMessage(rawText) {
           updateStatusBadge();
         }
       },
-      onToken(chunk) {
-        messages[assistantIdx].content += chunk;
+      onToken(chunk, acc) {
+        messages[assistantIdx].content = typeof acc === 'string' ? acc : (messages[assistantIdx].content + chunk);
         renderMessages();
       }
     });

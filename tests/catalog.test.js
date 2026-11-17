@@ -190,6 +190,10 @@ test('Waffle AI chatbot, streaming code boxes, DOCX creation/parsing, single Waf
   const browserAiSrc = fs.readFileSync('waffle-browser-ai.js', 'utf8');
   assert.ok(browserAiSrc.includes('Qwen3_5ForCausalLM') && browserAiSrc.includes('decoder_model_merged'), 'Qwen 3.5 0.8B uses Qwen3_5ForCausalLM with split ONNX dtype');
   assert.ok(TEXT_MODELS.some(m => m.id === 'qwen2.5-coder-1.5b'), 'Qwen 2.5 Coder 1.5B available');
+  for (const m of TEXT_MODELS) {
+    assert.ok(m.hfId && m.hfGgufRepo, `${m.id} has its own browser ONNX (hfId) and GGUF (hfGgufRepo) fallback so it never falls back to a different model`);
+  }
+  assert.ok(!/attempts\.push\(\{\s*kind:\s*'browser',\s*id:\s*'qwen3\.5-0\.8b',\s*dev:\s*'webgpu'\s*\}\)/.test(uiSrc), 'Text chat fallback does not force server models onto qwen3.5-0.8b');
   assert.ok(['auto', 'server', 'webgpu', 'wllama', 'wasm'].every(id => EXECUTION_MODES.some(m => m.id === id)), 'All fallback modes wired');
   assert.ok(AI_DISCLAIMER_TEXT.includes('iOS 26') && AI_DISCLAIMER_TEXT.includes('WebGPU'), 'AI disclaimer warns about iOS 26 and WebGPU');
   assert.ok(!/tier\s*[123]|diagram/i.test(AI_DISCLAIMER_TEXT), 'AI disclaimer does not mention tier numbers or diagrams');

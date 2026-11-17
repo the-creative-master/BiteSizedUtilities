@@ -1,10 +1,14 @@
-/** 2.5D Offline Arcade — 100% Real Open-Source Games Fetched from GitHub */
+/** 2.5D Offline Arcade — All 44 Games from the-creative-master/SchoolGames */
 import { gamePropSVG } from './icons-25d.js';
 import { playPop, playSquish, playSparkle } from './sfx.js';
 
 export let gameCount = 0;
+let cachedCatalog = null;
 const assetURL = path => new URL(path, new URL(import.meta.env?.BASE_URL || './', document.baseURI)).href;
-const safePath = (path, suffix) => typeof path === 'string' && /^games\/[a-zA-Z0-9_./-]+$/.test(path) && !path.split('/').includes('..') && path.endsWith(suffix);
+const safePath = (path, suffixes) => typeof path === 'string'
+  && /^games\/[a-zA-Z0-9_./-]+$/.test(path)
+  && !path.split('/').includes('..')
+  && suffixes.some(s => path.endsWith(s));
 
 export async function mountGames(root) {
   if (!root || typeof root.replaceChildren !== 'function') throw new TypeError('mountGames requires a DOM element');
@@ -20,12 +24,11 @@ export async function mountGames(root) {
     return el;
   };
 
-  // Top Arcade Action Bar
   const topBar = make('div', '', 'arcade-top-bar');
   const searchWrap = make('div', '', 'gfield-tray arcade-search-tray');
   const search = make('input', '', 'gfield-input');
   search.type = 'text';
-  search.placeholder = 'Search Mario, Crossy Road, Fruit Ninja, Flash (.swf), Dino, Hextris, OutRun…';
+  search.placeholder = 'Search Bloons TD, Drive Mad, Impossible Quiz, Retro Bowl, BitLife, 2048…';
   search.setAttribute('aria-label', 'Search games');
   searchWrap.append(search);
 
@@ -34,7 +37,7 @@ export async function mountGames(root) {
   topBar.append(searchWrap, random);
 
   const filterBar = make('div', '', 'gtabs arcade-filters');
-  const status = make('p', 'Loading real GitHub games…', 'arcade-status');
+  const status = make('p', 'Loading SchoolGames arcade…', 'arcade-status');
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
 
@@ -43,7 +46,7 @@ export async function mountGames(root) {
   player.setAttribute('aria-label', 'Game player');
 
   const shelvesHost = make('div', '', 'arcade-shelves-host');
-  const credits = make('a', 'Open-source licenses & attribution', 'gbtn gbtn-chip');
+  const credits = make('a', 'SchoolGames source & catalog list', 'gbtn gbtn-chip');
   credits.href = assetURL('games/ATTRIBUTION.md');
 
   shell.append(topBar, filterBar, status, player, shelvesHost, credits);
@@ -54,17 +57,12 @@ export async function mountGames(root) {
   let activeCard = null;
   let render = () => {};
 
-  const genres = ['All', 'Arcade', 'Puzzles', 'Driving', 'Strategy', 'Quiz & Words', 'Cozy'];
+  const genres = ['All', 'Action', 'Puzzle', 'Casual', 'Fancade'];
 
   function genre(game) {
     if (game.category && genres.includes(game.category)) return game.category;
-    const t = `${game.id} ${game.title}`.toLowerCase();
-    if (t.includes('racer') || t.includes('racing')) return 'Driving';
-    if (t.includes('2048') || t.includes('tetris') || t.includes('block') || t.includes('puzzle') || t.includes('match') || t.includes('hex') || t.includes('mines') || t.includes('sweep') || t.includes('solitaire') || t.includes('nonogram') || t.includes('flood') || t.includes('memory') || t.includes('maze')) return 'Puzzles';
-    if (t.includes('quiz') || t.includes('math') || t.includes('hangman') || t.includes('guess') || t.includes('color-match')) return 'Quiz & Words';
-    if (t.includes('connect') || t.includes('checker') || t.includes('gomoku') || t.includes('dots') || t.includes('snakes') || t.includes('dark')) return 'Strategy';
-    if (t.includes('fruit')) return 'Cozy';
-    return 'Arcade';
+    if (Array.isArray(game.tags) && game.tags.includes('fancade')) return 'Fancade';
+    return 'Action';
   }
 
   for (const g of genres) {
@@ -82,7 +80,12 @@ export async function mountGames(root) {
   }
 
   function renderFilters() {
-    const counts = Object.fromEntries(genres.map(g => [g, g === 'All' ? valid.length : valid.filter(x => genre(x) === g).length]));
+    const counts = Object.fromEntries(genres.map(g => [
+      g,
+      g === 'All'
+        ? valid.length
+        : valid.filter(x => genre(x) === g || (Array.isArray(x.tags) && x.tags.map(t => t.toLowerCase()).includes(g.toLowerCase()))).length
+    ]));
     for (const b of filterBar.children) {
       const g = b.dataset.genre;
       b.textContent = `${g} · ${counts[g]}`;
@@ -112,7 +115,7 @@ export async function mountGames(root) {
     const iconBox = make('span', '', 'window-tool-icon');
     iconBox.innerHTML = gamePropSVG(game, genre(game));
     const titleText = document.createElement('div');
-    const kicker = make('span', `${genre(game).toUpperCase()} · ${game.license}`, 'window-kicker');
+    const kicker = make('span', `${genre(game).toUpperCase()} · SCHOOLGAMES`, 'window-kicker');
     const h3 = make('h2', game.title);
     titleText.append(kicker, h3);
     titleGroup.append(iconBox, titleText);
@@ -122,23 +125,32 @@ export async function mountGames(root) {
     restart.type = 'button';
     const big = make('button', '⛶ Big', 'gbtn gbtn-chip');
     big.type = 'button';
-    const dl = make('a', '↓ ZIP', 'gbtn gbtn-chip');
-    dl.href = assetURL(game.zip);
-    dl.download = `${game.id}.zip`;
+    const fullTab = make('a', '↗ Full Tab', 'gbtn gbtn-chip');
+    fullTab.href = assetURL(game.entrypoint);
+    fullTab.target = '_blank';
+    fullTab.rel = 'noopener';
+    const dl = make('a', '↓ Save', 'gbtn gbtn-chip');
+    dl.href = assetURL(game.entrypoint);
+    dl.download = `${game.id}.html`;
     const close = make('button', '✕', 'window-close-x');
     close.type = 'button';
     close.setAttribute('aria-label', 'Close game');
     close.addEventListener('click', stop);
-    actions.append(restart, big, dl, close);
+    actions.append(restart, big, fullTab, dl, close);
     headRow.append(titleGroup, actions);
     header.append(grab, headRow);
 
     const body = make('div', '', 'tool-window-body');
-    const controlsNote = make('p', `HOW TO PLAY: ${game.controls || game.keyboard || 'Use keyboard or touch controls.'} · Source: ${game.repo}`, 'arcade-player-controls');
+    const isMultiAsset = ['bitlife', 'recoil', 'monster-match', 'speed-king'].includes(game.id);
+    const controlsNote = make(
+      'p',
+      `${game.description || 'Ready to play!'} · ${game.controls || 'Keyboard / Mouse / Touch'}${isMultiAsset ? ' · Tip: Use ↗ Full Tab if Unity/WASM assets need full-origin loading.' : ''}`,
+      'arcade-player-controls'
+    );
     const frame = document.createElement('iframe');
     frame.className = 'arcade-iframe';
-    frame.title = `${game.title} — offline game`;
-    frame.setAttribute('sandbox', 'allow-scripts');
+    frame.title = `${game.title} — SchoolGames`;
+    frame.setAttribute('sandbox', 'allow-scripts allow-pointer-lock');
     frame.setAttribute('referrerpolicy', 'no-referrer');
     frame.src = assetURL(game.entrypoint);
 
@@ -205,19 +217,25 @@ export async function mountGames(root) {
   }
 
   try {
-    const response = await fetch(assetURL('games/catalog.json'));
-    if (!response.ok) throw new Error(`Catalog request failed (${response.status})`);
-    const payload = await response.json();
+    if (!cachedCatalog) {
+      const response = await fetch(assetURL('games/catalog.json'));
+      if (!response.ok) throw new Error(`Catalog request failed (${response.status})`);
+      cachedCatalog = await response.json();
+    }
+    const payload = cachedCatalog;
     const games = Array.isArray(payload) ? payload : payload.games;
     if (!Array.isArray(games)) throw new Error('Invalid local game catalog');
-    valid = games.filter(g => g && typeof g.title === 'string' && typeof g.license === 'string' && safePath(g.entrypoint, '.html') && safePath(g.zip, '.zip'));
+    valid = games.filter(g => g && typeof g.title === 'string' && safePath(g.entrypoint, ['.html', '.htm']));
     if (shell.parentNode !== root) return;
     gameCount = valid.length;
 
     render = () => {
       const query = search.value.trim().toLocaleLowerCase();
-      const shown = valid.filter(g => (selectedGenre === 'All' || genre(g) === selectedGenre)
-        && [g.title, g.description, g.category, g.controls, g.repo, g.id].join(' ').toLocaleLowerCase().includes(query));
+      const shown = valid.filter(g => (
+        selectedGenre === 'All'
+        || genre(g) === selectedGenre
+        || (Array.isArray(g.tags) && g.tags.map(t => t.toLowerCase()).includes(selectedGenre.toLowerCase()))
+      ) && [g.title, g.description, g.category, ...(g.tags || []), g.id].join(' ').toLocaleLowerCase().includes(query));
       visibleGames = shown;
       shelvesHost.replaceChildren();
       renderFilters();
@@ -225,16 +243,16 @@ export async function mountGames(root) {
       const featured = shown.filter(g => g.featured);
       const rest = shown.filter(g => !g.featured);
 
-      if (featured.length) shelvesHost.append(renderShelfSection('★ POPULAR OPEN-SOURCE HITS FROM GITHUB', featured));
-      if (rest.length) shelvesHost.append(renderShelfSection('✦ MORE REAL GITHUB ARCADE & PUZZLE GAMES', rest));
+      if (featured.length) shelvesHost.append(renderShelfSection('★ SCHOOLGAMES FAN FAVORITES & FANCADE', featured));
+      if (rest.length) shelvesHost.append(renderShelfSection('✦ MORE SCHOOLGAMES ARCADE & PUZZLES', rest));
 
       if (!shown.length) {
         const empty = make('div', '', 'empty-shelf');
-        empty.textContent = 'No games matched that search! Try "Dino", "Pac-Man", "OutRun", or "2048".';
+        empty.textContent = 'No games matched that search! Try "Bloons", "Drive Mad", "Retro Bowl", or "2048".';
         shelvesHost.append(empty);
       }
 
-      status.textContent = `${shown.length} real open-source games fetched from ${new Set(valid.map(g => g.repo)).size} GitHub repositories`;
+      status.textContent = `${shown.length} games from the-creative-master/SchoolGames`;
     };
 
     search.addEventListener('input', render);

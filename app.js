@@ -2,6 +2,10 @@ import './style.css';
 import { cupboards, allTools } from './catalog.js';
 import { waffleMascotSVG, cupboardIconSVG, toolPropSVG, uiIconSVG } from './icons-25d.js';
 import { isMuted, toggleMute, playPop, playBoing, playCupboardOpen, playSquish } from './sfx.js';
+import { mountMathScience } from './tools-math-science.js';
+import { mountCode } from './tools-code.js';
+import { mountTextArt } from './tools-text-art.js';
+import { mountGames } from './games.js';
 
 const $ = s => document.querySelector(s);
 const storage = {
@@ -20,7 +24,7 @@ const WAFFLE_QUIPS = [
   'Boing! Sweet math!',
   'Tap a cupboard door!',
   'Freshly baked utilities!',
-  '72 real GitHub games + Flash!',
+  '44 SchoolGames ready to play!',
   'Waffle power!',
   'Pick a toy off the shelf!'
 ];
@@ -34,12 +38,12 @@ const CUPBOARD_THEME = {
   text:    { color: '#a595c4', trim: '#756495', doodles: ['Aa', '✎'], tagline: 'A PLACE FOR EVERY WORD.' },
   art:     { color: '#e895bf', trim: '#b8638e', doodles: ['✿', '◈'], tagline: 'MAKE A COLORFUL MESS.' },
   science: { color: '#94c496', trim: '#609362', doodles: ['⚛', '⚖'], tagline: 'FEED YOUR CURIOSITY.' },
-  games:   { color: '#d7b5eb', trim: '#9875b4', doodles: ['★', '♧'], tagline: 'REAL OPEN-SOURCE GAMES FROM GITHUB' }
+  games:   { color: '#d7b5eb', trim: '#9875b4', doodles: ['★', '♧'], tagline: 'ALL 44 GAMES FROM SCHOOLGAMES' }
 };
 
 const ALL_CUPBOARDS = [
   ...cupboards,
-  { id: 'games', name: 'Games & Fun', short: '72 open-source games + Flash', icon: '♧', color: '#d7b5eb', trim: '#9875b4', star: 'games', tools: [] }
+  { id: 'games', name: 'Games & Fun', short: '44 SchoolGames arcade hits', icon: '♧', color: '#d7b5eb', trim: '#9875b4', star: 'games', tools: [] }
 ];
 
 const app = $('#app');
@@ -167,7 +171,7 @@ function woodenSignboardHTML({ kicker, title, leftDoodle = '', rightDoodle = '',
 
 function cupboardCard(c) {
   const theme = CUPBOARD_THEME[c.id] || { color: c.color, trim: c.trim };
-  const countText = c.id === 'games' ? '72 GAMES' : `${c.tools.length} UTILITIES`;
+  const countText = c.id === 'games' ? '44 GAMES' : `${c.tools.length} UTILITIES`;
   return `
     <article class="cupboard-card" style="--cup:${theme.color};--trim:${theme.trim}" data-cupboard="${c.id}">
       <div class="cupboard-crown" aria-hidden="true"></div>
@@ -290,23 +294,22 @@ async function collection(id) {
   const theme = CUPBOARD_THEME[id] || { color: '#ffe5a8', trim: '#d4a65a', doodles: ['★', '★'], tagline: 'YOUR KITCHEN SHELF' };
 
   if (id === 'games') {
-    $('#waffle-speech').textContent = 'Offline arcade heaven!';
+    $('#waffle-speech').textContent = 'SchoolGames arcade!';
     $('#main').innerHTML = `
       <section class="open-cupboard-scene" style="--cup:${theme.color};--trim:${theme.trim}">
         ${woodenSignboardHTML({ kicker: theme.tagline, title: 'Games & Fun', leftDoodle: theme.doodles[0], rightDoodle: theme.doodles[1] })}
         <div class="cabinet-bookcase arcade-bookcase">
           <div class="cabinet-crown" aria-hidden="true"></div>
           <div class="cabinet-interior" id="game-root">
-            <p class="empty-msg">Loading 72 real open-source games…</p>
+            <p class="empty-msg">Loading 44 SchoolGames…</p>
           </div>
         </div>
       </section>
     `;
     bindActions();
     try {
-      const m = await import('./games.js');
       if (ticket === view) {
-        const cleanup = await m.mountGames($('#game-root'));
+        const cleanup = await mountGames($('#game-root'));
         if (typeof cleanup === 'function') toolCleanup = cleanup;
       }
     } catch (e) {
@@ -356,13 +359,12 @@ async function collection(id) {
   window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
-async function openTool(id) {
+function openTool(id) {
   const t = allTools.find(x => x.id === id);
   if (!t) return;
   toolCleanup?.();
   toolCleanup = null;
   view++;
-  const ticket = view;
   active = t.cupboard;
   recent = [id, ...recent.filter(x => x !== id)].slice(0, 20);
   storage.set('bite-recent', recent);
@@ -394,7 +396,7 @@ async function openTool(id) {
           </div>
         </div>
         <div class="tool-window-body">
-          <div class="tool-workspace" id="tool-root"><p class="empty-msg">Opening toy box…</p></div>
+          <div class="tool-workspace" id="tool-root"></div>
         </div>
       </div>
     </section>
@@ -403,21 +405,17 @@ async function openTool(id) {
   window.scrollTo({ top: 0, behavior: 'auto' });
 
   try {
-    const module = (t.cupboard === 'math' || t.cupboard === 'science')
-      ? await import('./tools-math-science.js')
+    const rootEl = $('#tool-root');
+    const result = (t.cupboard === 'math' || t.cupboard === 'science')
+      ? mountMathScience(id, rootEl)
       : t.cupboard === 'code'
-        ? await import('./tools-code.js')
-        : await import('./tools-text-art.js');
-    if (ticket !== view) return;
-    $('#tool-root').replaceChildren();
-    const result = module.mountMathScience?.(id, $('#tool-root'))
-      || module.mountCode?.(id, $('#tool-root'))
-      || module.mountTextArt?.(id, $('#tool-root'));
+        ? mountCode(id, rootEl)
+        : mountTextArt(id, rootEl);
     if (typeof result === 'function') toolCleanup = result;
-    if (!result) $('#tool-root').textContent = 'This toy could not be opened.';
+    if (!result) rootEl.textContent = 'This toy could not be opened.';
   } catch (e) {
     console.error(e);
-    if (ticket === view) $('#tool-root').textContent = 'Something went wrong opening this toy.';
+    $('#tool-root').textContent = 'Something went wrong opening this toy.';
   }
 }
 
@@ -428,16 +426,8 @@ function bindActions(root = document) {
 
   root.querySelectorAll('[data-open-cupboard]').forEach(b => {
     b.onclick = () => {
-      const id = b.dataset.openCupboard;
-      const card = b.closest('.cupboard-card');
-      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       playCupboardOpen();
-      if (!card || reduced) {
-        navigate(id);
-        return;
-      }
-      card.classList.add('is-opening');
-      setTimeout(() => navigate(id), 420);
+      navigate(b.dataset.openCupboard);
     };
   });
 

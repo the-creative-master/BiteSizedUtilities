@@ -56,18 +56,53 @@ test('all utility identifiers have implementation dispatch cases', () => {
   }
 });
 
-test('all games in catalog are real open-source games fetched from GitHub with valid entrypoints and ZIPs', () => {
+test('all 44 games in catalog come from the-creative-master/SchoolGames with valid entrypoints', () => {
   const games = JSON.parse(fs.readFileSync('games/catalog.json', 'utf8'));
-  assert.equal(games.length, 72);
+  assert.equal(games.length, 44);
   assert.ok(!fs.existsSync('games/arcade'));
   assert.ok(!fs.existsSync('games/original'));
+  assert.ok(!fs.existsSync('games/fetched'));
+  assert.ok(fs.existsSync('games/arcade-controls.js'));
+  assert.ok(fs.existsSync('games/ATTRIBUTION.md'));
   for (const g of games) {
     assert.equal(g.origin, 'github', g.id + ' must come from GitHub');
-    assert.ok(g.repo.startsWith('https://github.com/'), g.id + ' repo URL');
+    assert.equal(g.repo, 'https://github.com/the-creative-master/SchoolGames');
     assert.ok(g.title);
     assert.ok(g.license);
     assert.ok(fs.existsSync(g.entrypoint), g.id + ' entrypoint exists');
-    assert.ok(fs.existsSync(g.zip), g.id + ' zip exists');
-    assert.ok(fs.statSync(g.zip).size > 500, g.id + ' zip nonempty');
+    assert.ok(fs.statSync(g.entrypoint).size > 200, g.id + ' entrypoint nonempty');
   }
+});
+
+test('CodeHub runtimes (Luau, Haskell, Ruby, PHP, SQL, C++, Clojure, Prolog, Wasm, etc.) and instant tool loading are wired', () => {
+  const workerSrc = fs.readFileSync('runtimes/worker.js', 'utf8');
+  const codeSrc = fs.readFileSync('tools-code.js', 'utf8');
+  const appSrc = fs.readFileSync('app.js', 'utf8');
+  const requiredLangs = [
+    'luau', 'haskell', 'ruby', 'php', 'sql', 'c', 'cpp', 'clojure',
+    'prolog', 'wasm', 'jq', 'tcl', 'sass', 'yaml', 'toml', 'markdown',
+    'xml', 'handlebars', 'ejs', 'erb', 'javascript', 'typescript', 'python', 'lua', 'bash'
+  ];
+  for (const lang of requiredLangs) {
+    assert.ok(codeSrc.includes(`'${lang}'`), `tools-code.js has ${lang}`);
+    assert.ok(workerSrc.includes(`'${lang}'`) || workerSrc.includes(`${lang}:`), `worker.js handles ${lang}`);
+  }
+  const vendoredFiles = [
+    'runtimes/vendor/luau/lib/Luau.Web.Asyncify.js',
+    'runtimes/vendor/haskell/jshc.js',
+    'runtimes/vendor/ruby/opal.js',
+    'runtimes/vendor/ruby/opal-builder.js',
+    'runtimes/vendor/php/php8.3-web.mjs',
+    'runtimes/vendor/php/1b0372a2c42bfce11af8ba65b5cf84b7ef4c15ee.wasm',
+    'runtimes/vendor/jscpp.js',
+    'runtimes/vendor/scittle.js',
+    'runtimes/vendor/tau-prolog.js',
+    'runtimes/vendor/wabt.js',
+    'runtimes/vendor/jq/jq.js',
+    'runtimes/vendor/sass.js',
+    'runtimes/vendor/tcl.js',
+    'runtimes/vendor/markup-bundle.js'
+  ];
+  for (const file of vendoredFiles) assert.ok(fs.existsSync(file), `${file} exists`);
+  assert.ok(!appSrc.includes('await import('), 'app.js uses static imports for instant loading');
 });

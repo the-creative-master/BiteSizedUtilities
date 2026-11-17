@@ -10,12 +10,35 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 const catalogue = [
   ['web', 'HTML / CSS / JS', 'executable', 'Local opaque-origin three-pane sandbox', ''],
   ['javascript', 'JavaScript', 'executable', 'Browser worker (ES2022)', 'console.log("Hello, JavaScript!");\nconsole.log([1,2,3].map(n => n*n));'],
+  ['nodejs', 'Node.js', 'executable', 'Browser worker with Node process shim', 'console.log("Node", process.version, process.platform);\nprocess.stdout.write("Hello from Node-style stdout!\\n");'],
   ['typescript', 'TypeScript', 'executable', 'TypeScript 5.9 → worker', 'const greeting: string = "Hello, TypeScript!";\nconsole.log(greeting);'],
   ['coffeescript', 'CoffeeScript', 'executable', 'CoffeeScript 2.7 → worker', 'square = (x) -> x * x\nconsole.log square(12)'],
-  ['bash', 'Bash', 'subset', 'BashKit 0.21.0 WASM VFS', 'echo "Hello from Bash"; printf "%s\\n" "$((6*7))"'],
-  ['python', 'Python', 'executable', 'Pyodide CPython WASM', 'import sys\nprint(sys.version.split()[0])\nprint(sum(range(10)))'],
-  ['lua', 'Lua', 'executable', 'Fengari Lua 5.3 worker', 'print("Hello, Lua!")\nfor i = 1, 5 do print(i * i) end'],
-  ['sql', 'SQLite SQL', 'executable', 'sql.js SQLite WASM', "CREATE TABLE greetings (name TEXT);\nINSERT INTO greetings VALUES ('Ada'), ('Grace');\nSELECT * FROM greetings;"],
+  ['luau', 'Luau (Roblox)', 'executable', 'Official Roblox Luau WASM runtime', 'local function factorial(n: number): number\n  if n <= 1 then return 1 end\n  return n * factorial(n - 1)\nend\nprint("Hello Luau! 6! =", factorial(6))'],
+  ['haskell', 'Haskell', 'executable', 'JSHC Haskell-to-JS compiler & runtime', 'module Main where\nmain :: IO ()\nmain = putStrLn ("Hello Haskell! sum [1..10] = " ++ show (sum [1..10]))'],
+  ['ruby', 'Ruby', 'executable', 'Opal 3.0 Ruby compiler & runtime', 'squares = (1..6).map { |n| n * n }\nputs "Hello Ruby! #{squares.inspect}"'],
+  ['php', 'PHP 8.3', 'executable', 'PHP 8.3 WebAssembly runtime', '<?php\n$nums = [1, 2, 3, 4, 5];\necho "Hello PHP! Sum = " . array_sum($nums) . "\\n";'],
+  ['sql', 'SQLite SQL', 'executable', 'sql.js SQLite WASM', "CREATE TABLE greetings (name TEXT, score INT);\nINSERT INTO greetings VALUES ('Ada', 100), ('Grace', 98);\nSELECT * FROM greetings ORDER BY score DESC;"],
+  ['python', 'Python', 'executable', 'Pyodide CPython WASM', 'import sys\nprint(sys.version.split()[0])\nprint("Sum:", sum(range(1, 11)))'],
+  ['c', 'C', 'executable', 'JSCPP C/C++ interpreter', '#include <stdio.h>\nint main() {\n  printf("Hello C! 6 * 7 = %d\\n", 6 * 7);\n  return 0;\n}'],
+  ['cpp', 'C++', 'executable', 'JSCPP C++ interpreter', '#include <iostream>\nusing namespace std;\nint main() {\n  cout << "Hello C++! 6 * 7 = " << (6 * 7) << endl;\n  return 0;\n}'],
+  ['lua', 'Lua', 'executable', 'Fengari Lua 5.3 worker', 'print("Hello, Lua!")\nfor i = 1, 5 do print(i, i * i) end'],
+  ['clojure', 'Clojure', 'executable', 'Scittle Clojure SCI runtime', '(println "Hello Clojure!" (vec (map #(* % %) (range 1 7))))'],
+  ['clojurescript', 'ClojureScript', 'executable', 'Scittle ClojureScript SCI runtime', '(let [nums (range 1 11)] (println "Sum:" (reduce + nums)))'],
+  ['prolog', 'Prolog', 'executable', 'Tau Prolog ISO logic engine', 'likes(mary, pizza).\nlikes(john, X) :- likes(X, pizza).\n?- likes(john, Who).'],
+  ['wasm', 'WebAssembly (WAT)', 'executable', 'WABT wat2wasm + live WebAssembly runner', '(module\n  (func (export "add") (param i32 i32) (result i32)\n    local.get 0\n    local.get 1\n    i32.add))\n;; Try stdin: 20 22'],
+  ['jq', 'jq', 'executable', 'jq-web WASM JSON processor', '.items | map(. * 10)\n;; Try stdin: {"items":[1,2,3,4]}'],
+  ['tcl', 'Tcl', 'executable', 'Tcl-JS local interpreter', 'proc square {x} { return [expr {$x * $x}] }\nputs "Hello Tcl! 9^2 = [square 9]"'],
+  ['bash', 'Bash', 'subset', 'BashKit 0.21.0 WASM VFS', 'echo "Hello from Bash"; printf "Answer: %s\\n" "$((6*7))"'],
+  ['sh', 'POSIX Shell', 'subset', 'BashKit 0.21.0 WASM VFS', 'for n in 1 2 3; do echo "Step $n"; done'],
+  ['sass', 'Sass / SCSS', 'executable', 'Dart Sass → CSS compiler', '$berry: #e78167;\n.card { background: $berry; .title { font-weight: 800; } }'],
+  ['yaml', 'YAML', 'executable', 'js-yaml → JSON parser', 'kitchen:\n  mascot: Sir Waffle\n  tools: 70'],
+  ['toml', 'TOML', 'executable', 'smol-toml → JSON parser', 'title = "BiteSizedUtilities"\n[kitchen]\ntools = 70'],
+  ['markdown', 'Markdown', 'executable', 'marked → HTML compiler', '# Cozy Kitchen\n- **Fast** offline tools\n- `100%` local'],
+  ['xml', 'XML', 'executable', 'fast-xml-parser validator & JSON', '<kitchen tools="70"><mascot>Sir Waffle</mascot></kitchen>'],
+  ['handlebars', 'Handlebars', 'executable', 'Handlebars template renderer (stdin JSON)', 'Hello {{name}}! You have {{count}} toys.'],
+  ['ejs', 'EJS', 'executable', 'EJS template renderer (stdin JSON)', 'Sum: <%= (locals.a || 20) + (locals.b || 22) %>'],
+  ['erb', 'ERB (Ruby)', 'executable', 'Opal::ERB template renderer (stdin JSON)', 'Hello <%= data["name"] || "Sir Waffle" %>!'],
+  ['css', 'CSS', 'executable', 'csstree CSS validator & formatter', '.waffle { color: #4f2f23; border-radius: 16px; }'],
   ['json', 'JSON', 'executable', 'Strict local parser', '{"hello":"world","items":[1,2,3]}'],
   ['brainfuck', 'Brainfuck', 'executable', '65,536-cell tape VM', '++++++++[>++++++++<-]>+.'],
   ['boolfuck', 'Boolfuck', 'executable', 'Bit-tape VM', '+;+;+;+;+;+;+;+;'],
@@ -26,19 +49,16 @@ const catalogue = [
   ['forth', 'Forth', 'subset', 'Stack VM', ': square dup * ;\n12 square . cr'],
   ['lisp', 'Lisp', 'subset', 'Lexical Lisp evaluator', '(define (square x) (* x x))\n(print (square 12))'],
   ['scheme', 'Scheme', 'subset', 'Shared Lisp evaluator', '(define (factorial n) (if (= n 0) 1 (* n (factorial (- n 1)))))\n(display (factorial 6))'],
+  ['racket', 'Racket (subset)', 'subset', 'Shared Lisp evaluator', '(define (fib n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2)))))\n(display (fib 8))'],
   ...[
-    ['nodejs', 'Node.js'], ['java', 'Java'], ['c', 'C'], ['cpp', 'C++'], ['csharp', 'C#'], ['go', 'Go'],
-    ['rust', 'Rust'], ['ruby', 'Ruby'], ['php', 'PHP'], ['swift', 'Swift'], ['kotlin', 'Kotlin'],
-    ['scala', 'Scala'], ['r', 'R'], ['julia', 'Julia'], ['perl', 'Perl'], ['haskell', 'Haskell'],
-    ['ocaml', 'OCaml'], ['fsharp', 'F#'], ['elixir', 'Elixir'], ['erlang', 'Erlang'], ['clojure', 'Clojure'],
-    ['dart', 'Dart'], ['groovy', 'Groovy'], ['powershell', 'PowerShell'], ['zsh', 'Zsh'], ['fish', 'Fish'],
-    ['sh', 'POSIX shell'], ['objectivec', 'Objective-C'], ['pascal', 'Pascal'], ['fortran', 'Fortran'],
+    ['java', 'Java'], ['csharp', 'C#'], ['go', 'Go'], ['rust', 'Rust'], ['swift', 'Swift'], ['kotlin', 'Kotlin'],
+    ['scala', 'Scala'], ['r', 'R'], ['julia', 'Julia'], ['perl', 'Perl'], ['ocaml', 'OCaml'], ['fsharp', 'F#'],
+    ['elixir', 'Elixir'], ['erlang', 'Erlang'], ['dart', 'Dart'], ['groovy', 'Groovy'], ['powershell', 'PowerShell'],
+    ['zsh', 'Zsh'], ['fish', 'Fish'], ['objectivec', 'Objective-C'], ['pascal', 'Pascal'], ['fortran', 'Fortran'],
     ['cobol', 'COBOL'], ['ada', 'Ada'], ['d', 'D'], ['nim', 'Nim'], ['zig', 'Zig'], ['v', 'V'],
-    ['crystal', 'Crystal'], ['smalltalk', 'Smalltalk'], ['prolog', 'Prolog'], ['racket', 'Racket'],
-    ['elm', 'Elm'], ['purescript', 'PureScript'], ['reason', 'Reason'], ['solidity', 'Solidity'],
-    ['vyper', 'Vyper'], ['assembly', 'Assembly'], ['wasm', 'WebAssembly text'], ['matlab', 'MATLAB'],
-    ['vhdl', 'VHDL'], ['verilog', 'Verilog'], ['graphql', 'GraphQL'], ['yaml', 'YAML'],
-    ['toml', 'TOML'], ['xml', 'XML'], ['markdown', 'Markdown'], ['css', 'CSS'], ['html', 'HTML']
+    ['crystal', 'Crystal'], ['smalltalk', 'Smalltalk'], ['elm', 'Elm'], ['purescript', 'PureScript'],
+    ['reason', 'Reason'], ['solidity', 'Solidity'], ['vyper', 'Vyper'], ['assembly', 'Assembly'],
+    ['matlab', 'MATLAB'], ['vhdl', 'VHDL'], ['verilog', 'Verilog'], ['graphql', 'GraphQL'], ['html', 'HTML']
   ].map(([id, name]) => [id, name, 'editor-only', 'Editor / download only (no local compiler installed)', ''])
 ].map(([id, name, status, note, sample]) => ({ id, name, status, note, sample }));
 
@@ -134,17 +154,22 @@ export function mountCode(id, root) {
   });
 
   if (id === 'codehub') {
-    const featuredIds = ['javascript', 'typescript', 'python', 'sql', 'lua', 'bash', 'web', 'json', 'brainfuck', 'lisp', 'forth', 'basic'];
+    const featuredIds = ['javascript', 'luau', 'haskell', 'ruby', 'php', 'sql', 'python', 'cpp', 'c', 'typescript', 'clojure', 'prolog', 'wasm', 'lua', 'bash', 'web'];
     let currentLang = 'javascript';
+    let showAllRunnable = false;
     const drafts = new Map();
 
-    const filterIn = textIn('', 'Filter all 75 languages… e.g. rust, python, sql');
+    const filterIn = textIn('', `Filter all ${catalogue.length} languages… e.g. luau, haskell, ruby, php, sql`);
     const langChips = gameTabs(
       featuredIds.map(lid => [lid, catalogue.find(x => x.id === lid).name]),
       currentLang,
       val => switchLang(val),
       'Quick Runtime Switcher'
     );
+    const runnableToggle = gameToggle('Show All 42 Runnable Languages', false, val => {
+      showAllRunnable = val;
+      buildMoreChips(filterIn.value);
+    });
     const moreTray = gEl('div', { class: 'gtabs code-lang-drawer', hidden: true });
     const statusBadge = gEl('div', { class: 'pastel-card peach' });
 
@@ -166,12 +191,15 @@ export function mountCode(id, root) {
 
     function buildMoreChips(q) {
       const ql = q.trim().toLowerCase();
-      moreTray.hidden = !ql;
-      if (!ql) return;
-      const matches = catalogue.filter(l => l.name.toLowerCase().includes(ql) || l.id.includes(ql)).slice(0, 24);
+      moreTray.hidden = !ql && !showAllRunnable;
+      if (moreTray.hidden) return;
+      const matches = (ql
+        ? catalogue.filter(l => l.name.toLowerCase().includes(ql) || l.id.includes(ql))
+        : catalogue.filter(l => l.status !== 'editor-only')
+      ).slice(0, 48);
       moreTray.replaceChildren(...matches.map(l => {
-        const b = gameBtn(`${l.name} (${l.status})`, l.id === currentLang ? 'primary' : 'chip', () => switchLang(l.id));
-        return b;
+        const tag = l.status === 'editor-only' ? 'editor' : 'run';
+        return gameBtn(`${l.name} (${tag})`, l.id === currentLang ? 'primary' : 'chip', () => switchLang(l.id));
       }));
     }
 
@@ -183,6 +211,7 @@ export function mountCode(id, root) {
       editor.value = drafts.get(nextId) ?? catalogue.find(l => l.id === nextId).sample;
       result.textContent = '';
       renderMeta();
+      if (!moreTray.hidden) buildMoreChips(filterIn.value);
     }
 
     const runBtn = gameBtn('▶ Run Code', 'primary', async () => {
@@ -206,10 +235,16 @@ export function mountCode(id, root) {
           result.textContent = 'Sandbox preview running:';
         } else {
           assert(l.status !== 'editor-only', 'No local compiler installed for this language (editing only).');
-          await workerJob(scope, l.id, ensure(editor.value), {}, stdinIn.value, l.id === 'python' ? 45000 : 5000, s => {
-            if (token === runId && result.textContent.length < 100000) result.textContent += s + '\n';
+          const slowWasm = new Set(['python', 'haskell', 'php', 'luau', 'jq', 'sass']);
+          result.textContent = slowWasm.has(l.id) ? `Loading ${l.name} runtime…\n` : '';
+          let firstLog = true;
+          await workerJob(scope, l.id, ensure(editor.value), {}, stdinIn.value, slowWasm.has(l.id) ? 45000 : 8000, s => {
+            if (token === runId && result.textContent.length < 100000) {
+              if (firstLog && slowWasm.has(l.id)) { result.textContent = ''; firstLog = false; }
+              result.textContent += s + '\n';
+            }
           });
-          if (token === runId && !result.textContent) result.textContent = 'Completed (no output).';
+          if (token === runId && (!result.textContent || (firstLog && slowWasm.has(l.id)))) result.textContent = 'Completed (no output).';
           playSparkle();
         }
       } catch (e) {
@@ -243,7 +278,8 @@ export function mountCode(id, root) {
 
     panel.append(
       langChips.el,
-      gameField(`Search All ${catalogue.length} Languages`, filterIn),
+      runnableToggle.el,
+      gameField(`Search All ${catalogue.length} Languages (42 Runnable Offline)`, filterIn),
       moreTray,
       statusBadge,
       editorField,

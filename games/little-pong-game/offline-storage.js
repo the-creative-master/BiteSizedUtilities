@@ -1,2 +1,0 @@
-/* First-party sandbox compatibility: session-only storage, never escapes iframe. */
-(()=>{const data=Object.create(null);const storage=new Proxy({getItem:k=>data[k]??null,setItem:(k,v)=>{data[k]=String(v)},removeItem:k=>{delete data[k]},clear:()=>{for(const k of Object.keys(data))delete data[k]},key:i=>Object.keys(data)[i]??null},{get:(o,k)=>k==='length'?Object.keys(data).length:k in o?o[k]:data[k],set:(o,k,v)=>(data[k]=String(v),true)});for(const k of ['localStorage','sessionStorage'])try{Object.defineProperty(window,k,{value:storage,configurable:true})}catch{};})();

@@ -32,8 +32,53 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8'
 };
 
+function attachLocalModelRoutes(middlewares) {
+  const sdRoot = path.resolve('.cache/waffle-ai/sd-models');
+  const ortRoot = path.resolve('node_modules/onnxruntime-web/dist');
+  const mounts = [
+    ['/api/waffle-ai/sd-models/', sdRoot, 'public, max-age=86400'],
+    ['/ort/', ortRoot, 'public, max-age=86400'],
+    ['/runtimes/', path.resolve('runtimes'), 'no-cache'],
+    ['/games/', path.resolve('games'), 'no-cache']
+  ];
+
+  middlewares.use((req, res, next) => {
+    let pathname;
+    try {
+      pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+    } catch {
+      return next();
+    }
+    for (const [marker, rootDir, cacheCtl] of mounts) {
+      const offset = pathname.indexOf(marker);
+      if (offset < 0) continue;
+      const file = path.resolve(rootDir, pathname.slice(offset + marker.length));
+      if (!file.startsWith(rootDir + path.sep)) {
+        res.statusCode = 403;
+        res.end('Forbidden');
+        return;
+      }
+      if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return next();
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cache-Control', cacheCtl);
+      res.setHeader('Content-Type', MIME[path.extname(file).toLowerCase()] || 'application/octet-stream');
+      fs.createReadStream(file).on('error', () => {
+        res.statusCode = 500;
+        res.end();
+      }).pipe(res);
+      return;
+    }
+    next();
+  });
+}
+
 export default defineConfig({
   base: './',
+  resolve: {
+    alias: {
+      'onnxruntime-node': path.resolve('waffle-ort-empty.js')
+    }
+  },
   server: { host: '0.0.0.0', allowedHosts: true },
   preview: { host: '0.0.0.0', allowedHosts: true },
   build: { target: 'es2022', chunkSizeWarningLimit: 1200 },
@@ -43,11 +88,6 @@ export default defineConfig({
       attachWaffleAiMiddleware(server.middlewares);
       scheduleWaffleWarmup(1500);
 
-      // Serve runtimes and standalone sandboxed games byte-for-byte so Vite's HTML parser and HMR client never interfere.
-      const mounts = [
-        ['/runtimes/', path.resolve('runtimes')],
-        ['/games/', path.resolve('games')]
-      ];
       server.middlewares.use((req, res, next) => {
         let pathname;
         try {
@@ -62,34 +102,27 @@ export default defineConfig({
           res.end(`self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',e=>{e.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.map(k=>caches.delete(k)));await self.registration.unregister();const cs=await self.clients.matchAll({type:'window'});for(const c of cs)c.navigate(c.url);})())});`);
           return;
         }
-        for (const [marker, rootDir] of mounts) {
-          const offset = pathname.indexOf(marker);
-          if (offset < 0) continue;
-          const file = path.resolve(rootDir, pathname.slice(offset + marker.length));
-          if (!file.startsWith(rootDir + path.sep)) {
-            res.statusCode = 403;
-            res.end('Forbidden');
-            return;
-          }
-          if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return next();
-          res.setHeader('Access-Control-Allow-Origin', '*');
-          res.setHeader('Content-Type', MIME[path.extname(file).toLowerCase()] || 'application/octet-stream');
-          fs.createReadStream(file).on('error', () => {
-            res.statusCode = 500;
-            res.end();
-          }).pipe(res);
-          return;
-        }
         next();
       });
+      attachLocalModelRoutes(server.middlewares);
     },
     configurePreviewServer(server) {
       attachWaffleAiMiddleware(server.middlewares);
       scheduleWaffleWarmup(1500);
+      attachLocalModelRoutes(server.middlewares);
     },
     closeBundle() {
       for (const dir of ['games', 'runtimes']) {
         if (fs.existsSync(dir)) fs.cpSync(dir, `dist/${dir}`, { recursive: true });
+      }
+      const ortDist = path.resolve('node_modules/onnxruntime-web/dist');
+      if (fs.existsSync(ortDist)) {
+        fs.mkdirSync('dist/ort', { recursive: true });
+        for (const f of fs.readdirSync(ortDist)) {
+          if (/^ort-wasm.*\.(wasm|mjs|js)$/.test(f)) {
+            fs.copyFileSync(path.join(ortDist, f), path.join('dist/ort', f));
+          }
+        }
       }
       // Cache the application shell, not hundreds of megabytes of optional games/runtimes.
       const files = [];
@@ -101,7 +134,7 @@ export default defineConfig({
         }
       }
       walk('dist');
-      const shell = files.filter(p => !p.startsWith('./games/') && !p.startsWith('./runtimes/') && p !== './sw.js');
+      const shell = files.filter(p => !p.startsWith('./games/') && !p.startsWith('./runtimes/') && !p.startsWith('./ort/') && p !== './sw.js');
       const version = 'bite-' + Date.now();
       fs.writeFileSync('dist/sw.js', `const CACHE=${JSON.stringify(version)};const SHELL=${JSON.stringify(shell)};self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('bite-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.origin!==location.origin||u.pathname.startsWith('/api/'))return;e.respondWith(fetch(e.request).then(r=>{if(r.ok&&r.type==='basic'){const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy)).catch(()=>{})}return r}).catch(()=>caches.match(e.request).then(hit=>hit||(e.request.mode==='navigate'?caches.match('./index.html'):Response.error()))))});`);
     }

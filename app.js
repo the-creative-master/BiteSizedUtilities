@@ -485,6 +485,13 @@ function toast(msg) {
 }
 
 window.addEventListener('hashchange', route);
+window.addEventListener('waffle-open-art-studio', e => {
+  const dataUrl = e?.detail?.dataUrl;
+  if (dataUrl) {
+    try { sessionStorage.setItem('waffle-art-import', dataUrl); } catch {}
+  }
+  openTool('art-studio');
+});
 bindActions();
 route();
 

@@ -154,4 +154,16 @@ test('Waffle AI chatbot, streaming code boxes, DOCX creation/parsing, single Waf
   const docx = createDocxBytes('# Cozy Test\n\nHello **Waffle**!', 'Cozy Test');
   const parsed = await extractTextFromDocxBuffer(docx.buffer);
   assert.ok(parsed.includes('Cozy Test') && parsed.includes('Hello Waffle!'));
+
+  const englishSrc = fs.readFileSync('tools-english.js', 'utf8');
+  assert.ok(englishSrc.includes('translate.googleapis.com/translate_a/single'), 'Waffle Translate uses Google Translate API');
+
+  const { TEXT_MODELS } = await import('../waffle-browser-ai.js');
+  assert.ok(TEXT_MODELS.length >= 6, 'Waffle AI exposes multiple chat AI models');
+
+  const { IMAGE_MODELS } = await import('../waffle-image-gen.js');
+  assert.ok(IMAGE_MODELS.some(m => m.id === 'sdxs-512') && IMAGE_MODELS.some(m => m.id === 'sd-turbo'), 'Waffle AI exposes SDXS-512 and SD-Turbo image generation');
+  assert.ok(fs.existsSync('.cache/waffle-ai/sd-models/studio-ai/models/tok/vocab.json'), 'CLIP tokenizer for SD models is pre-cached');
+  assert.ok(fs.existsSync('.cache/waffle-ai/sd-models/studio-ai-hq1/unet/m.000'), 'SD-Turbo weights are pre-cached');
+  assert.ok(fs.existsSync('.cache/waffle-ai/sd-models/studio-ai-t2i/t2i09/unet09/q.004'), 'SDXS-512 weights are pre-cached');
 });

@@ -602,6 +602,20 @@ function artStudio(ctx, pixel = false) {
     applyPixelBg();
   } else {
     c.style.background = paperBgMap.Cream.css;
+    try {
+      const pendingImport = sessionStorage.getItem('waffle-art-import');
+      if (pendingImport) {
+        sessionStorage.removeItem('waffle-art-import');
+        const im = new Image();
+        im.onload = () => {
+          const sc = Math.min(c.width / im.naturalWidth, c.height / im.naturalHeight);
+          const w = im.naturalWidth * sc, h = im.naturalHeight * sc;
+          g.drawImage(im, (c.width - w) / 2, (c.height - h) / 2, w, h);
+          ctx.say('Loaded Waffle AI image onto Art Studio canvas!');
+        };
+        im.src = pendingImport;
+      }
+    } catch {}
   }
 
   const mirrorPoints = pt => {

@@ -13,8 +13,34 @@ const ENGLISH_IDS = [
 const LANGUAGES = [
   'Spanish', 'French', 'German', 'Japanese', 'Korean',
   'Mandarin Chinese', 'Arabic', 'Hindi', 'Portuguese', 'Italian',
-  'Russian', 'Dutch', 'Turkish', 'English'
+  'Russian', 'Dutch', 'Turkish', 'Vietnamese', 'English'
 ];
+
+const LANG_CODES = {
+  'Auto Detect': 'auto',
+  English: 'en',
+  Spanish: 'es',
+  French: 'fr',
+  German: 'de',
+  Japanese: 'ja',
+  Korean: 'ko',
+  'Mandarin Chinese': 'zh-CN',
+  Arabic: 'ar',
+  Hindi: 'hi',
+  Portuguese: 'pt',
+  Italian: 'it',
+  Russian: 'ru',
+  Dutch: 'nl',
+  Turkish: 'tr',
+  Vietnamese: 'vi'
+};
+
+const CODE_NAMES = Object.fromEntries(
+  Object.entries(LANG_CODES).filter(([, v]) => v !== 'auto').map(([k, v]) => [v.toLowerCase(), k])
+);
+CODE_NAMES.zh = 'Mandarin Chinese';
+CODE_NAMES['zh-cn'] = 'Mandarin Chinese';
+CODE_NAMES['zh-tw'] = 'Traditional Chinese';
 
 function area(val = '', rows = 5, placeholder = '') {
   const t = gEl('textarea', { class: 'ginput', rows: String(rows), placeholder });
@@ -113,28 +139,138 @@ function attachUpload(areaEl, label = '📎 Load .docx / .txt / .md') {
 }
 
 function mountTranslate(form, run) {
-  const srcLang = gameTabs(['Auto Detect', 'English', 'Spanish', 'French', 'German', 'Japanese', 'Korean', 'Mandarin Chinese', 'Arabic'], 'Auto Detect', null, 'From Language');
+  const srcLang = gameTabs(['Auto Detect', 'English', 'Spanish', 'French', 'German', 'Japanese', 'Korean', 'Mandarin Chinese', 'Arabic', 'Vietnamese'], 'Auto Detect', null, 'From Language');
   const dstLang = gameTabs(LANGUAGES, 'Spanish', null, 'Translate To');
-  const formality = gameTabs(['Natural', 'Casual', 'Polite / Formal'], 'Natural', null, 'Style');
-  const notesTog = gameToggle('Include pronunciation & grammar notes', true);
+  const engineTabs = gameTabs(['Google Translate', 'Waffle AI (Strict)'], 'Google Translate', null, 'Engine');
   const src = area('Good morning! Where is the coziest waffle bakery nearby?', 4, 'Type or paste text to translate…');
   const uploadPill = attachUpload(src);
 
-  const go = () => {
+  let lastTranslation = '';
+  let lastLangCode = 'es';
+  let activeAbort = null;
+  form.addEventListener('tool-dispose', () => activeAbort?.abort());
+
+  const gCard = gEl('div', { class: 'pastel-card cream eng-output-card', hidden: true });
+  const gMeta = gEl('div', { class: 'eng-tr-meta' });
+  const gResult = gEl('div', { class: 'eng-tr-result' });
+  const gRoman = gEl('div', { class: 'eng-tr-roman', hidden: true });
+  const gDict = gEl('div', { class: 'eng-tr-dict', hidden: true });
+
+  const copyBtn = gameBtn('📋 Copy', 'chip', async () => {
+    if (!lastTranslation) return;
+    await navigator.clipboard?.writeText(lastTranslation).catch(() => {});
+    copyBtn.textContent = 'Copied!';
+    setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 1200);
+  });
+  const speakBtn = gameBtn('🔊 Pronounce', 'chip', () => {
+    if (!lastTranslation || typeof speechSynthesis === 'undefined') return;
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(lastTranslation);
+      u.lang = lastLangCode;
+      speechSynthesis.speak(u);
+      playPop(640);
+    } catch {}
+  });
+  const docxBtn = gameBtn('⬇ Save .docx', 'chip', () => {
+    if (!lastTranslation) return;
+    playPop(620);
+    triggerFileDownload(createDocxBlob(lastTranslation, `Waffle Translate (${dstLang.value})`), 'waffle-translation.docx');
+  });
+  const gActions = gEl('div', { class: 'gtabs eng-out-actions' }, copyBtn, speakBtn, docxBtn);
+  gCard.append(gMeta, gResult, gRoman, gDict, gActions);
+
+  async function translateWithGoogle(text, sl, tl, signal) {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sl)}&tl=${encodeURIComponent(tl)}&dt=t&dt=rm&dt=bd&q=${encodeURIComponent(text)}`;
+    const res = await fetch(url, { signal });
+    if (!res.ok) throw new Error(`Google Translate HTTP ${res.status}`);
+    const data = await res.json();
+    const sentences = Array.isArray(data?.[0]) ? data[0] : [];
+    const translated = sentences.map(s => (Array.isArray(s) && typeof s[0] === 'string' ? s[0] : '')).join('').trim();
+    const romanization = sentences
+      .map(s => (Array.isArray(s) && typeof s[2] === 'string' ? s[2] : ''))
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    const detectedCode = typeof data?.[2] === 'string' ? data[2] : sl;
+    const dictItems = Array.isArray(data?.[1])
+      ? data[1].slice(0, 3).map(entry => ({
+          pos: entry[0] || '',
+          terms: Array.isArray(entry[1]) ? entry[1].slice(0, 4) : []
+        })).filter(e => e.terms.length)
+      : [];
+    return { translated, romanization, detectedCode, dictItems };
+  }
+
+  const runStrictAI = (text, note) => {
+    gCard.hidden = true;
+    run.ask({
+      systemPrompt: 'You are a strict translator. Output ONLY the exact translated text. Never explain, never add notes, never add commentary.',
+      userPrompt: `Translate from ${srcLang.value} to ${dstLang.value}:\n${text}`,
+      temperature: 0.15,
+      maxTokens: 400,
+      onDone(out) {
+        lastTranslation = out.trim();
+        lastLangCode = LANG_CODES[dstLang.value] || 'en';
+        if (note) {
+          gMeta.textContent = note;
+        }
+      }
+    });
+  };
+
+  const go = async () => {
     const text = src.value.trim();
     if (!text) return;
     playPop(560);
-    run.ask({
-      systemPrompt: 'You are Waffle Translate, a precise, natural multilingual translator powered by Qwen 2.5 1.5B. Provide accurate, idiomatic translations in clean Markdown.',
-      userPrompt: [
-        `Translate from ${srcLang.value} to ${dstLang.value} in a ${formality.value} tone.`,
-        notesTog.checked
-          ? 'Format as:\n### Translation\n<translated text>\n\n### Pronunciation & Notes\n<phonetic reading or brief cultural/grammar tip>'
-          : 'Output only the translated text clearly.',
-        `\nText:\n${text}`
-      ].join('\n'),
-      temperature: 0.3
-    });
+
+    if (engineTabs.value !== 'Google Translate') {
+      runStrictAI(text);
+      return;
+    }
+
+    activeAbort?.abort();
+    const ac = new AbortController();
+    activeAbort = ac;
+    run.outBox.hidden = true;
+    gCard.hidden = false;
+    gMeta.textContent = '🌐 Google Translate · Translating…';
+    gResult.textContent = '';
+    gRoman.hidden = true;
+    gDict.hidden = true;
+
+    const sl = LANG_CODES[srcLang.value] || 'auto';
+    const tl = LANG_CODES[dstLang.value] || 'es';
+    lastLangCode = tl;
+
+    try {
+      const res = await translateWithGoogle(text, sl, tl, ac.signal);
+      if (!res.translated) throw new Error('Empty response');
+      lastTranslation = res.translated;
+      const detectedLabel = CODE_NAMES[String(res.detectedCode || '').toLowerCase()] || res.detectedCode;
+      gMeta.textContent = sl === 'auto' && detectedLabel
+        ? `🌐 Google Translate · Detected: ${detectedLabel} → ${dstLang.value}`
+        : `🌐 Google Translate · ${srcLang.value} → ${dstLang.value}`;
+      gResult.textContent = res.translated;
+
+      if (res.romanization && res.romanization.toLowerCase() !== res.translated.toLowerCase()) {
+        gRoman.textContent = `Pronunciation: ${res.romanization}`;
+        gRoman.hidden = false;
+      }
+      if (res.dictItems.length) {
+        gDict.innerHTML = res.dictItems
+          .map(d => `<span class="eng-dict-chip"><b>${d.pos}:</b> ${d.terms.join(', ')}</span>`)
+          .join('');
+        gDict.hidden = false;
+      }
+      playSparkle();
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      // Seamless fallback to strict translation-only AI if Google Translate is offline/blocked
+      runStrictAI(text, 'Offline fallback · Waffle AI (Strict)');
+    } finally {
+      if (activeAbort === ac) activeAbort = null;
+    }
   };
 
   const swapBtn = gameBtn('⇄ Swap Languages', 'chip', () => {
@@ -142,18 +278,19 @@ function mountTranslate(form, run) {
       const prevDst = dstLang.value;
       dstLang.value = srcLang.value;
       srcLang.value = prevDst;
+      if (lastTranslation) src.value = lastTranslation;
       playBoing();
     }
   });
 
   form.append(
+    engineTabs.el,
     srcLang.el,
     dstLang.el,
-    formality.el,
-    notesTog.el,
     uploadPill.el,
     gameField('Text to Translate', src),
-    gEl('div', { class: 'gtabs' }, gameBtn('✨ Translate with Waffle AI', 'primary', go), swapBtn),
+    gEl('div', { class: 'gtabs' }, gameBtn('🌐 Translate', 'primary', go), swapBtn),
+    gCard,
     run.outBox
   );
 }

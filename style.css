@@ -1255,11 +1255,24 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 
 /* Eight WAFFLE-CALC chassis: 2500 normal, 2200 slim, 2900 fat, 1900 sideways, each with a -PRO twin. */
 
-.calc-model-tabs { margin: 2px 0 0; }
+/* The switcher sits outside the calculator, on its own cream shelf panel, so it
+   reads as dark ink on cream rather than the pale type the coral body needs. */
 
-.calc-pro-hint { font-family: var(--body); font-size: 12px; color: #ffe9d6; text-shadow: 0 1px 0 rgba(79, 47, 35, 0.35); }
+.calc-picker { gap: 10px; }
 
-.calc-model-note { margin: 0 0 8px; font-family: var(--body); font-size: 12px; line-height: 1.45; color: #ffe9d6; text-shadow: 0 1px 0 rgba(79, 47, 35, 0.35); }
+.calc-picker-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; }
+
+.calc-picker-title { font-family: var(--display); font-size: 18px; color: var(--ink); }
+
+.calc-picker-sub { font-family: var(--body); font-size: 12px; color: var(--ink-soft); }
+
+.calc-picker-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+.calc-model-tabs { margin: 0; }
+
+.calc-pro-hint { font-family: var(--body); font-size: 12px; color: var(--ink-soft); }
+
+.calc-model-note { margin: 0; font-family: var(--body); font-size: 12px; line-height: 1.45; color: var(--ink-soft); }
 
 .calc-key.key-sci { background: #d9cdf2; box-shadow: 0 5px 0 #a68fd0; font-size: 16px; }
 

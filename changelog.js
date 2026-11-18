@@ -19,7 +19,7 @@ export const CHANGELOG = [
       {
         label: '\u{1F9EE} Eight calculators in one',
         items: [
-          'The Calculator is now a family of chassis you switch between at the top of the tool: WAFFLE-CALC-2500 Normal, 2200 Slim, 2900 Fat and 1900 Sideways, each of them also available as a -PRO model with the full scientific keypad. Your pick is remembered on this device.',
+          'The Calculator is now a family of chassis you pick from a shelf above the device, so the calculator face itself stays just a calculator: WAFFLE-CALC-2500 Normal, 2200 Slim, 2900 Fat and 1900 Sideways, each of them also available as a -PRO model with the full scientific keypad. Your pick is remembered on this device.',
           'Every chassis shares one honest maths engine, so -PRO is a keypad change and not a different calculator: sin, cos, tan, logs, roots, powers, factorial, memory and answer recall all evaluate the same way in all eight.',
           'The badge on the tool names the model you are holding, and a stored model that no longer exists falls back to the 2500 Normal rather than leaving a broken layout behind.'
         ]

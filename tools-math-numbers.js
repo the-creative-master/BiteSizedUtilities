@@ -375,6 +375,23 @@ function calculator(root) {
     if (e.key === 'Enter') { e.preventDefault(); evaluate(true); }
   });
 
+  // The model switcher is shelf furniture, not part of the device. It lives in
+  // its own panel above the calculator so the calculator's face is only ever
+  // calculator: screws, model plate, angle switch, screen, tape and keys. That
+  // also stops the device growing a row of tabs every time a chassis is added.
+  const picker = el('div', { class: 'game-panel calc-picker' },
+    el('div', { class: 'calc-picker-head' },
+      el('span', { class: 'calc-picker-title' }, 'Which calculator?'),
+      el('span', { class: 'calc-picker-sub' }, 'Eight chassis, one honest maths engine')
+    ),
+    chassisTabs.el,
+    el('div', { class: 'calc-picker-row' },
+      proToggle.el,
+      el('span', { class: 'calc-pro-hint' }, 'PRO adds sin, cos, tan and the rest')
+    ),
+    modelNote
+  );
+
   const shell = el('div', { class: 'game-panel calc-shell' },
     el('div', { class: 'calc-top-row' },
       el('span', { class: 'toy-screw' }),
@@ -382,12 +399,6 @@ function calculator(root) {
       angleToggle.el,
       el('span', { class: 'toy-screw' })
     ),
-    chassisTabs.el,
-    el('div', { class: 'calc-top-row' },
-      proToggle.el,
-      el('span', { class: 'calc-pro-hint' }, 'PRO adds sin, cos, tan and the rest')
-    ),
-    modelNote,
     el('div', { class: 'calc-screen' },
       exprInput,
       resultOut
@@ -421,7 +432,7 @@ function calculator(root) {
   }
 
   applyLayout(false);
-  root.replaceChildren(shell);
+  root.replaceChildren(picker, shell);
   evaluate();
 }
 

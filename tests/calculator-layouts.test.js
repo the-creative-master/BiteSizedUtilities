@@ -207,6 +207,49 @@ test('all eight WAFFLE-CALC models mount with their own badge, key count and col
   }
 });
 
+test('the model switcher sits outside the calculator, on its own shelf panel', () => {
+  makeDOMShim();
+  const root = freshCalc();
+  const device = shell(root);
+  const picker = byClass(root, 'calc-picker')[0];
+
+  assert.ok(picker, 'there is a model picker panel');
+  assert.notEqual(picker, device, 'and it is not the calculator body');
+  assert.ok(picker.classes.includes('game-panel'), 'the picker is a panel in its own right');
+  assert.ok(!picker.classes.some(c => c.startsWith('calc-cols-') || /^calc-(slim|fat|sideways)$/.test(c)),
+    'the picker never wears the chassis geometry');
+
+  // Everything that switches models lives in the picker, nothing on the device.
+  for (const cls of ['calc-model-tabs', 'calc-pro-hint', 'calc-model-note']) {
+    assert.equal(byClass(device, cls).length, 0, `${cls} is not inside the calculator`);
+    assert.ok(byClass(picker, cls).length >= 1, `${cls} lives in the picker`);
+  }
+  assert.ok(byAria(picker, 'Scientific PRO keys'), 'the PRO switch is in the picker');
+  assert.ok(!byAria(device, 'Scientific PRO keys'), 'and not on the calculator face');
+  assert.equal(byClass(device, 'gtab').length, 0, 'the calculator face has no chassis tabs at all');
+
+  // The device keeps exactly what belongs to a calculator.
+  for (const cls of ['calc-top-row', 'calc-screen', 'calc-keypad', 'calc-tape']) {
+    assert.ok(byClass(device, cls).length >= 1, `${cls} stays on the calculator`);
+  }
+  assert.ok(byClass(device, 'gbadge').length === 1, 'the model plate stays on the calculator');
+  assert.equal(badge(root), 'WAFFLE-CALC-2500');
+  assert.ok(byAria(device, 'Angle unit'), 'RAD/DEG is an operating control, so it stays on the device');
+
+  // The picker is the first thing mounted, with the calculator under it.
+  const kids = root.children.filter(c => c.nodeType === 1);
+  assert.deepEqual(kids, [picker, device], 'the picker is mounted above the calculator');
+
+  // Switching from the shelf still re-shapes the device underneath it.
+  click(tabFor(root, '2900 Fat'));
+  click(proToggle(root));
+  assert.equal(badge(root), 'WAFFLE-CALC-2900-PRO', 'the badge on the device follows the shelf choice');
+  assert.ok(shell(root).classes.includes('calc-fat'), 'the device picks up the fat chassis');
+  assert.ok(shell(root).classes.includes('calc-cols-5'));
+  assert.ok(!picker.classes.includes('calc-fat'), 'while the shelf stays the same size');
+  assert.match(note(root), /^WAFFLE-CALC-2900-PRO \u00b7 40 keys \u00b7 /, 'and the note explains the new model');
+});
+
 test('every PRO scientific key computes instead of leaving a parse error', () => {
   makeDOMShim();
 

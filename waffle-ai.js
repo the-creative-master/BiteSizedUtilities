@@ -45,6 +45,7 @@ const LANG_EXT = {
 };
 
 let overlayEl = null;
+let lockedEl = null;
 let messages = [WELCOME_MSG];
 let attachments = [];
 let isGenerating = false;
@@ -55,6 +56,52 @@ let imageMode = false;
 let webSearchMode = false;
 let imageCaps = { hasWebGPU: false, hasF16: false };
 let deviceDiag = { hasWebGPU: false, isOldIOS: false, hasRisk: true, summaryLabel: 'Checking device…' };
+
+/**
+ * Waffle AI is paused in the public build.
+ *
+ * Open-source models in the browser turned into an endless stream of device,
+ * driver, memory and runtime bugs: models that download perfectly and then
+ * refuse to build a session, WebGPU adapters that abort the whole runtime,
+ * hosts with no cross-origin isolation. Rather than ship a feature that works
+ * on one machine in ten, every AI surface is switched off behind this one flag
+ * — the Sir Waffle chat, CodeHub's AI Error Diagnostics, and the AI writing
+ * helpers in English & Languages. Nothing half-works and nothing quietly
+ * guesses.
+ *
+ * `beta.html` puts `data-beta="1"` on <html>, which turns all of it back on for
+ * beta testers (reachable by tapping Sir Waffle ten times in three seconds).
+ * The gate is deliberately page-scoped rather than a stored preference, so the
+ * public kitchen can never leak AI back in from a stale localStorage value.
+ */
+export const WAFFLE_AI_LOCK_MESSAGE = 'I apologize for the inconvenience but WaffleAI isn\u2019t available due to countless bugs with open-source AI models. We will make it available in a later update.';
+
+export function isBetaTesting() {
+  if (typeof document === 'undefined') return false;
+  return document.documentElement?.dataset?.beta === '1';
+}
+
+export function isWaffleAiLocked() {
+  return !isBetaTesting();
+}
+
+/** Thrown by every AI entry point while paused, so callers can tell "locked" apart from "failed". */
+export class WaffleAiLockedError extends Error {
+  constructor(message = WAFFLE_AI_LOCK_MESSAGE) {
+    super(message);
+    this.name = 'WaffleAiLocked';
+  }
+}
+
+/** The one notice every locked AI surface shows. */
+export function waffleAiLockedNoticeHTML() {
+  return `
+    <div class="waffle-ai-locked-note">
+      <span class="waffle-ai-locked-icon" aria-hidden="true">🔒</span>
+      <p class="waffle-ai-locked-copy">${esc(WAFFLE_AI_LOCK_MESSAGE)}</p>
+    </div>
+  `;
+}
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -302,6 +349,10 @@ async function streamServerChat({ modelId, messages: msgList, systemPrompt, maxT
 }
 
 export async function streamWaffleChat({ modelId, messages: msgList, imageUrls = [], systemPrompt, maxTokens = 520, temperature = 0.7, signal, onStatus, onToken, onRuntime }) {
+  // One gate for every caller: the Sir Waffle chat, CodeHub's AI Error
+  // Diagnostics and the English tools' AI writing all come through here, so
+  // pausing the feature cannot leave a tool half-working.
+  if (isWaffleAiLocked()) throw new WaffleAiLockedError();
   const chosenId = modelId || getSelectedTextModel();
   const cfg = TEXT_MODELS.find(m => m.id === chosenId) || TEXT_MODELS[0];
   const mode = getSelectedExecutionMode();
@@ -465,6 +516,9 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
 }
 
 async function fetchStatus() {
+  // While paused there is nothing to report, and probing the API on a static
+  // host only produces a confusing 404/501 in the network log.
+  if (isWaffleAiLocked()) return;
   try {
     const r = await fetch('./api/waffle-ai/status', { cache: 'no-store' });
     const ct = r.headers.get('content-type') || '';
@@ -481,6 +535,8 @@ async function fetchStatus() {
 }
 
 export async function warmupWaffleAI() {
+  // No background AI work while the feature is paused.
+  if (isWaffleAiLocked()) return;
   try {
     const r = await fetch('./api/waffle-ai/warmup', { method: 'POST' });
     if (r.ok) {
@@ -1051,10 +1107,75 @@ async function sendMessage(rawText) {
 }
 
 export function closeWaffleAI() {
-  if (!overlayEl) return;
+  const closing = overlayEl || lockedEl;
+  if (!closing) return;
   if (activeAbort) activeAbort.abort();
-  overlayEl.hidden = true;
+  if (overlayEl) overlayEl.hidden = true;
+  if (lockedEl) lockedEl.hidden = true;
   document.body.classList.remove('waffle-modal-open');
+}
+
+/**
+ * The paused-AI notice. It reuses the `waffle-ai-overlay` id so i18n keeps
+ * skipping it and the kitchen's click-through guard still recognises it, and it
+ * keeps Sir Waffle on screen — tapping him is also how beta testers get in.
+ */
+function buildLockedOverlay() {
+  const wrap = document.createElement('div');
+  wrap.id = 'waffle-ai-overlay';
+  wrap.className = 'waffle-ai-overlay is-locked';
+  wrap.hidden = true;
+  wrap.innerHTML = `
+    <div class="waffle-ai-dialog waffle-ai-locked-dialog" role="dialog" aria-modal="true" aria-labelledby="waffle-ai-locked-title">
+      <div class="waffle-ai-header">
+        <div class="window-grab-pill" aria-hidden="true"></div>
+        <div class="waffle-ai-head-row">
+          <div class="waffle-ai-title-wrap">
+            <span class="waffle-ai-avatar" aria-hidden="true">${waffleMascotSVG('waffle-header-svg')}</span>
+            <div>
+              <h2 id="waffle-ai-locked-title" class="waffle-ai-title">Waffle AI is taking a break</h2>
+              <span class="waffle-ai-badge">Paused &middot; back in a later update</span>
+            </div>
+          </div>
+          <div class="waffle-ai-actions">
+            <button type="button" class="window-close-x" id="waffle-ai-locked-close" aria-label="Close">✕</button>
+          </div>
+        </div>
+      </div>
+      <div class="waffle-ai-locked-body">
+        <button type="button" class="waffle-ai-locked-mascot" id="waffle-ai-locked-mascot" data-waffle-tap
+                aria-label="Sir Waffle" title="Sir Waffle">
+          ${waffleMascotSVG('waffle-locked-svg')}
+        </button>
+        <p class="waffle-ai-locked-copy">${esc(WAFFLE_AI_LOCK_MESSAGE)}</p>
+        <ul class="waffle-ai-locked-list">
+          <li>The chat, CodeHub&rsquo;s AI Error Diagnostics, and the AI writing helpers in English &amp; Languages are all paused together.</li>
+          <li>Everything else in the kitchen &mdash; all 115 utilities and all 45 games &mdash; works exactly as before, on your device, with no account.</li>
+          <li>Nothing was deleted. The models and runtimes stay in the build so they can be switched back on when they behave.</li>
+        </ul>
+        <button type="button" class="gbtn gbtn-primary" id="waffle-ai-locked-done">Back to the Kitchen</button>
+      </div>
+    </div>
+  `;
+
+  wrap.addEventListener('click', e => {
+    if (e.target === wrap) closeWaffleAI();
+  });
+  wrap.querySelector('#waffle-ai-locked-close')?.addEventListener('click', () => { playPop(460); closeWaffleAI(); });
+  wrap.querySelector('#waffle-ai-locked-done')?.addEventListener('click', () => { playPop(460); closeWaffleAI(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && lockedEl && !lockedEl.hidden) closeWaffleAI();
+  });
+
+  document.body.append(wrap);
+  return wrap;
+}
+
+export function openLockedWaffleAI() {
+  if (!lockedEl) lockedEl = buildLockedOverlay();
+  lockedEl.hidden = false;
+  document.body.classList.add('waffle-modal-open');
+  setTimeout(() => lockedEl?.querySelector('#waffle-ai-locked-done')?.focus(), 40);
 }
 
 function buildOverlay() {
@@ -1208,6 +1329,8 @@ function buildOverlay() {
 }
 
 export function openWaffleAI() {
+  // Paused: show the notice instead of a chat that cannot answer.
+  if (isWaffleAiLocked()) { openLockedWaffleAI(); return; }
   if (!overlayEl) overlayEl = buildOverlay();
   overlayEl.hidden = false;
   document.body.classList.add('waffle-modal-open');

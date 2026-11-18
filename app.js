@@ -9,11 +9,12 @@ import { mountEnglish } from './tools-english.js';
 import { mountMusic } from './tools-music.js';
 import { mountVideo } from './tools-video.js';
 import { mountGames } from './games.js';
-import { openWaffleAI, warmupWaffleAI, isBetaTesting, getAvailableTextModels } from './waffle-ai.js';
+import { openWaffleAI, warmupWaffleAI, isBetaTesting, isWaffleAiLocked, WAFFLE_AI_LOCK_MESSAGE } from './waffle-ai.js';
 import { openChangelog } from './changelog.js';
 import { APP_LANGUAGES, getAppLanguage, setAppLanguage, initAppI18n } from './i18n.js';
 import { gameSlider } from './ui-kit.js';
 import {
+  TEXT_MODELS,
   EXECUTION_MODES,
   QUANT_PRESETS,
   getSelectedTextModel,
@@ -93,6 +94,7 @@ const ALL_CUPBOARDS = [
 ];
 
 const app = $('#app');
+const aiLocked = isWaffleAiLocked();
 
 app.innerHTML = `
   <div class="waffle-world" id="waffle-bg">
@@ -103,7 +105,7 @@ app.innerHTML = `
     ${isBetaTesting() ? `
     <div class="beta-banner" id="beta-banner" data-no-i18n>
       <span class="gbadge beta-banner-badge">🧪 BETA TESTING</span>
-      <span class="beta-banner-copy">All nine AI models are unlocked here, including the big experimental ones the public kitchen leaves out. Expect bugs — finding them is the whole point.</span>
+      <span class="beta-banner-copy">Waffle AI and every AI control are switched back on in this build. Expect bugs — finding them is the whole point.</span>
       <a class="gbtn gbtn-chip beta-banner-exit" href="./index.html">Leave beta</a>
     </div>` : ''}
     <header class="game-hud">
@@ -166,6 +168,7 @@ app.innerHTML = `
           <span class="gfield-label">Language</span>
           <div class="gtabs settings-lang-grid" id="settings-lang-list"></div>
         </div>
+        ${isBetaTesting() ? `
         <div class="gfield settings-ai-section" id="settings-ai-section" data-no-i18n>
           <span class="gfield-label">AI Models &amp; Device Fallbacks</span>
           <div class="waffle-disclaimer-box">
@@ -188,13 +191,8 @@ app.innerHTML = `
           <div class="waffle-precache" id="settings-ai-precache"></div>
           <div class="settings-sub-label">Temperature (Experienced Users Only)</div>
           <div id="settings-temp-wrap"></div>
-          ${isBetaTesting() ? '' : `
-          <p class="settings-ai-note" id="settings-ai-note">
-            The public kitchen offers the models under 1B parameters — the ones that
-            reliably start on real devices. Want the larger experimental models?
-            <button type="button" class="gbtn gbtn-chip" id="settings-beta-link">Tap Sir Waffle 10× to open beta testing</button>
-          </p>`}
         </div>
+        ` : ''}
       </div>
     </div>
 
@@ -236,12 +234,12 @@ app.innerHTML = `
       </div>
     </div>
 
-    <aside class="waffle-corner" aria-label="Waffle AI Button">
+    <aside class="waffle-corner" aria-label="${aiLocked ? 'Sir Waffle' : 'Waffle AI Button'}">
       <div class="counter-plate-wrap">
-        <button type="button" class="waffle-speech" id="waffle-speech" data-waffle-tap aria-label="Open Waffle AI chatbot">Touch me for Waffle AI!</button>
-        <button type="button" class="waffle-mascot-btn" id="waffle-mascot" data-waffle-tap aria-label="Open Waffle AI chatbot" title="Open Waffle AI!">
+        <button type="button" class="waffle-speech" id="waffle-speech" data-waffle-tap aria-label="${aiLocked ? 'Say hello to Sir Waffle' : 'Open Waffle AI chatbot'}">${aiLocked ? 'Tap Sir Waffle!' : 'Touch me for Waffle AI!'}</button>
+        <button type="button" class="waffle-mascot-btn" id="waffle-mascot" data-waffle-tap aria-label="${aiLocked ? 'Sir Waffle' : 'Open Waffle AI chatbot'}" title="${aiLocked ? 'Sir Waffle' : 'Open Waffle AI!'}">
           ${waffleMascotSVG()}
-          <span class="waffle-ai-tag" aria-hidden="true">Waffle AI</span>
+          ${aiLocked ? '' : '<span class="waffle-ai-tag" aria-hidden="true">Waffle AI</span>'}
         </button>
       </div>
     </aside>
@@ -291,6 +289,16 @@ async function triggerWallBounce(clientX, clientY) {
     toast(bounceStreak === 10 ? '🍯 ×10 Syrup Frenzy!' : '✨ ×5 Waffle Combo!');
   }
 
+  // AI-powered quips only exist in the beta build. While Waffle AI is paused
+  // the wall just bounces, and nothing reaches for a model or an endpoint.
+  if (aiLocked) {
+    speech.textContent = bounceStreak >= 10 ? '🍯 Syrup Frenzy!' : 'Boing!';
+    speech.classList.remove('pop-in');
+    void speech.offsetWidth;
+    speech.classList.add('pop-in');
+    return;
+  }
+
   if (wallQuipAbort) wallQuipAbort.abort();
   const ac = new AbortController();
   wallQuipAbort = ac;
@@ -329,15 +337,15 @@ $('#waffle-speech').addEventListener('click', handleOpenWaffleAI);
 /* The beta tester door. Ten taps on Sir Waffle within three seconds opens
  * BiteSizedUtilities Beta Testing, where Waffle AI and every AI control are
  * switched back on. Listened for in the capture phase because the mascot's own
- * handler calls stopPropagation(), so ten taps in three seconds still register
- * however eagerly the mascot's own handler swallows the event. */
+ * handler calls stopPropagation(), and it also counts taps on Sir Waffle inside
+ * the "Waffle AI is paused" notice, so the run does not have to restart. */
 const BETA_TAP_TARGET = 10;
 const BETA_TAP_WINDOW_MS = 3000;
 let betaTaps = [];
 
 function openBetaTesting() {
   playSparkle();
-  toast('🧪 Beta door unlocked — all nine AI models are live');
+  toast('🧪 Beta door unlocked — Waffle AI is back on');
   // Resolved against the document so it works from a GitHub Pages sub-path.
   setTimeout(() => { window.location.href = new URL('beta.html', document.baseURI).href; }, 260);
 }
@@ -783,7 +791,7 @@ function renderPrecachePanel() {
   const mb = b => (b > 0 ? `${Math.round(b / 1048576)} MB` : '?');
   const st = precacheState.storage;
 
-  const rows = getAvailableTextModels().filter(m => m.hfGgufRepo).map(m => {
+  const rows = TEXT_MODELS.filter(m => m.hfGgufRepo).map(m => {
     const entry = byRepo.get(m.hfGgufRepo);
     const cached = Boolean(entry?.usable);
     const busy = precacheState.busy === m.id;
@@ -915,8 +923,7 @@ function renderSettingsModal() {
   const textList = $('#settings-ai-text-list');
   if (textList) {
     const curText = getSelectedTextModel();
-    // Only models this build may offer. Beta unlocks the whole catalogue.
-    textList.innerHTML = getAvailableTextModels().map(m => `
+    textList.innerHTML = TEXT_MODELS.map(m => `
       <button type="button" class="gbtn waffle-model-pill ${curText === m.id ? 'selected' : ''}" data-set-text="${esc(m.id)}" title="${esc(m.desc)}">
         <strong>${esc(m.label)}</strong>
         <small>${esc(m.badge)}</small>
@@ -1042,6 +1049,9 @@ function renderSettingsModal() {
     }
   }
 
+  // Both probes only feed the AI panel, so skip them entirely while AI is paused.
+  if (!isBetaTesting()) return;
+
   detectDeviceDiagnostics().then(d => {
     const pill = $('#settings-device-pill');
     if (pill) {
@@ -1087,12 +1097,6 @@ $('#settings-toggle').addEventListener('click', () => openSettingsModal());
 $('#changelog-toggle')?.addEventListener('click', () => {
   playPop(600);
   openChangelog();
-});
-// Wired once here, not inside renderSettingsModal(): the note lives in the
-// Settings markup that is rendered a single time, so re-wiring it on every
-// settings refresh would stack up duplicate handlers.
-$('#settings-beta-link')?.addEventListener('click', () => {
-  openBetaTesting();
 });
 window.addEventListener('bite-open-settings', e => openSettingsModal(e?.detail?.section || ''));
 $('#settings-sound-toggle')?.addEventListener('click', () => {

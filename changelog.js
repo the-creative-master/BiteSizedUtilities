@@ -53,7 +53,7 @@ export const CHANGELOG = [
   },
   {
     version: '1.0',
-    date: 'November 2026',
+    date: 'November 16, 2026',
     title: 'Grand opening',
     groups: [
       {

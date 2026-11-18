@@ -1289,7 +1289,8 @@ function graphingCalculator(root) {
 }
 
 // =========================================================================
-// 3. BODILY CALCULATOR — Cozy Scale Dial Gauge + Custom Sliders
+// 3. BODILY CALCULATOR — Cozy Scale Dial Gauge, tape-test body fat and eleven
+//    more readings beside the BMI.
 // =========================================================================
 function bodilyCalculator(root) {
   let imperial = false;
@@ -1305,9 +1306,12 @@ function bodilyCalculator(root) {
     onChange: val => {
       playPop(520);
       imperial = val;
-      heightSlider.el.querySelector('.gslider-label').textContent = imperial ? 'Height (ft / in)' : 'Height (cm)';
-      weightSlider.el.querySelector('.gslider-label').textContent = imperial ? 'Weight (lb)' : 'Weight (kg)';
-      waistSlider.el.querySelector('.gslider-label').textContent = imperial ? 'Waist (in)' : 'Waist (cm)';
+      const label = (slider, metric, imp) => { slider.el.querySelector('.gslider-label').textContent = imperial ? imp : metric; };
+      label(heightSlider, 'Height (cm)', 'Height (ft / in)');
+      label(weightSlider, 'Weight (kg)', 'Weight (lb)');
+      label(waistSlider, 'Waist (cm)', 'Waist (in)');
+      label(neckSlider, 'Neck (cm)', 'Neck (in)');
+      label(hipSlider, 'Hip (cm)', 'Hip (in)');
       update();
     }
   });
@@ -1326,7 +1330,8 @@ function bodilyCalculator(root) {
       { value: '1.2', label: 'Cozy Rest' },
       { value: '1.375', label: 'Light Walk' },
       { value: '1.55', label: 'Active' },
-      { value: '1.725', label: 'Sporty' }
+      { value: '1.725', label: 'Sporty' },
+      { value: '1.9', label: 'Two-a-days' }
     ],
     value: '1.375',
     onChange: v => { playPop(560); activity = Number(v); update(); }
@@ -1336,14 +1341,26 @@ function bodilyCalculator(root) {
   const weightSlider = createGameSlider({ label: 'Weight (kg)', min: 35, max: 180, step: 0.5, value: 66, color: '#f7b2a6', onChange: () => update() });
   const ageSlider = createGameSlider({ label: 'Age (years)', min: 14, max: 95, step: 1, value: 26, color: '#ffe082', onChange: v => { age = v; update(); } });
   const waistSlider = createGameSlider({ label: 'Waist (cm)', min: 50, max: 140, step: 1, value: 76, color: '#b7dfb3', onChange: () => update() });
+  const neckSlider = createGameSlider({ label: 'Neck (cm)', min: 25, max: 60, step: 0.5, value: 33, color: '#dfd0f5', onChange: () => update() });
+  const hipSlider = createGameSlider({ label: 'Hip (cm)', min: 60, max: 150, step: 1, value: 95, color: '#ffd2b8', onChange: () => update() });
 
   const bmiValEl = el('div', { class: 'stat-big' }, '22.8');
   const bmiBadge = el('span', { class: 'gbadge' }, 'Cozy & Healthy');
   const dialWrap = el('div', { class: 'bmi-dial-wrap' });
   const bmrValEl = el('div', { class: 'stat-mid' });
+  const bmrHbEl = el('div', { class: 'stat-mid' });
   const tdeeValEl = el('div', { class: 'stat-mid' });
   const rangeValEl = el('div', { class: 'stat-mid' });
   const whtrValEl = el('div', { class: 'stat-mid' });
+  const fatValEl = el('div', { class: 'stat-mid' });
+  const leanValEl = el('div', { class: 'stat-mid' });
+  const idealValEl = el('div', { class: 'stat-mid' });
+  const bsaValEl = el('div', { class: 'stat-mid' });
+  const waterValEl = el('div', { class: 'stat-mid' });
+  const proteinValEl = el('div', { class: 'stat-mid' });
+  const primeValEl = el('div', { class: 'stat-mid' });
+  const ponderalValEl = el('div', { class: 'stat-mid' });
+  const whrValEl = el('div', { class: 'stat-mid' });
 
   function renderDial(bmi) {
     // Map BMI 12..40 to -78deg..+78deg
@@ -1362,26 +1379,57 @@ function bodilyCalculator(root) {
     </svg>`;
   }
 
+  /** US Navy tape test. Everything in centimetres; NaN when the tape readings cannot work. */
+  function bodyFatPercent(heightCm, waistCm, neckCm, hipCm) {
+    if (sex === 'male') {
+      const diff = waistCm - neckCm;
+      if (diff <= 0) return NaN;
+      return 495 / (1.0324 - 0.19077 * Math.log10(diff) + 0.15456 * Math.log10(heightCm)) - 455;
+    }
+    const diff = waistCm + hipCm - neckCm;
+    if (diff <= 0) return NaN;
+    return 495 / (1.29579 - 0.35004 * Math.log10(diff) + 0.221 * Math.log10(heightCm)) - 455;
+  }
+
+  function fatCategory(pct) {
+    if (!Number.isFinite(pct)) return '—';
+    const bands = sex === 'male'
+      ? [[6, 'Essential'], [14, 'Athletic'], [18, 'Fit'], [25, 'Average']]
+      : [[14, 'Essential'], [21, 'Athletic'], [25, 'Fit'], [32, 'Average']];
+    for (const [limit, name] of bands) if (pct < limit) return name;
+    return 'High';
+  }
+
+  /** A reading plus the unit it is in, so imperial mode never shows centimetres by accident. */
+  const lenText = cm => (imperial ? `${Math.round(cm / 2.54)} in` : `${Number(cm.toFixed(1))} cm`);
+  const massText = kg => (imperial ? `${Math.round(kg / 0.45359237)} lb` : `${Number(kg.toFixed(1))} kg`);
+
   function update() {
     const hVal = heightSlider.getValue();
     const wVal = weightSlider.getValue();
     const wsVal = waistSlider.getValue();
+    const nkVal = neckSlider.getValue();
+    const hpVal = hipSlider.getValue();
 
     const actualCm = imperial ? Math.round(48 + ((hVal - 120) / 100) * 38) * 2.54 : hVal;
     const actualKg = imperial ? Math.round(80 + ((wVal - 35) / 145) * 270) * 0.45359237 : wVal;
     const actualWaist = imperial ? Math.round(20 + ((wsVal - 50) / 90) * 36) * 2.54 : wsVal;
+    const actualNeck = imperial ? Math.round(10 + ((nkVal - 25) / 35) * 14) * 2.54 : nkVal;
+    const actualHip = imperial ? Math.round(24 + ((hpVal - 60) / 90) * 36) * 2.54 : hpVal;
 
     if (imperial) {
       const inches = Math.round(actualCm / 2.54);
-      const lbs = Math.round(actualKg / 0.45359237);
-      const wIn = Math.round(actualWaist / 2.54);
       heightSlider.el.querySelector('.gslider-badge').textContent = `${Math.floor(inches / 12)}'${inches % 12}"`;
-      weightSlider.el.querySelector('.gslider-badge').textContent = `${lbs} lb`;
-      waistSlider.el.querySelector('.gslider-badge').textContent = `${wIn} in`;
+      weightSlider.el.querySelector('.gslider-badge').textContent = `${Math.round(actualKg / 0.45359237)} lb`;
+      waistSlider.el.querySelector('.gslider-badge').textContent = `${Math.round(actualWaist / 2.54)} in`;
+      neckSlider.el.querySelector('.gslider-badge').textContent = `${Math.round(actualNeck / 2.54)} in`;
+      hipSlider.el.querySelector('.gslider-badge').textContent = `${Math.round(actualHip / 2.54)} in`;
     } else {
       heightSlider.el.querySelector('.gslider-badge').textContent = `${actualCm} cm`;
       weightSlider.el.querySelector('.gslider-badge').textContent = `${actualKg} kg`;
       waistSlider.el.querySelector('.gslider-badge').textContent = `${actualWaist} cm`;
+      neckSlider.el.querySelector('.gslider-badge').textContent = `${actualNeck} cm`;
+      hipSlider.el.querySelector('.gslider-badge').textContent = `${actualHip} cm`;
     }
 
     const m = actualCm / 100;
@@ -1397,18 +1445,46 @@ function bodilyCalculator(root) {
     bmiBadge.textContent = cat;
     bmiBadge.style.background = badgeBg;
 
+    // Mifflin-St Jeor, which is what the kitchen has always used.
     const bmr = 10 * actualKg + 6.25 * actualCm - 5 * age + (sex === 'male' ? 5 : -161);
+    // Harris-Benedict revised, as a second opinion — the two disagree by a few
+    // percent and seeing both is more honest than pretending one is the truth.
+    const bmrHb = sex === 'male'
+      ? 88.362 + 13.397 * actualKg + 4.799 * actualCm - 5.677 * age
+      : 447.593 + 9.247 * actualKg + 3.098 * actualCm - 4.33 * age;
     const tdee = bmr * activity;
     const lowKg = 18.5 * m * m;
     const highKg = 24.9 * m * m;
     const whtr = actualWaist / actualCm;
+    const whr = actualWaist / actualHip;
+
+    const fatPct = bodyFatPercent(actualCm, actualWaist, actualNeck, actualHip);
+    const leanKg = Number.isFinite(fatPct) ? actualKg * (1 - fatPct / 100) : NaN;
+    const inchesOver60 = actualCm / 2.54 - 60;
+    const idealKg = (sex === 'male' ? 50 : 45.5) + 2.3 * Math.max(0, inchesOver60);
+    const bsa = Math.sqrt((actualCm * actualKg) / 3600);          // Mosteller
+    const waterL = (actualKg * 35) / 1000;                        // 35 mL per kg
+    const prime = bmi / 25;
+    const ponderal = actualKg / (m * m * m);
 
     bmrValEl.textContent = `${Math.round(bmr)} kcal/day`;
+    bmrHbEl.textContent = `${Math.round(bmrHb)} kcal/day`;
     tdeeValEl.textContent = `${Math.round(tdee)} kcal/day`;
     rangeValEl.textContent = imperial
       ? `${Math.round(lowKg / 0.45359237)}–${Math.round(highKg / 0.45359237)} lb`
       : `${lowKg.toFixed(1)}–${highKg.toFixed(1)} kg`;
     whtrValEl.textContent = `${whtr.toFixed(2)} ${whtr < 0.5 ? '(Balanced)' : '(Elevated)'}`;
+    whrValEl.textContent = `${whr.toFixed(2)} ${whr < (sex === 'male' ? 0.9 : 0.85) ? '(Balanced)' : '(Elevated)'}`;
+    fatValEl.textContent = Number.isFinite(fatPct)
+      ? `${Math.max(0, fatPct).toFixed(1)}% (${fatCategory(Math.max(0, fatPct))})`
+      : 'Check the tape readings';
+    leanValEl.textContent = Number.isFinite(leanKg) ? massText(leanKg) : '—';
+    idealValEl.textContent = `${massText(idealKg)} (Devine)`;
+    bsaValEl.textContent = `${bsa.toFixed(2)} m² (Mosteller)`;
+    waterValEl.textContent = `${waterL.toFixed(1)} L/day`;
+    proteinValEl.textContent = `${Math.round(actualKg * 0.8)}–${Math.round(actualKg * 1.6)} g/day`;
+    primeValEl.textContent = `${prime.toFixed(2)} ${prime < 0.74 ? '(Light)' : prime <= 1 ? '(Cozy)' : prime <= 1.2 ? '(Slightly over)' : '(High)'}`;
+    ponderalValEl.textContent = `${ponderal.toFixed(1)} kg/m³`;
   }
 
   const cuteHeaderIcon = `<svg class="game-svg body-icon" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="26" fill="#ffd9c8" stroke="${INK}" stroke-width="3.5"/><path d="M32 46 C32 46 17 36 17 27 C17 22.5 20.5 19.5 24.5 19.5 C27.8 19.5 30.4 21.6 32 24.2 C33.6 21.6 36.2 19.5 39.5 19.5 C43.5 19.5 47 22.5 47 27 C47 36 32 46 32 46Z" fill="#ff8f8f" stroke="${INK}" stroke-width="3"/></svg>`;
@@ -1428,8 +1504,11 @@ function bodilyCalculator(root) {
         weightSlider.el,
         ageSlider.el,
         waistSlider.el,
+        neckSlider.el,
+        hipSlider.el,
         el('div', { class: 'gfield-label' }, 'Daily Activity'),
-        activityTabs.el
+        activityTabs.el,
+        el('p', { class: 'body-note' }, 'Neck and hip feed the US Navy tape test. Hip is only used for the female formula. These are cozy estimates, not medical advice.')
       ),
       el('div', { class: 'pastel-card cream' },
         el('div', { class: 'bmi-card' },
@@ -1439,10 +1518,20 @@ function bodilyCalculator(root) {
           bmiBadge
         ),
         el('div', { class: 'stat-grid' },
-          el('div', { class: 'stat-box' }, el('span', {}, '🔥 Resting BMR'), bmrValEl),
+          el('div', { class: 'stat-box' }, el('span', {}, '🔥 Resting BMR (Mifflin)'), bmrValEl),
+          el('div', { class: 'stat-box' }, el('span', {}, '🔥 Resting BMR (Harris-Benedict)'), bmrHbEl),
           el('div', { class: 'stat-box' }, el('span', {}, '⚡ Daily Calories'), tdeeValEl),
           el('div', { class: 'stat-box' }, el('span', {}, '⚖️ Healthy Weight'), rangeValEl),
-          el('div', { class: 'stat-box' }, el('span', {}, '📏 Waist / Height'), whtrValEl)
+          el('div', { class: 'stat-box' }, el('span', {}, '🥧 Body Fat (Navy)'), fatValEl),
+          el('div', { class: 'stat-box' }, el('span', {}, '🥩 Lean Mass'), leanValEl),
+          el('div', { class: 'stat-box' }, el('span', {}, '🎯 Ideal Weight'), idealValEl),
+          el('div', { class: 'stat-box' }, el('span', {}, '📐 Body Surface Area'), bsaValEl),
+          el('div', { class: 'stat-box' }, el('span', {}, '📏 Waist / Height'), whtrValEl),
+          el('div', { class: 'stat-box' }, el('span', {}, '📏 Waist / Hip'), whrValEl),
+          el('div', { class: 'stat-box' }, el('span', {}, '📊 BMI Prime'), primeValEl),
+          el('div', { class: 'stat-box' }, el('span', {}, '📏 Ponderal Index'), ponderalValEl),
+          el('div', { class: 'stat-box' }, el('span', {}, '💧 Daily Water'), waterValEl),
+          el('div', { class: 'stat-box' }, el('span', {}, '🍗 Protein Target'), proteinValEl)
         )
       )
     )
@@ -1452,7 +1541,8 @@ function bodilyCalculator(root) {
 }
 
 // =========================================================================
-// 4. FRACTION CALCULATOR — Wooden Bakery Fraction Blocks & Pie
+// 4. FRACTION CALCULATOR — Wooden Bakery Fraction Blocks: eight operations,
+//    three pies, the working shown, and a strip of facts about A and B.
 // =========================================================================
 function gcdBig(a, b) {
   a = a < 0n ? -a : a;
@@ -1498,7 +1588,9 @@ function fractions(root) {
   let op = '+';
   const resultFrac = el('div', { class: 'frac-result-big' });
   const resultDetail = el('div', { class: 'output', 'aria-live': 'polite' });
-  const pieWrap = el('div', { class: 'frac-pie-wrap' });
+  const workingEl = el('div', { class: 'frac-working' });
+  const pieWrap = el('div', { class: 'frac-pie-row' });
+  const insightBox = el('div', { class: 'frac-insights' });
 
   const boxA = makeFractionBox('Fraction A', 1, 2, '#fff1cf', compute);
   const boxB = makeFractionBox('Fraction B', 1, 3, '#dff2db', compute);
@@ -1508,18 +1600,22 @@ function fractions(root) {
       { value: '+', label: '+' },
       { value: '-', label: '−' },
       { value: '*', label: '×' },
-      { value: '/', label: '÷' }
+      { value: '/', label: '÷' },
+      { value: 'avg', label: 'Average' },
+      { value: 'delta', label: 'Difference' },
+      { value: 'percent', label: 'A as % of B' },
+      { value: 'flip', label: 'Flip A' }
     ],
     value: '+',
     cls: 'frac-ops',
     onChange: v => { playPop(560); op = v; compute(); }
   });
 
-  function drawPie(n, d) {
+  /** One pie as an SVG string, so several can sit side by side under a label. */
+  function pieSVG(n, d) {
     const num = Number(n), den = Number(d);
     if (!Number.isFinite(num) || !Number.isFinite(den) || den <= 0 || den > 24 || Math.abs(num) > 48) {
-      pieWrap.replaceChildren(el('span', { class: 'gbadge' }, 'Pie preview for denominators ≤ 24'));
-      return;
+      return `<span class="gbadge">Pie needs a denominator of 24 or less</span>`;
     }
     const ratio = Math.min(1, Math.max(0, Math.abs(num) / den));
     const cx = 56, cy = 56, r = 46;
@@ -1535,7 +1631,81 @@ function fractions(root) {
       const a = (k / den) * 2 * PI;
       lines += `<line x1="${cx}" y1="${cy}" x2="${(cx + r * Math.sin(a)).toFixed(2)}" y2="${(cy - r * Math.cos(a)).toFixed(2)}" stroke="${INK}" stroke-width="2.2"/>`;
     }
-    pieWrap.innerHTML = `<svg class="game-svg" width="112" height="112" viewBox="0 0 112 112"><circle cx="${cx}" cy="${cy + 4}" r="${r}" fill="#d6a057" stroke="${INK}" stroke-width="3.5"/><circle cx="${cx}" cy="${cy}" r="${r}" fill="#fff6df" stroke="${INK}" stroke-width="3.5"/>${slice}${lines}<circle cx="${cx}" cy="${cy}" r="6" fill="#fff6df" stroke="${INK}" stroke-width="2.5"/></svg>`;
+    return `<svg class="game-svg" width="112" height="112" viewBox="0 0 112 112"><circle cx="${cx}" cy="${cy + 4}" r="${r}" fill="#d6a057" stroke="${INK}" stroke-width="3.5"/><circle cx="${cx}" cy="${cy}" r="${r}" fill="#fff6df" stroke="${INK}" stroke-width="3.5"/>${slice}${lines}<circle cx="${cx}" cy="${cy}" r="6" fill="#fff6df" stroke="${INK}" stroke-width="2.5"/></svg>`;
+  }
+
+  /** Reduced form of a fraction, with the sign carried by the numerator. */
+  function reduce(n, d) {
+    if (d < 0n) { n = -n; d = -d; }
+    const g = gcdBig(n, d) || 1n;
+    return { n: n / g, d: d / g };
+  }
+
+  function lcmBig(a, b) {
+    const g = gcdBig(a, b);
+    return g === 0n ? 0n : (a < 0n ? -a : a) / g * (b < 0n ? -b : b);
+  }
+
+  const mixedText = (n, d) => {
+    if (d === 1n) return `whole number ${n}`;
+    const whole = n / d;
+    const rem = (n < 0n ? -n : n) % d;
+    if (rem === 0n) return `whole number ${whole}`;
+    // "mixed 0 5/6" is a silly way to describe a fraction that is already proper.
+    if (whole === 0n) return `proper fraction ${n < 0n ? '-' : ''}${rem}/${d}`;
+    return `mixed ${n < 0n ? '-' : ''}${whole < 0n ? -whole : whole} ${rem}/${d}`;
+  };
+
+  const decimalText = (n, d) => {
+    const dec = Number(n) / Number(d);
+    return Number.isFinite(dec) ? numberText(dec) : 'too large for decimals';
+  };
+
+  function renderInsights(a, b, c, d) {
+    // Everything here works from the reduced forms. Using the raw denominators
+    // would call 8 the lowest common denominator of 4/8 and 3/4, which is a
+    // common denominator but not the lowest one.
+    const ra = reduce(a, b);
+    const rb = reduce(c, d);
+    const lcm = lcmBig(ra.d, rb.d);
+    const left = ra.n * rb.d, right = rb.n * ra.d;           // cross-multiply to compare
+    const comparison = left > right ? 'A is bigger' : left < right ? 'B is bigger' : 'A and B are equal';
+    const diff = reduce(left - right, ra.d * rb.d);
+    const rows = [
+      ['A simplified', `${ra.n}/${ra.d}`],
+      ['B simplified', `${rb.n}/${rb.d}`],
+      ['A as a decimal', decimalText(ra.n, ra.d)],
+      ['B as a decimal', decimalText(rb.n, rb.d)],
+      ['A as a percent', `${decimalText(ra.n * 100n, ra.d)}%`],
+      ['B as a percent', `${decimalText(rb.n * 100n, rb.d)}%`],
+      ['Flip A (reciprocal)', ra.n === 0n ? 'zero has no reciprocal' : `${ra.d}/${ra.n}`],
+      ['Flip B (reciprocal)', rb.n === 0n ? 'zero has no reciprocal' : `${rb.d}/${rb.n}`],
+      ['Greatest common divisor', `${gcdBig(ra.n, rb.n)} of the numerators, ${gcdBig(ra.d, rb.d)} of the denominators`],
+      ['Lowest common denominator', `${lcm} — A becomes ${ra.n * (lcm / ra.d)}/${lcm}, B becomes ${rb.n * (lcm / rb.d)}/${lcm}`],
+      ['Comparing them', comparison],
+      ['How much bigger', diff.d === 1n ? `${diff.n}` : `${diff.n}/${diff.d} (${decimalText(diff.n, diff.d)})`]
+    ];
+    insightBox.replaceChildren(...rows.map(([label, value]) =>
+      el('div', { class: 'frac-insight-row' },
+        el('span', { class: 'frac-insight-label' }, label),
+        el('span', { class: 'frac-insight-value' }, value))
+    ));
+  }
+
+  /** Three pies side by side: A, B and the fractional part of the result. */
+  function renderPies(a, b, c, d, n, den) {
+    const cell = (label, num, dd) => el('div', { class: 'frac-pie-cell' },
+      el('span', { class: 'gfield-label' }, label),
+      (() => { const holder = el('span'); holder.innerHTML = pieSVG(num, dd); return holder; })()
+    );
+    const ra = reduce(a, b);
+    const rb = reduce(c, d);
+    const rem = (n < 0n ? -n : n) % den;
+    pieWrap.replaceChildren(
+      cell('A', ra.n, ra.d),
+      cell('B', rb.n, rb.d),
+      cell('Result', rem === 0n && n !== 0n ? den : rem, den)
+    );
   }
 
   function compute() {
@@ -1547,16 +1717,41 @@ function fractions(root) {
       }
       const a = BigInt(rawA), b = BigInt(rawB), c = BigInt(rawC), d = BigInt(rawD);
       if (b === 0n || d === 0n) throw new Error('Denominators cannot be zero!');
-      if (op === '/' && c === 0n) throw new Error('Cannot divide by a zero fraction!');
-      let n = op === '+' ? a * d + c * b : op === '-' ? a * d - c * b : op === '*' ? a * c : a * d;
-      let den = op === '/' ? b * c : b * d;
-      if (den < 0n) { n = -n; den = -den; }
-      const g = gcdBig(n, den);
-      n /= g; den /= g;
 
-      const whole = n / den;
-      const rem = (n < 0n ? -n : n) % den;
-      const dec = Number(n) / Number(den);
+      let n, den, working;
+      if (op === '+') {
+        n = a * d + c * b; den = b * d;
+        working = `${a * d}/${b * d} + ${c * b}/${b * d} = ${n}/${den}`;
+      } else if (op === '-') {
+        n = a * d - c * b; den = b * d;
+        working = `${a * d}/${b * d} − ${c * b}/${b * d} = ${n}/${den}`;
+      } else if (op === '*') {
+        n = a * c; den = b * d;
+        working = `${a}×${c} over ${b}×${d} = ${n}/${den}`;
+      } else if (op === '/') {
+        if (c === 0n) throw new Error('Cannot divide by a zero fraction!');
+        n = a * d; den = b * c;
+        working = `${a}/${b} × ${d}/${c} = ${n}/${den}`;
+      } else if (op === 'avg') {
+        n = a * d + c * b; den = b * d * 2n;
+        working = `(${a}/${b} + ${c}/${d}) ÷ 2 = ${a * d + c * b}/${b * d * 2n}`;
+      } else if (op === 'delta') {
+        n = a * d - c * b; den = b * d;
+        if (n < 0n) n = -n;
+        working = `|${a}/${b} − ${c}/${d}| = ${n}/${den < 0n ? -den : den}`;
+        if (den < 0n) den = -den;
+      } else if (op === 'percent') {
+        if (c === 0n) throw new Error('Cannot take a percentage of a zero fraction!');
+        n = a * d; den = b * c;
+        working = `${a}/${b} ÷ ${c}/${d} × 100`;
+      } else {
+        if (a === 0n) throw new Error('Zero has no reciprocal!');
+        n = b; den = a;
+        working = `flip ${a}/${b} upside down`;
+      }
+      if (den < 0n) { n = -n; den = -den; }
+      const g = gcdBig(n, den) || 1n;
+      n /= g; den /= g;
 
       resultDetail.classList.remove('error');
       resultFrac.replaceChildren(
@@ -1566,60 +1761,173 @@ function fractions(root) {
           el('span', {}, String(den))
         )
       );
-      const mixed = den === 1n ? `Whole number: ${n}` : `Mixed: ${n < 0n && whole === 0n ? '-' : ''}${whole} ${rem}/${den}`;
-      resultDetail.textContent = `${mixed}\nDecimal: ${Number.isFinite(dec) ? numberText(dec) : 'too large'}`;
-      drawPie(rem === 0n && n !== 0n ? den : rem, den);
+      const percentLine = op === 'percent'
+        ? `\nPercent: ${decimalText(n * 100n, den)}%`
+        : `\nDecimal: ${decimalText(n, den)}  •  Percent: ${decimalText(n * 100n, den)}%`;
+      resultDetail.textContent = `${mixedText(n, den)}${percentLine}`;
+      workingEl.textContent = `${working}${g === 1n ? '' : `  →  divide top and bottom by ${g}  →  ${n}/${den}`}`;
+      renderPies(a, b, c, d, n, den);
+      renderInsights(a, b, c, d);
     } catch (e) {
       resultDetail.classList.add('error');
       resultDetail.textContent = e.message;
       resultFrac.replaceChildren();
+      workingEl.textContent = '';
       pieWrap.replaceChildren();
+      insightBox.replaceChildren();
     }
   }
 
   root.replaceChildren(
     el('div', { class: 'game-panel' },
       el('div', { class: 'frac-stage' }, boxA.el, opTabs.el, boxB.el),
-      el('div', { class: 'frac-output-card' }, resultFrac, pieWrap, resultDetail)
+      el('div', { class: 'frac-output-card' }, resultFrac, pieWrap, resultDetail, workingEl),
+      insightBox
     )
   );
   compute();
 }
 
 // =========================================================================
-// 5. PERCENTAGE CALCULATOR — Cozy Shop Price Tag & Gold Coins
+// 5. PERCENTAGE CALCULATOR — Cozy Shop Price Tag: nine percentage jobs, each
+//    showing the arithmetic behind its answer.
 // =========================================================================
+/**
+ * Nine percentage jobs. Each mode names its two fields, works out the answer
+ * and shows the arithmetic it used, because a percentage tool that only prints
+ * a number teaches nobody anything. `run` returns either { big, text, working,
+ * fill } or { error } — a percentage calculator has to be able to refuse.
+ */
+const PCT_MODES = Object.freeze({
+  of: {
+    tab: 'A% of B', icon: '🏷️', a: 'Percent A (%)', b: 'Of Value B', percentA: true,
+    run: (a, b) => {
+      const res = (a / 100) * b;
+      return { big: numberText(res), text: `${numberText(a)}% of ${numberText(b)} = ${numberText(res)}`, working: `${numberText(b)} × ${numberText(a)} ÷ 100`, fill: a };
+    }
+  },
+  what: {
+    tab: 'A is ?% of B', icon: '🥧', a: 'Part A', b: 'Whole B', percentA: false,
+    run: (a, b) => {
+      if (b === 0) return { error: 'Whole B cannot be zero.' };
+      const pct = (a / b) * 100;
+      return { big: `${numberText(pct)}%`, text: `${numberText(a)} is ${numberText(pct)}% of ${numberText(b)}`, working: `${numberText(a)} ÷ ${numberText(b)} × 100`, fill: pct };
+    }
+  },
+  change: {
+    tab: '% Change', icon: '📈', a: 'Original A', b: 'New Value B', percentA: false,
+    run: (a, b) => {
+      if (a === 0) return { error: 'Original value A cannot be zero.' };
+      const chg = ((b - a) / Math.abs(a)) * 100;
+      return {
+        big: `${chg >= 0 ? '+' : ''}${numberText(chg)}%`,
+        text: `${chg >= 0 ? '+' : ''}${numberText(chg)}% change (difference ${numberText(b - a)}) — ${chg >= 0 ? 'a rise' : 'a fall'}`,
+        working: `(${numberText(b)} − ${numberText(a)}) ÷ |${numberText(a)}| × 100`,
+        fill: Math.abs(chg)
+      };
+    }
+  },
+  discount: {
+    tab: 'Sale Discount', icon: '🛍️', a: 'Discount (%)', b: 'Price', percentA: true,
+    run: (a, b) => {
+      const saved = (a / 100) * b;
+      return {
+        big: numberText(b - saved),
+        text: `Pay ${numberText(b - saved)}   •   You save ${numberText(saved)} (${numberText(a)}% off ${numberText(b)})`,
+        working: `${numberText(b)} − (${numberText(b)} × ${numberText(a)} ÷ 100)`,
+        fill: 100 - a
+      };
+    }
+  },
+  tip: {
+    tab: 'Add % / Tip', icon: '🪙', a: 'Add / Tip (%)', b: 'Subtotal', percentA: true,
+    run: (a, b) => {
+      const added = (a / 100) * b;
+      return {
+        big: numberText(b + added),
+        text: `Total ${numberText(b + added)}   •   Added ${numberText(added)} (+${numberText(a)}%)`,
+        working: `${numberText(b)} × (1 + ${numberText(a)} ÷ 100)`,
+        fill: a
+      };
+    }
+  },
+  reverse: {
+    tab: 'B is A% of what?', icon: '🔍', a: 'Percent A (%)', b: 'The Part B', percentA: true,
+    run: (a, b) => {
+      if (a === 0) return { error: 'Zero percent of anything is zero, so the whole cannot be found.' };
+      const whole = b / (a / 100);
+      return {
+        big: numberText(whole),
+        text: `${numberText(b)} is ${numberText(a)}% of ${numberText(whole)}`,
+        working: `${numberText(b)} ÷ (${numberText(a)} ÷ 100)`,
+        fill: a
+      };
+    }
+  },
+  extract: {
+    tab: 'Take A% out of B', icon: '🧾', a: 'Tax / Fee (%)', b: 'Price Including It', percentA: true,
+    run: (a, b) => {
+      if (a === -100) return { error: 'A price cannot include −100% tax.' };
+      const net = b / (1 + a / 100);
+      return {
+        big: numberText(net),
+        text: `Before tax ${numberText(net)}   •   The ${numberText(a)}% inside it is ${numberText(b - net)}`,
+        working: `${numberText(b)} ÷ (1 + ${numberText(a)} ÷ 100)`,
+        fill: 100 - a
+      };
+    }
+  },
+  margin: {
+    tab: 'Margin & Markup', icon: '🏪', a: 'What It Cost You', b: 'What You Sold It For', percentA: false,
+    run: (a, b) => {
+      if (b === 0) return { error: 'The selling price cannot be zero.' };
+      if (a === 0) return { error: 'Markup needs a cost that is not zero.' };
+      const profit = b - a;
+      const margin = (profit / b) * 100;
+      const markup = (profit / a) * 100;
+      return {
+        big: `${numberText(margin)}%`,
+        text: `Margin ${numberText(margin)}%   •   Markup ${numberText(markup)}%   •   Profit ${numberText(profit)}`,
+        working: `margin = profit ÷ selling price, markup = profit ÷ cost — same ${numberText(profit)}, two different bases`,
+        fill: margin
+      };
+    }
+  },
+  compound: {
+    tab: 'A% Repeated B Times', icon: '📚', a: 'Rate Each Time (%)', b: 'How Many Times', percentA: true,
+    run: (a, b) => {
+      const factor = (1 + a / 100) ** b;
+      if (!Number.isFinite(factor)) return { error: 'That grows past any number this tool can print.' };
+      const overall = (factor - 1) * 100;
+      return {
+        big: `${overall >= 0 ? '+' : ''}${numberText(overall)}%`,
+        text: `${numberText(a)}% applied ${numberText(b)} times multiplies by ${numberText(factor)} — ${overall >= 0 ? 'a rise' : 'a fall'} of ${numberText(Math.abs(overall))}% in total, not ${numberText(Math.abs(a * b))}%`,
+        working: `(1 + ${numberText(a)} ÷ 100) ^ ${numberText(b)}`,
+        fill: Math.abs(overall)
+      };
+    }
+  }
+});
+
+const PCT_COINS = [1, 5, 7.5, 10, 12.5, 15, 20, 25, 30, 50, 75, 100];
+
 function percentage(root) {
   let mode = 'of';
   const aField = createGameField({ label: 'Percent (%)', value: '20', inputmode: 'decimal', onInput: update });
   const bField = createGameField({ label: 'Amount', value: '150', inputmode: 'decimal', onInput: update });
   const out = el('div', { class: 'output', 'aria-live': 'polite' });
+  const working = el('div', { class: 'pct-working' });
   const barFill = el('div', { class: 'pct-fill' });
   const priceTagBig = el('div', { class: 'price-tag-val' }, '30');
 
   const modeTabs = createGameTabs({
-    items: [
-      { value: 'of', label: 'A% of B', icon: '🏷️' },
-      { value: 'what', label: 'A is ?% of B', icon: '🥧' },
-      { value: 'change', label: '% Change', icon: '📈' },
-      { value: 'discount', label: 'Sale Discount', icon: '🛍️' },
-      { value: 'tip', label: 'Add % / Tip', icon: '🪙' }
-    ],
+    items: Object.entries(PCT_MODES).map(([value, m]) => ({ value, label: m.tab, icon: m.icon })),
     value: 'of',
-    onChange: v => {
-      playPop(540);
-      mode = v;
-      if (v === 'of') { aField.el.querySelector('.gfield-label').textContent = 'Percent A (%)'; bField.el.querySelector('.gfield-label').textContent = 'Of Value B'; }
-      else if (v === 'what') { aField.el.querySelector('.gfield-label').textContent = 'Part A'; bField.el.querySelector('.gfield-label').textContent = 'Whole B'; }
-      else if (v === 'change') { aField.el.querySelector('.gfield-label').textContent = 'Original A'; bField.el.querySelector('.gfield-label').textContent = 'New Value B'; }
-      else if (v === 'discount') { aField.el.querySelector('.gfield-label').textContent = 'Discount (%)'; bField.el.querySelector('.gfield-label').textContent = 'Price ($)'; }
-      else { aField.el.querySelector('.gfield-label').textContent = 'Add / Tip (%)'; bField.el.querySelector('.gfield-label').textContent = 'Subtotal ($)'; }
-      update();
-    }
+    onChange: v => { playPop(540); mode = v; syncMode(); }
   });
 
   const coinRow = el('div', { class: 'preset-row' },
-    [5, 10, 15, 20, 25, 50, 75].map(p =>
+    PCT_COINS.map(p =>
       el('button', {
         type: 'button',
         class: 'gbtn gbtn-coin',
@@ -1628,47 +1936,57 @@ function percentage(root) {
     )
   );
 
+  function syncMode() {
+    const m = PCT_MODES[mode];
+    aField.el.querySelector('.gfield-label').textContent = m.a;
+    bField.el.querySelector('.gfield-label').textContent = m.b;
+    aField.input.setAttribute('aria-label', m.a);
+    bField.input.setAttribute('aria-label', m.b);
+    // The coin row is a shortcut for a percentage, so it only shows up when A is one.
+    coinRow.hidden = !m.percentA;
+    update();
+  }
+
   function update() {
-    const a = Number(aField.input.value.trim());
-    const b = Number(bField.input.value.trim());
-    if (!aField.input.value.trim() || !bField.input.value.trim() || !Number.isFinite(a) || !Number.isFinite(b)) {
+    const cfg = PCT_MODES[mode];
+    const rawA = aField.input.value.trim();
+    const rawB = bField.input.value.trim();
+    const a = Number(rawA);
+    const b = Number(rawB);
+    if (!rawA || !rawB || !Number.isFinite(a) || !Number.isFinite(b)) {
       out.classList.add('error');
       out.textContent = 'Enter valid numbers in both boxes.';
+      working.textContent = '';
       priceTagBig.textContent = '?';
+      barFill.style.width = '0%';
       return;
     }
     out.classList.remove('error');
-    let fillPct = 0;
-    if (mode === 'of') {
-      const res = (a / 100) * b;
-      fillPct = Math.min(100, Math.max(0, a));
-      priceTagBig.textContent = numberText(res);
-      out.textContent = `${numberText(a)}% of ${numberText(b)} = ${numberText(res)}`;
-    } else if (mode === 'what') {
-      if (b === 0) { out.classList.add('error'); out.textContent = 'Whole B cannot be zero.'; priceTagBig.textContent = '—'; return; }
-      const pct = (a / b) * 100;
-      fillPct = Math.min(100, Math.max(0, pct));
-      priceTagBig.textContent = `${numberText(pct)}%`;
-      out.textContent = `${numberText(a)} is ${numberText(pct)}% of ${numberText(b)}`;
-    } else if (mode === 'change') {
-      if (a === 0) { out.classList.add('error'); out.textContent = 'Original value A cannot be zero.'; priceTagBig.textContent = '—'; return; }
-      const chg = ((b - a) / Math.abs(a)) * 100;
-      fillPct = Math.min(100, Math.max(0, Math.abs(chg)));
-      priceTagBig.textContent = `${chg >= 0 ? '+' : ''}${numberText(chg)}%`;
-      out.textContent = `${chg >= 0 ? '+' : ''}${numberText(chg)}% change (diff ${numberText(b - a)})`;
-    } else if (mode === 'discount') {
-      const saved = (a / 100) * b;
-      const finalPrice = b - saved;
-      fillPct = Math.min(100, Math.max(0, 100 - a));
-      priceTagBig.textContent = numberText(finalPrice);
-      out.textContent = `Pay: ${numberText(finalPrice)}   •   You save: ${numberText(saved)} (${numberText(a)}% off)`;
-    } else {
-      const added = (a / 100) * b;
-      fillPct = Math.min(100, Math.max(0, a));
-      priceTagBig.textContent = numberText(b + added);
-      out.textContent = `Total: ${numberText(b + added)}   •   Added: ${numberText(added)} (+${numberText(a)}%)`;
+    let result;
+    try {
+      // numberText throws on anything non-finite, and a wild input such as
+      // 1e300 % of 1e300 would otherwise break out of the input handler.
+      result = cfg.run(a, b);
+    } catch (e) {
+      out.classList.add('error');
+      out.textContent = e.message;
+      working.textContent = '';
+      priceTagBig.textContent = '—';
+      barFill.style.width = '0%';
+      return;
     }
-    barFill.style.width = `${fillPct}%`;
+    if (result.error) {
+      out.classList.add('error');
+      out.textContent = result.error;
+      working.textContent = '';
+      priceTagBig.textContent = '—';
+      barFill.style.width = '0%';
+      return;
+    }
+    priceTagBig.textContent = result.big;
+    out.textContent = result.text;
+    working.textContent = result.working;
+    barFill.style.width = `${Math.min(100, Math.max(0, Number(result.fill) || 0))}%`;
   }
 
   const tagIcon = `<svg class="game-svg" width="52" height="52" viewBox="0 0 64 64" fill="none"><path d="M12 18 L38 10 L55 30 L33 54 L10 34 Z" fill="#ffe184" stroke="${INK}" stroke-width="3.5" stroke-linejoin="round"/><circle cx="22" cy="24" r="3.5" fill="#fff8e8" stroke="${INK}" stroke-width="2.5"/><circle cx="30" cy="31" r="4" fill="#ff9e85" stroke="${INK}" stroke-width="2.2"/><circle cx="40" cy="37" r="4" fill="#8fd3a4" stroke="${INK}" stroke-width="2.2"/><line x1="40" y1="25" x2="29" y2="43" stroke="${INK}" stroke-width="3" stroke-linecap="round"/></svg>`;
@@ -1686,10 +2004,11 @@ function percentage(root) {
       coinRow,
       el('div', { class: 'two-col' }, aField.el, bField.el),
       el('div', { class: 'pct-bar' }, barFill),
-      out
+      out,
+      working
     )
   );
-  update();
+  syncMode();
 }
 
 // =========================================================================

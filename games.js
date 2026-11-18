@@ -1,4 +1,4 @@
-/** 2.5D Offline Arcade — 45 Games (SchoolGames + Roper Fancade) */
+/** 2.5D Offline Arcade — 45 Games (offline cabinet + Roper Fancade) */
 import { gamePropSVG } from './icons-25d.js';
 import { playPop, playSquish, playSparkle } from './sfx.js';
 
@@ -37,7 +37,7 @@ export async function mountGames(root) {
   topBar.append(searchWrap, random);
 
   const filterBar = make('div', '', 'gtabs arcade-filters');
-  const status = make('p', 'Loading SchoolGames arcade…', 'arcade-status');
+  const status = make('p', 'Loading the offline arcade…', 'arcade-status');
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
 
@@ -46,7 +46,7 @@ export async function mountGames(root) {
   player.setAttribute('aria-label', 'Game player');
 
   const shelvesHost = make('div', '', 'arcade-shelves-host');
-  const credits = make('a', 'SchoolGames source & catalog list', 'gbtn gbtn-chip');
+  const credits = make('a', 'Game credits & catalog list', 'gbtn gbtn-chip');
   credits.href = assetURL('games/ATTRIBUTION.md');
 
   shell.append(topBar, filterBar, status, player, shelvesHost, credits);
@@ -115,7 +115,7 @@ export async function mountGames(root) {
     const iconBox = make('span', '', 'window-tool-icon');
     iconBox.innerHTML = gamePropSVG(game, genre(game));
     const titleText = document.createElement('div');
-    const kicker = make('span', `${genre(game).toUpperCase()} · SCHOOLGAMES`, 'window-kicker');
+    const kicker = make('span', `${genre(game).toUpperCase()} · OFFLINE ARCADE`, 'window-kicker');
     const h3 = make('h2', game.title);
     titleText.append(kicker, h3);
     titleGroup.append(iconBox, titleText);
@@ -241,8 +241,8 @@ export async function mountGames(root) {
       const featured = shown.filter(g => g.featured);
       const rest = shown.filter(g => !g.featured);
 
-      if (featured.length) shelvesHost.append(renderShelfSection('★ SCHOOLGAMES FAN FAVORITES & FANCADE', featured));
-      if (rest.length) shelvesHost.append(renderShelfSection('✦ MORE SCHOOLGAMES ARCADE & PUZZLES', rest));
+      if (featured.length) shelvesHost.append(renderShelfSection('★ FAN FAVORITES & FANCADE', featured));
+      if (rest.length) shelvesHost.append(renderShelfSection('✦ MORE ARCADE & PUZZLES', rest));
 
       if (!shown.length) {
         const empty = make('div', '', 'empty-shelf');
@@ -250,7 +250,7 @@ export async function mountGames(root) {
         shelvesHost.append(empty);
       }
 
-      status.textContent = `${shown.length} games from the-creative-master/SchoolGames`;
+      status.textContent = `${shown.length} offline games ready to play`;
     };
 
     search.addEventListener('input', render);

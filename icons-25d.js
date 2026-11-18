@@ -274,7 +274,7 @@ const TOOL_SVGS = {
   'audio-loudness-sync': wrapTile(C.coral, `<rect x="16" y="24" width="64" height="48" rx="9" fill="#4f2f23" stroke="${INK}" stroke-width="4.5"/><rect x="26" y="40" width="8" height="22" rx="3" fill="#9ee09e"/><rect x="38" y="32" width="8" height="30" rx="3" fill="#ffe17d"/><rect x="50" y="36" width="8" height="26" rx="3" fill="#ffe17d"/><rect x="62" y="28" width="8" height="34" rx="3" fill="#e78167"/>`)
 };
 
-// Bespoke 2.5D game box illustrations for SchoolGames titles + genres
+// Bespoke 2.5D game box illustrations for the offline arcade titles + genres
 const GAME_SVGS = {
   '2048': wrapTile(C.honey, `<rect x="20" y="20" width="56" height="56" rx="12" fill="#ffe17d" stroke="${INK}" stroke-width="4.5"/><text x="48" y="56" text-anchor="middle" font-family="Fredoka,sans-serif" font-weight="700" font-size="20" fill="${INK}">2048</text>`),
   'bloons-td': wrapTile(C.sky, `<ellipse cx="48" cy="40" rx="18" ry="22" fill="#e78167" stroke="${INK}" stroke-width="4.5"/><path d="M48 62 L44 74 M48 62 L52 74" stroke="${INK}" stroke-width="3"/><circle cx="42" cy="34" r="4" fill="#fff"/>`),

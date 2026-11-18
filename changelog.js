@@ -75,7 +75,7 @@ export const CHANGELOG = [
       {
         label: '🎮 Games cabinet',
         items: [
-          '45 offline games including Roper and the whole SchoolGames cabinet \u2014 all playable with no connection at all, embedded straight into the kitchen.'
+          '45 offline games including Roper and the whole offline arcade cabinet \u2014 all playable with no connection at all, embedded straight into the kitchen.'
         ]
       },
       {

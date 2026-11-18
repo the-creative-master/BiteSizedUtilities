@@ -90,7 +90,7 @@ const CUPBOARD_THEME = {
 
 const ALL_CUPBOARDS = [
   ...cupboards,
-  { id: 'games', name: 'Games & Fun', short: '45 SchoolGames & Fancade hits', icon: '♧', color: '#d7b5eb', trim: '#9875b4', star: 'games', tools: [] }
+  { id: 'games', name: 'Games & Fun', short: '45 offline arcade & Fancade hits', icon: '♧', color: '#d7b5eb', trim: '#9875b4', star: 'games', tools: [] }
 ];
 
 // Beta-only utilities (see `betaToolAdditions` in catalog.js). The public

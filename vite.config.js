@@ -241,7 +241,19 @@ export default defineConfig({
     }
   },
   preview: { host: '0.0.0.0', allowedHosts: true },
-  build: { target: 'es2022', chunkSizeWarningLimit: 1200 },
+  build: {
+    target: 'es2022',
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      // beta.html is the beta-testing door (ten taps on Sir Waffle in three
+      // seconds). Rollup only emits index.html unless it is listed here, and
+      // the easter egg would 404 on GitHub Pages.
+      input: {
+        main: path.resolve('index.html'),
+        beta: path.resolve('beta.html')
+      }
+    }
+  },
   plugins: [{
     name: 'local-assets-and-offline',
     configureServer(server) {

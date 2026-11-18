@@ -14,7 +14,11 @@ import {
   detectDeviceDiagnostics,
   AI_DISCLAIMER_TEXT,
   classifyAiFailure,
-  summarizeAiFailures
+  summarizeAiFailures,
+  fetchModelSourceFacts,
+  describeModelSourceFacts,
+  modelSourceFixAdvice,
+  HF_DIAG_TIMEOUT_MS
 } from './waffle-browser-ai.js';
 import { IMAGE_MODELS, detectImageCapabilities, generateWaffleImage } from './waffle-image-gen.js';
 
@@ -79,20 +83,22 @@ let deviceDiag = { hasWebGPU: false, isOldIOS: false, hasRisk: true, summaryLabe
  * helpers in English & Languages. Nothing half-works and nothing quietly
  * guesses.
  *
- * `beta.html` puts `data-beta="1"` on <html>, which turns all of it back on for
- * beta testers (reachable by tapping Sir Waffle ten times in three seconds).
+ * `backup.html` puts `data-backup="1"` on <html>, which turns all of it back on.
  * The gate is deliberately page-scoped rather than a stored preference, so the
  * public kitchen can never leak AI back in from a stale localStorage value.
+ * Nothing in the public UI advertises that page or how to reach it.
  */
 export const WAFFLE_AI_LOCK_MESSAGE = 'I apologize for the inconvenience but WaffleAI isn\u2019t available due to countless bugs with open-source AI models. We will make it available in a later update.';
 
-export function isBetaTesting() {
-  if (typeof document === 'undefined') return false;
-  return document.documentElement?.dataset?.beta === '1';
-}
+// The page-scoped build flag lives in build-mode.js so the changelog and the
+// art studio can read it without importing the AI stack. Imported *and*
+// re-exported: `export ... from` alone would leave the name unbound in this
+// module, and isWaffleAiLocked() below reads it.
+import { isBackupBuild } from './build-mode.js';
+export { isBackupBuild };
 
 export function isWaffleAiLocked() {
-  return !isBetaTesting();
+  return !isBackupBuild();
 }
 
 /** Thrown by every AI entry point while paused, so callers can tell "locked" apart from "failed". */
@@ -358,6 +364,35 @@ async function streamServerChat({ modelId, messages: msgList, systemPrompt, maxT
   return finalText.trim();
 }
 
+/**
+ * The extended half of an AI failure: what the *source* really looks like,
+ * fetched live from Hugging Face and from this host while the visitor waits.
+ *
+ * The engine errors above it can only say "Failed to fetch" or "out of memory".
+ * The facts that decide whether those are a network problem, a renamed repo, a
+ * gated licence, a quantization nobody publishes, or a model table whose size
+ * guess is wrong all live one API call away, so a failure now goes and gets
+ * them and prints them under the error. Bounded and swallowed whole: a
+ * diagnostic that hangs or throws must never replace the failure it explains.
+ */
+async function modelSourceReport(cfg, classified, signal) {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return '';
+    if (!cfg?.hfGgufRepo && !cfg?.hfId) return '';
+    const facts = await fetchModelSourceFacts(cfg, { signal, timeoutMs: HF_DIAG_TIMEOUT_MS });
+    const lines = describeModelSourceFacts(facts);
+    if (!lines.length) return '';
+    const fix = modelSourceFixAdvice(facts, classified);
+    const stamp = new Date(facts.fetchedAt);
+    const when = Number.isNaN(stamp.getTime()) ? 'just now' : stamp.toUTCString().replace('GMT', 'UTC');
+    return `\n\n**Where this model was supposed to come from** (checked live against Hugging Face, ${when}):\n` +
+      lines.map(l => `- ${l}`).join('\n') +
+      (fix ? `\n- **Fix:** ${fix}` : '');
+  } catch {
+    return '';
+  }
+}
+
 export async function streamWaffleChat({ modelId, messages: msgList, imageUrls = [], systemPrompt, maxTokens = 520, temperature = 0.7, signal, onStatus, onToken, onRuntime }) {
   // One gate for every caller: the Sir Waffle chat, CodeHub's AI Error
   // Diagnostics and the English tools' AI writing all come through here, so
@@ -532,15 +567,20 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     ? ' This host has no local llama.cpp server and this browser has no usable WebGPU, so only small CPU models can run — pre-cache one in Settings → AI Models.'
     : '';
 
+  // Ask the real source what it has, so the failure carries evidence and not
+  // only engine names. Skipped when the device is offline: there is nothing to
+  // ask, and the attempt would only add a second confusing network error.
+  const sourceReport = headline?.kind === 'offline' ? '' : await modelSourceReport(cfg, headline, signal);
+
   if (headline) {
     const detail = headline.uniform
       ? `All ${headline.count} runtimes failed the same way.`
       : `${headline.count} runtimes failed, with different causes.`;
     throw new Error(
-      `${headline.title}. ${headline.hint}\n\n${detail}\n\n${failures.map(f => `• ${f.step} → ${f.message}`).join('\n')}`
+      `${headline.title}. ${headline.hint}\n\n${detail}\n\n${failures.map(f => `• ${f.step} → ${f.message}`).join('\n')}${sourceReport}`
     );
   }
-  throw new Error(`Could not run ${cfg.label}.${diagHint}`);
+  throw new Error(`Could not run ${cfg.label}.${diagHint}${sourceReport}`);
 }
 
 async function fetchStatus() {
@@ -1152,7 +1192,7 @@ export function closeWaffleAI() {
 /**
  * The paused-AI notice. It reuses the `waffle-ai-overlay` id so i18n keeps
  * skipping it and the kitchen's click-through guard still recognises it, and it
- * keeps Sir Waffle on screen — tapping him is also how beta testers get in.
+ * keeps Sir Waffle on screen — tapping him is also the hidden unlock gesture.
  */
 function buildLockedOverlay() {
   const wrap = document.createElement('div');
@@ -1181,11 +1221,10 @@ function buildLockedOverlay() {
                 aria-label="Sir Waffle" title="Sir Waffle">
           ${waffleMascotSVG('waffle-locked-svg')}
         </button>
-        <p class="waffle-ai-locked-tap-hint" id="waffle-ai-locked-tap-hint" aria-live="polite">Tap anywhere here ten times in three seconds to open the beta build.</p>
         <p class="waffle-ai-locked-copy">${esc(WAFFLE_AI_LOCK_MESSAGE)}</p>
         <ul class="waffle-ai-locked-list">
           <li>The chat, CodeHub&rsquo;s AI Error Diagnostics, and the AI writing helpers in English &amp; Languages are all paused together.</li>
-          <li>Everything else in the kitchen &mdash; all 115 utilities and all 45 games &mdash; works exactly as before, on your device, with no account.</li>
+          <li>Everything else in the kitchen &mdash; all 115 utilities and all 51 games &mdash; works exactly as before, on your device, with no account.</li>
           <li>Nothing was deleted. The models and runtimes stay in the build so they can be switched back on when they behave.</li>
         </ul>
         <button type="button" class="gbtn gbtn-primary" id="waffle-ai-locked-done">Back to the Kitchen</button>
@@ -1194,7 +1233,7 @@ function buildLockedOverlay() {
   `;
 
   // No backdrop-dismiss here, on purpose. This dialog opens on the *first* tap
-  // of the beta-door run and covers the whole viewport (z-index 90) including
+  // of the unlock run and covers the whole viewport (z-index 90) including
   // the corner mascot (45), so a second tap in the same place used to land on
   // the backdrop and close it without counting. The run then alternated
   // open/close forever and could never reach ten — which reads exactly like a
@@ -1202,19 +1241,10 @@ function buildLockedOverlay() {
   // one click away via ✕, the button, or Escape.
   // Reflects to data-waffle-tap, which closest('[data-waffle-tap]') matches.
   wrap.dataset.waffleTap = '';
-  const hint = wrap.querySelector('#waffle-ai-locked-tap-hint');
-  const onProgress = e => {
-    if (!hint) return;
-    const { count = 0, target = 10 } = e.detail || {};
-    if (!count) {
-      hint.textContent = 'Tap anywhere here ten times in three seconds to open the beta build.';
-      hint.classList.remove('is-counting');
-      return;
-    }
-    hint.textContent = `Beta door: ${count} / ${target} taps — keep going!`;
-    hint.classList.add('is-counting');
-  };
-  window.addEventListener('waffle-beta-progress', onProgress);
+  // There is deliberately no tap hint and no "n / 10" progress readout here.
+  // The gesture still counts (the whole overlay is the tap target, below), but
+  // the dialog no longer explains itself: an unlock that advertises its own
+  // recipe is not an unlock. Tappers get one toast when it lands.
   wrap.querySelector('#waffle-ai-locked-close')?.addEventListener('click', () => { playPop(460); closeWaffleAI(); });
   wrap.querySelector('#waffle-ai-locked-done')?.addEventListener('click', () => { playPop(460); closeWaffleAI(); });
   document.addEventListener('keydown', e => {

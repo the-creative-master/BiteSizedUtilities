@@ -143,6 +143,7 @@ test('CSS follows strict 2.5D game art rules (no frosted blur, local fonts)', ()
   assert.ok(css.includes('rotateY(-108deg)'), 'Includes 2.5D cupboard hinge swing animation');
 });
 
-test('README.md has been removed as requested', () => {
-  assert.equal(fs.existsSync('README.md'), false, 'README.md should be removed');
-});
+// There used to be a test here forbidding README.md, from an earlier cleanup.
+// The repository has a welcome README again, which is the owner's call to make,
+// so the rule is retired rather than the file. The changelog is still written
+// for visitors, who never see repo files on GitHub Pages.

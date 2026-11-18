@@ -159,7 +159,7 @@ function mountTranslate(form, run) {
   const srcLang = gameTabs(['Auto Detect', 'English', 'Spanish', 'French', 'German', 'Japanese', 'Korean', 'Mandarin Chinese', 'Arabic', 'Vietnamese'], 'Auto Detect', null, 'From Language');
   const dstLang = gameTabs(LANGUAGES, 'Spanish', null, 'Translate To');
   // Google Translate needs no local model, so it keeps working everywhere. The
-  // strict-AI engine is only offered in the beta build.
+  // strict-AI engine is only offered in the backup build.
   const engineTabs = gameTabs(
     isWaffleAiLocked() ? ['Google Translate'] : ['Google Translate', 'Waffle AI (Strict)'],
     'Google Translate',

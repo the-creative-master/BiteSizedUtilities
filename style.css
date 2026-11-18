@@ -1780,7 +1780,7 @@ body.waffle-modal-open {
 /* --- Waffle AI, paused ----------------------------------------------------
  * The locked notice replaces the whole chat dialog, so it keeps the same
  * shell, header gradient and hard 2.5D shadow. Sir Waffle stays on screen and
- * stays tappable: ten taps in three seconds is the beta-testing door.
+ * stays tappable: a fast run of taps on him is the hidden unlock gesture.
  */
 .waffle-ai-locked-dialog {
   max-width: 560px;
@@ -1817,28 +1817,6 @@ body.waffle-modal-open {
   font-size: 15.5px;
   line-height: 1.5;
   color: var(--ink);
-}
-/* The beta-door run has to be visible: ten taps with no feedback reads as a
- * broken button, and a run that expires reads as a timeout. */
-.waffle-ai-locked-tap-hint {
-  margin: 0;
-  padding: 8px 12px;
-  border: 3px dashed #d39c5d;
-  border-radius: 14px;
-  background: #fff6e0;
-  font-family: var(--body, inherit);
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.45;
-  color: #5c3312;
-  text-align: center;
-}
-.waffle-ai-locked-tap-hint.is-counting {
-  border-style: solid;
-  border-color: #7fb069;
-  background: #eaf6e2;
-  color: #2f5d24;
-  animation: shelfSlideIn 0.18s ease-out;
 }
 .waffle-ai-locked-list {
   margin: 0;
@@ -1879,8 +1857,8 @@ body.waffle-modal-open {
   color: #5c3312;
 }
 
-/* --- Beta testing banner -------------------------------------------------- */
-.beta-banner {
+/* --- Backup kitchen banner ------------------------------------------------ */
+.backup-banner {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1892,19 +1870,19 @@ body.waffle-modal-open {
   border-radius: 18px;
   box-shadow: 0 6px 0 #6f9a63, 0 10px 18px rgba(45, 22, 10, 0.2);
 }
-.beta-banner-badge {
+.backup-banner-badge {
   background: #8fd47c;
   border-color: var(--ink);
   flex: 0 0 auto;
 }
-.beta-banner-copy {
+.backup-banner-copy {
   flex: 1 1 220px;
   font-size: 12px;
   font-weight: 800;
   line-height: 1.45;
   color: #24401d;
 }
-.beta-banner-exit {
+.backup-banner-exit {
   flex: 0 0 auto;
   text-decoration: none;
   background: #fff6e0;
@@ -2716,6 +2694,27 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   background: #fff6e0;
   box-shadow: inset 0 4px 0 #f0d9a8, 0 6px 0 #cfa268;
 }
+
+/* Test versions after release: the backup build's own entries wear the same
+   green as the backup banner, so nobody mistakes them for a release. */
+.changelog-entry.is-tvar {
+  border-color: #86b877;
+  background: #f4fbef;
+  box-shadow: inset 0 4px 0 #d9f0d2;
+}
+.changelog-entry.is-tvar.is-latest {
+  border-color: #6f9a63;
+  background: #eef8e6;
+  box-shadow: inset 0 4px 0 #d9f0d2, 0 6px 0 #8fbf80;
+}
+.changelog-entry.is-tvar .changelog-version,
+.changelog-entry.is-tvar .changelog-entry-title {
+  color: #24401d;
+}
+.changelog-tag.is-tvar {
+  background: #8fd47c;
+  color: #24401d;
+}
 .changelog-entry-head {
   display: flex;
   align-items: center;
@@ -3094,8 +3093,8 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
-/* ==================== Art Studio (Beta) — layers, brushes, pressure ==================== */
-.beta-note {
+/* ==================== Art Studio (with layers) — layers, brushes, pressure ==================== */
+.studio-note {
   flex-direction: row;
   align-items: baseline;
   flex-wrap: wrap;
@@ -3106,8 +3105,8 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   font-weight: 700;
   line-height: 1.5;
 }
-.beta-note strong { font-size: 12px; letter-spacing: .05em; text-transform: uppercase; }
-.beta-brush-hint {
+.studio-note strong { font-size: 12px; letter-spacing: .05em; text-transform: uppercase; }
+.studio-brush-hint {
   margin: 0;
   padding: 8px 12px;
   background: var(--parchment);
@@ -3117,10 +3116,10 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   font-weight: 700;
   line-height: 1.45;
 }
-.beta-pressure-readout { flex: 1 1 180px; font-size: 11.5px; font-weight: 800; color: #6b4632; }
+.studio-pressure-readout { flex: 1 1 180px; font-size: 11.5px; font-weight: 800; color: #6b4632; }
 
-.beta-bezel { padding: 12px; }
-.beta-stage {
+.studio-bezel { padding: 12px; }
+.studio-stage {
   position: relative;
   width: 100%;
   isolation: isolate;
@@ -3132,12 +3131,12 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   touch-action: none;
   cursor: crosshair;
 }
-.beta-stage-paper { position: absolute; inset: 0; pointer-events: none; }
+.studio-stage-paper { position: absolute; inset: 0; pointer-events: none; }
 /* Every layer is its own canvas stacked in the stage; CSS carries opacity and
    blend mode so drawing only ever touches the active layer. */
-.beta-layer-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
+.studio-layer-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
 
-.beta-layer-panel {
+.studio-layer-panel {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -3146,8 +3145,8 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   border: var(--outline-thin);
   border-radius: 18px;
 }
-.beta-layer-list { display: flex; flex-direction: column; gap: 7px; max-height: 340px; overflow-y: auto; padding: 2px; }
-.beta-layer-row {
+.studio-layer-list { display: flex; flex-direction: column; gap: 7px; max-height: 340px; overflow-y: auto; padding: 2px; }
+.studio-layer-row {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -3157,8 +3156,8 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   border-radius: 14px;
   box-shadow: 0 3px 0 rgba(79, 47, 35, .14);
 }
-.beta-layer-row.is-active { background: #ffeec2; box-shadow: 0 3px 0 #d3a441; }
-.beta-layer-eye {
+.studio-layer-row.is-active { background: #ffeec2; box-shadow: 0 3px 0 #d3a441; }
+.studio-layer-eye {
   flex: 0 0 auto;
   width: 36px;
   height: 36px;
@@ -3170,8 +3169,8 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   line-height: 1;
   cursor: pointer;
 }
-.beta-layer-eye[aria-pressed="false"] { background: #eadfd6; opacity: .72; }
-.beta-layer-name {
+.studio-layer-eye[aria-pressed="false"] { background: #eadfd6; opacity: .72; }
+.studio-layer-name {
   flex: 1 1 auto;
   min-width: 0;
   padding: 4px 2px;
@@ -3185,7 +3184,7 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   overflow-wrap: anywhere;
   cursor: pointer;
 }
-.beta-layer-chip {
+.studio-layer-chip {
   flex: 0 0 auto;
   padding: 3px 8px;
   background: var(--butter);
@@ -3196,18 +3195,18 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   letter-spacing: .03em;
   text-transform: uppercase;
 }
-.beta-layer-btns { flex: 0 0 auto; display: flex; gap: 4px; }
-.beta-layer-btn { min-height: 32px; min-width: 32px; padding: 3px 7px; border-radius: 10px; font-size: 13px; }
-.beta-layer-rename { flex: 1 1 auto; min-width: 0; }
-.beta-layer-controls {
+.studio-layer-btns { flex: 0 0 auto; display: flex; gap: 4px; }
+.studio-layer-btn { min-height: 32px; min-width: 32px; padding: 3px 7px; border-radius: 10px; font-size: 13px; }
+.studio-layer-rename { flex: 1 1 auto; min-width: 0; }
+.studio-layer-controls {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding-top: 10px;
   border-top: 2.5px dashed rgba(79, 47, 35, .28);
 }
-.beta-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
-.beta-chip {
+.studio-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.studio-chip {
   min-height: 32px;
   padding: 4px 10px;
   background: var(--parchment);
@@ -3219,5 +3218,5 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   cursor: pointer;
   box-shadow: 0 3px 0 rgba(79, 47, 35, .18);
 }
-.beta-chip.is-active { background: #8fd47c; box-shadow: 0 3px 0 #5f9a52; }
-.shelf-beta-badge { position: absolute; top: 8px; left: 8px; z-index: 2; padding: 2px 7px; background: #8fd47c; font-size: 9.5px; }
+.studio-chip.is-active { background: #8fd47c; box-shadow: 0 3px 0 #5f9a52; }
+.shelf-backup-badge { position: absolute; top: 8px; left: 8px; z-index: 2; padding: 2px 7px; background: #8fd47c; font-size: 9.5px; }

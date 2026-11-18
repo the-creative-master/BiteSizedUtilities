@@ -1,5 +1,5 @@
 /**
- * Art Studio (Beta) — the engine behind the beta-only drawing toy.
+ * Art Studio (with layers) — the engine behind the backup-only drawing toy.
  *
  * This module is deliberately DOM-free: every brush, layer rule, symmetry
  * transform and history policy lives here as a pure function so it can be
@@ -13,13 +13,11 @@
  *     deterministic under test.
  */
 
-/** The beta studio is reachable only on `beta.html`, which sets data-beta="1". */
-export const BETA_STUDIO_ID = 'art-studio-beta';
+/** The layered studio is reachable only on `backup.html`, which sets data-backup="1". */
+export const LAYERS_STUDIO_ID = 'art-studio-layers';
 
-/** Same flag `isBetaTesting()` reads in waffle-ai.js, kept local so this toy does not import the AI stack. */
-export function isBetaPage(doc = (typeof document === 'undefined' ? undefined : document)) {
-  return doc?.documentElement?.dataset?.beta === '1';
-}
+/** The same page-scoped flag the AI gate reads, from the dependency-free module. */
+export { isBackupBuild as isBackupPage } from './build-mode.js';
 
 /* ============================== canvas limits ============================== */
 
@@ -981,7 +979,13 @@ export function stampGlyph(g, kind, x, y, size, color = '#e78167', outline = '#4
 
 /* ============================= project save/load ============================ */
 
-export const PROJECT_MAGIC = 'waffle-art-beta';
+export const PROJECT_MAGIC = 'waffle-art-layers';
+/**
+ * The magic string projects carried before the studio was renamed. Still
+ * accepted when opening a file, never written to a new one, so nobody loses a
+ * drawing to a rename.
+ */
+export const LEGACY_PROJECT_MAGIC = 'waffle-art-beta';
 export const PROJECT_VERSION = 1;
 export const MAX_PROJECT_BYTES = 32 * 1024 * 1024;
 
@@ -1012,7 +1016,7 @@ export function parseProject(text) {
   let raw;
   try { raw = JSON.parse(text); } catch { throw new Error('That project file is not valid JSON.'); }
   if (!raw || typeof raw !== 'object') throw new Error('That project file is not a Waffle Art project.');
-  if (raw.magic !== PROJECT_MAGIC) throw new Error('That file was not saved by Art Studio (Beta).');
+  if (raw.magic !== PROJECT_MAGIC && raw.magic !== LEGACY_PROJECT_MAGIC) throw new Error('That file was not saved by Art Studio (with layers).');
   if (Number(raw.version) !== PROJECT_VERSION) throw new Error(`This build reads version ${PROJECT_VERSION} projects, that file is version ${raw.version}.`);
   const size = validateCanvasSize(raw.width, raw.height);
   if (!Array.isArray(raw.layers) || !raw.layers.length) throw new Error('That project has no layers.');

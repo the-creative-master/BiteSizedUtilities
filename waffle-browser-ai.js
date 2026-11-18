@@ -481,6 +481,441 @@ export function summarizeAiFailures(classified) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Source diagnostics — what Hugging Face actually says about a model.
+ *
+ * A failed fallback chain can only quote its engines: "Failed to fetch",
+ * "out of memory", "version mismatch". Every one of those is downstream of a
+ * *fact about the source* that the build never checked — the repository may be
+ * gone, renamed, gated behind a licence a browser cannot accept, rate-limiting
+ * this IP, or simply not containing the quantization the model table asks for.
+ * Those facts are one API call away, and having them turns an hour of guessing
+ * into a one-line fix, so a failure now goes and fetches them.
+ *
+ * Defensive by construction: a diagnostic that hangs, throws, or invents a
+ * number is worse than no diagnostic. Every fetch is time-boxed, every result
+ * is labelled with the HTTP status it came from, and nothing here can replace
+ * the real error message.
+ * ------------------------------------------------------------------ */
+
+export const HF_DIAG_TIMEOUT_MS = 6000;
+const HF_DIAG_CACHE_MS = 10 * 60 * 1000;
+const HF_DIAG_FAIL_CACHE_MS = 60 * 1000;
+const hfDiagCache = new Map();
+const MB = 1024 * 1024;
+
+/** Bytes the way a person reads them. */
+export function fmtBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return 'unknown size';
+  if (bytes < 1024 ** 3) return `${(bytes / MB).toFixed(1)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+}
+
+/** An HTTP status (or a thrown fetch) mapped onto a cause worth acting on. */
+export function sourceStatus(http, thrown) {
+  if (thrown) return thrown === 'timeout' ? 'timeout' : thrown === 'aborted' ? 'aborted' : 'unreachable';
+  if (http === null || http === undefined) return 'no-response';
+  if (http === 401 || http === 403) return 'restricted';
+  if (http === 404 || http === 410) return 'not-found';
+  if (http === 429) return 'rate-limited';
+  if (http >= 500) return 'server-error';
+  if (http >= 200 && http < 300) return 'ok';
+  return `http-${http}`;
+}
+
+/** Plain-English label for each status, used in the printed report. */
+const SOURCE_STATUS_COPY = {
+  ok: 'reachable',
+  restricted: 'refused (401/403 — gated, private, or needs a token a browser cannot carry)',
+  'not-found': 'does not exist (404 — renamed, made private, or deleted)',
+  'rate-limited': 'rate-limited this IP (429)',
+  'server-error': 'server error on their side (5xx)',
+  timeout: 'the request timed out',
+  unreachable: 'could not be reached from this browser',
+  aborted: 'was cancelled',
+  'no-response': 'gave no response',
+  'bad-json': 'answered with something that is not JSON'
+};
+
+/**
+ * One time-boxed request. Never throws: the report has to be able to say
+ * "this call failed" instead of taking the whole error path down with it.
+ *
+ * The timeout is raced rather than only signalled. Aborting is the polite way
+ * to end a fetch, but an implementation that ignores its signal — a stub, a
+ * polyfill, a service worker that already went away — would otherwise hang a
+ * visitor's error message forever, and a diagnostic must never do that.
+ */
+const DIAG_TIMEOUT = Symbol('diag-timeout');
+
+async function diagRequest(url, { fetchImpl, timeoutMs = HF_DIAG_TIMEOUT_MS, signal, init, parse = 'json' } = {}) {
+  const doFetch = fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
+  if (!doFetch) return { http: null, data: null, headers: null, thrown: 'unreachable', error: 'no fetch implementation in this environment' };
+  const ctrl = new AbortController();
+  let timer = null;
+  const gate = new Promise(resolve => {
+    timer = setTimeout(() => { ctrl.abort(); resolve(DIAG_TIMEOUT); }, Math.max(250, timeoutMs));
+  });
+  const onOuterAbort = () => ctrl.abort();
+  if (signal?.addEventListener) signal.addEventListener('abort', onOuterAbort);
+  const attempt = doFetch(url, { ...(init || {}), signal: ctrl.signal, headers: { Accept: 'application/json', ...((init || {}).headers || {}) } })
+    .then(res => ({ res }), err => ({ err }));
+  try {
+    const outcome = await Promise.race([attempt, gate]);
+    if (outcome === DIAG_TIMEOUT) {
+      return { http: null, data: null, headers: null, thrown: 'timeout', error: `no answer within ${Math.round(timeoutMs)} ms` };
+    }
+    if (outcome.err) {
+      if (signal?.aborted) return { http: null, data: null, headers: null, thrown: 'aborted', error: String(outcome.err?.message || outcome.err) };
+      return { http: null, data: null, headers: null, thrown: 'unreachable', error: String(outcome.err?.message || outcome.err) };
+    }
+    const res = outcome.res;
+    const http = res?.status ?? null;
+    const headers = res?.headers || null;
+    if (parse === 'none') return { http, data: null, headers, thrown: null, error: null };
+    if (!res?.ok) {
+      let detail = null;
+      try { detail = await res.json(); } catch { /* a non-JSON error body is normal */ }
+      return { http, data: detail, headers, thrown: null, error: detail?.error || detail?.message || null };
+    }
+    try {
+      return { http, data: await res.json(), headers, thrown: null, error: null };
+    } catch (err) {
+      return { http, data: null, headers, thrown: 'bad-json', error: String(err?.message || err) };
+    }
+  } finally {
+    clearTimeout(timer);
+    if (signal?.removeEventListener) signal.removeEventListener('abort', onOuterAbort);
+  }
+}
+
+/**
+ * The real byte size of a Hugging Face tree entry. For an LFS-tracked file the
+ * `size` field can be the size of the *pointer*, so take whichever of the two
+ * is bigger — quoting 134 bytes for a 700 MB model would be worse than saying
+ * nothing.
+ */
+function hfEntryBytes(entry) {
+  const direct = Number(entry?.size) || 0;
+  const lfs = Number(entry?.lfs?.size) || 0;
+  return Math.max(direct, lfs);
+}
+
+/** One quant family per distinct GGUF in the repo, smallest first. */
+function summariseQuants(files) {
+  const byQuant = new Map();
+  for (const f of files) {
+    const quant = quantFromPath(f.path) || 'unlabelled';
+    const hit = byQuant.get(quant) || { quant, files: 0, smallestBytes: Infinity, example: f.path };
+    hit.files += 1;
+    if (f.bytes < hit.smallestBytes) { hit.smallestBytes = f.bytes; hit.example = f.path; }
+    byQuant.set(quant, hit);
+  }
+  return [...byQuant.values()]
+    .map(q => ({ ...q, smallestBytes: Number.isFinite(q.smallestBytes) ? q.smallestBytes : 0 }))
+    .sort((a, b) => (a.smallestBytes || Infinity) - (b.smallestBytes || Infinity))
+    .slice(0, 8);
+}
+
+/**
+ * Which available file is the closest stand-in for the one this build asked
+ * for: the nearest real size to the budget in the model table, preferring a
+ * file that fits inside it.
+ */
+function suggestFile(files, budgetBytes) {
+  if (!files.length) return null;
+  const usable = files.filter(f => f.bytes > 0);
+  const pool = usable.length ? usable : files;
+  if (!(budgetBytes > 0)) {
+    const smallest = pool.slice().sort((a, b) => a.bytes - b.bytes)[0];
+    return { ...smallest, why: 'the smallest file in the repository' };
+  }
+  const fitting = pool.filter(f => f.bytes <= budgetBytes);
+  const ranked = (fitting.length ? fitting : pool)
+    .map(f => ({ ...f, delta: Math.abs(f.bytes - budgetBytes) / budgetBytes }))
+    .sort((a, b) => a.delta - b.delta);
+  const best = ranked[0];
+  if (!best) return null;
+  return {
+    path: best.path,
+    bytes: best.bytes,
+    quant: quantFromPath(best.path),
+    why: fitting.length
+      ? `the closest real size to the ${fmtBytes(budgetBytes)} this build budgets, and it fits`
+      : `the closest real size to the ${fmtBytes(budgetBytes)} this build budgets (nothing fits it)`
+  };
+}
+
+/**
+ * Ask Hugging Face what it really has for one model.
+ *
+ * Returns facts, never a formatted string, so the caller (and the tests) can
+ * assert on the numbers rather than on prose.
+ */
+export async function fetchModelSourceFacts(modelCfg, opts = {}) {
+  const {
+    fetchImpl,
+    timeoutMs = HF_DIAG_TIMEOUT_MS,
+    signal,
+    quants,
+    probeSelfHosted = true,
+    budgetBytes
+  } = opts;
+
+  const cfg = modelCfg || {};
+  let preferred = Array.isArray(quants) && quants.length ? quants.slice() : [];
+  if (!preferred.length) {
+    try { preferred = quantListFor(cfg); } catch { preferred = []; }
+  }
+  if (!preferred.length && cfg.hfGgufQuant) preferred = [cfg.hfGgufQuant];
+
+  const cacheKey = `${cfg.id || '?'}|${cfg.hfGgufRepo || ''}|${cfg.hfId || ''}|${preferred.join(',')}|${probeSelfHosted ? 1 : 0}`;
+  const cached = hfDiagCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) return cached.facts;
+
+  const reqOpts = { fetchImpl, timeoutMs, signal };
+  const gguf = await inspectGgufRepo(cfg, preferred, { ...reqOpts, budgetBytes });
+  const onnx = cfg.hfId ? await inspectOnnxRepo(cfg, reqOpts) : null;
+  const local = probeSelfHosted && cfg.ggufFile ? await inspectSelfHostedCopy(cfg, reqOpts) : null;
+
+  const facts = {
+    id: cfg.id || null,
+    label: cfg.label || cfg.id || 'the selected model',
+    budgetBytes: Number.isFinite(budgetBytes) ? budgetBytes : (cfg.ggufMB > 0 ? cfg.ggufMB * MB : null),
+    fetchedAt: new Date().toISOString(),
+    gguf,
+    onnx,
+    selfHosted: local
+  };
+  const broken = [gguf, onnx, local].some(r => r && r.status !== 'ok' && r.status !== 'present' && r.status !== 'no-source');
+  hfDiagCache.set(cacheKey, { facts, expires: Date.now() + (broken ? HF_DIAG_FAIL_CACHE_MS : HF_DIAG_CACHE_MS) });
+  return facts;
+}
+
+/** The GGUF side: does the repo exist, and is the quant we ask for in it? */
+async function inspectGgufRepo(cfg, preferred, { fetchImpl, timeoutMs, signal, budgetBytes }) {
+  const out = {
+    repo: cfg.hfGgufRepo || null,
+    requestedQuant: cfg.hfGgufQuant || null,
+    quantsTried: preferred.slice(),
+    status: 'no-source',
+    http: null,
+    error: null,
+    gated: false,
+    isPrivate: false,
+    lastModified: null,
+    downloads: null,
+    likes: null,
+    repoFileCount: null,
+    ggufCount: null,
+    treeHttp: null,
+    treeStatus: null,
+    wouldLoad: null,
+    availableQuants: [],
+    suggested: null,
+    realBytes: null,
+    budgetBytes: Number.isFinite(budgetBytes) ? budgetBytes : (cfg.ggufMB > 0 ? cfg.ggufMB * MB : null)
+  };
+  if (!out.repo) return out;
+
+  const meta = await diagRequest(`${HF_BASE}/api/models/${out.repo}`, { fetchImpl, timeoutMs, signal });
+  out.http = meta.http;
+  out.status = sourceStatus(meta.http, meta.thrown);
+  if (meta.error) out.error = meta.error;
+  const data = meta.data && typeof meta.data === 'object' ? meta.data : null;
+  if (data) {
+    out.gated = data.gated === true || data.gated === 'auto' || data.gated === 'manual';
+    out.isPrivate = data.private === true;
+    out.lastModified = data.lastModified || null;
+    out.downloads = Number.isFinite(data.downloads) ? data.downloads : null;
+    out.likes = Number.isFinite(data.likes) ? data.likes : null;
+    out.repoFileCount = Array.isArray(data.siblings) ? data.siblings.length : null;
+    out.revision = data.sha || null;
+  }
+  if (meta.thrown === 'bad-json') out.status = 'bad-json';
+  if (out.status !== 'ok') return out;
+  if (out.gated || out.isPrivate) { out.status = 'restricted'; return out; }
+
+  const tree = await diagRequest(`${HF_BASE}/api/models/${out.repo}/tree/main?recursive=true`, { fetchImpl, timeoutMs, signal });
+  out.treeHttp = tree.http;
+  out.treeStatus = sourceStatus(tree.http, tree.thrown);
+  if (tree.error) out.error = out.error || tree.error;
+  const entries = Array.isArray(tree.data) ? tree.data : [];
+  const files = ggufCandidates(entries).map(f => ({ path: f.path, bytes: hfEntryBytes(f) }));
+  out.ggufCount = files.length;
+  if (out.treeStatus !== 'ok') return out;
+  if (!files.length) { out.status = 'no-gguf'; return out; }
+
+  const matchFor = q => files.filter(f => f.path.toUpperCase().includes(String(q).toUpperCase()));
+  out.quantMatches = preferred.map(q => {
+    const hits = matchFor(q);
+    const smallest = hits.slice().sort((a, b) => a.bytes - b.bytes)[0] || null;
+    return { quant: q, count: hits.length, smallestBytes: smallest ? smallest.bytes : 0, example: smallest ? smallest.path : null };
+  });
+
+  const firstHit = preferred.map(q => ({ quant: q, hits: matchFor(q) })).find(x => x.hits.length);
+  if (firstHit) {
+    const pick = firstHit.hits.slice().sort((a, b) => a.bytes - b.bytes)[0];
+    out.wouldLoad = { quant: firstHit.quant, path: pick.path, bytes: pick.bytes };
+    out.realBytes = pick.bytes;
+    out.status = 'ok';
+    return out;
+  }
+
+  out.status = 'quant-missing';
+  out.availableQuants = summariseQuants(files);
+  out.suggested = suggestFile(files, out.budgetBytes || 0);
+  return out;
+}
+
+/** The ONNX side, which the browser path uses instead of GGUF. */
+async function inspectOnnxRepo(cfg, { fetchImpl, timeoutMs, signal }) {
+  const out = { repo: cfg.hfId || null, alts: (cfg.hfIdAlts || []).slice(), status: 'no-source', http: null, error: null, fileCount: null, hasOnnxWeights: null, lastModified: null };
+  if (!out.repo) return out;
+  const meta = await diagRequest(`${HF_BASE}/api/models/${out.repo}`, { fetchImpl, timeoutMs, signal });
+  out.http = meta.http;
+  out.status = sourceStatus(meta.http, meta.thrown);
+  if (meta.error) out.error = meta.error;
+  const data = meta.data && typeof meta.data === 'object' ? meta.data : null;
+  if (data) {
+    out.lastModified = data.lastModified || null;
+    out.fileCount = Array.isArray(data.siblings) ? data.siblings.length : null;
+    out.gated = data.gated === true || data.gated === 'auto' || data.gated === 'manual';
+    // Only a real file list can prove the weights are missing; an empty one
+    // proves nothing, so leave it unknown rather than reporting a false absence.
+    if (Array.isArray(data.siblings) && data.siblings.length) {
+      out.hasOnnxWeights = data.siblings.some(f => /\.onnx$/i.test(String(f?.rfilename || '')) && !/\.onnx_data$/i.test(String(f?.rfilename || '')));
+    }
+  }
+  if (meta.thrown === 'bad-json') out.status = 'bad-json';
+  return out;
+}
+
+/** Is this site serving the model itself, or is every load a download? */
+async function inspectSelfHostedCopy(cfg, { fetchImpl, timeoutMs, signal }) {
+  let url = null;
+  try { url = resolveAssetUrl(`api/waffle-ai/gguf/${cfg.ggufFile}`); } catch { return null; }
+  const out = { file: cfg.ggufFile, url, status: 'unknown', http: null, bytes: null };
+  const head = await diagRequest(url, { fetchImpl, timeoutMs, signal, init: { method: 'HEAD' }, parse: 'none' });
+  out.http = head.http;
+  if (head.http === 405 || head.http === 501) {
+    // Some static hosts refuse HEAD; a one-byte ranged GET asks the same thing.
+    const ranged = await diagRequest(url, { fetchImpl, timeoutMs, signal, init: { method: 'GET', headers: { Range: 'bytes=0-0' } }, parse: 'none' });
+    out.http = ranged.http;
+    const range = ranged.headers?.get?.('content-range') || '';
+    const total = Number(String(range).split('/')[1]);
+    if (Number.isFinite(total) && total > 0) out.bytes = total;
+    out.status = ranged.http === 200 || ranged.http === 206 ? 'present' : sourceStatus(ranged.http, ranged.thrown);
+    return out;
+  }
+  if (head.http === 200 || head.http === 206) {
+    const len = Number(head.headers?.get?.('content-length'));
+    out.bytes = Number.isFinite(len) && len > 0 ? len : null;
+    out.status = 'present';
+    return out;
+  }
+  out.status = sourceStatus(head.http, head.thrown);
+  return out;
+}
+
+/**
+ * Turn the facts into the lines a person reads at the end of a failed reply.
+ * Every number in here came from a response, and every line names where it came
+ * from — an invented size is worse than no size.
+ */
+export function describeModelSourceFacts(facts) {
+  if (!facts) return [];
+  const lines = [];
+  const g = facts.gguf;
+
+  if (g && g.repo) {
+    // The headline is about the *request*; the finding that came after a
+    // successful request (no GGUF in there, quant missing) gets its own line.
+    // With an HTTP status the headline quotes it; with none, the request never
+    // got that far, so the headline says why (timed out, unreachable) instead of
+    // the meaningless "no response".
+    const reached = g.http !== null && g.http !== undefined;
+    const copy = (reached ? SOURCE_STATUS_COPY[sourceStatus(g.http, null)] : SOURCE_STATUS_COPY[g.status]) || g.status;
+    const head = `GGUF repo ${g.repo} — HTTP ${reached ? g.http : 'none'}, ${copy}`;
+    lines.push(reached
+      ? `${head}${g.lastModified ? `, last modified ${String(g.lastModified).slice(0, 10)}` : ''}${g.ggufCount !== null && g.ggufCount !== undefined ? `, ${g.ggufCount} GGUF file(s) in it` : ''}.`
+      : `${head}.`);
+    if (g.error && g.status !== 'ok') lines.push(`Hugging Face said: ${String(g.error).slice(0, 180)}`);
+    if (g.gated) lines.push('That repository is gated: the licence has to be accepted with an account, which a web page cannot do for you.');
+    if (g.isPrivate) lines.push('That repository is private, so it is invisible to an unauthenticated browser.');
+
+    if (g.status === 'ok' && g.wouldLoad) {
+      lines.push(`Quant asked for: ${(g.quantsTried || []).join(' → ') || g.requestedQuant || 'the preset default'}. The loader would take ${g.wouldLoad.path} (${fmtBytes(g.wouldLoad.bytes)}).`);
+      if (g.budgetBytes > 0) {
+        const over = g.wouldLoad.bytes > g.budgetBytes;
+        const ratio = g.wouldLoad.bytes / g.budgetBytes;
+        const pct = Math.round(Math.abs(ratio - 1) * 100);
+        // Past a couple of times the budget a percentage stops meaning
+        // anything, so say "27x" rather than "2614%".
+        const gap = over ? (ratio >= 2 ? `${ratio.toFixed(1)}x more than` : `${pct}% more than`) : `${pct}% under`;
+        lines.push(over
+          ? `The model table budgets ${fmtBytes(g.budgetBytes)} for this model but the real file is ${fmtBytes(g.wouldLoad.bytes)} — ${gap} the warning and the WASM budget were written against.`
+          : `The model table budgets ${fmtBytes(g.budgetBytes)}; the real file is ${fmtBytes(g.wouldLoad.bytes)} (${gap}), so the budget is honest.`);
+      }
+    }
+    if (g.status === 'quant-missing') {
+      lines.push(`No file in that repository matches ${(g.quantsTried || []).join(', ') || g.requestedQuant}.`);
+      if (g.availableQuants?.length) {
+        lines.push(`Quants actually present: ${g.availableQuants.map(q => `${q.quant} (${fmtBytes(q.smallestBytes)}${q.files > 1 ? `, ${q.files} files` : ''})`).join(', ')}.`);
+      }
+      if (g.suggested) lines.push(`Closest usable file: ${g.suggested.path} (${fmtBytes(g.suggested.bytes)}) — ${g.suggested.why}.`);
+    }
+    if (g.status === 'no-gguf') lines.push('That repository holds no GGUF files at all, so the WLlama path cannot load from it whatever quant is asked for.');
+  }
+
+  const o = facts.onnx;
+  if (o && o.repo) {
+    const copy = SOURCE_STATUS_COPY[o.status] || o.status;
+    lines.push(`ONNX repo ${o.repo} — HTTP ${o.http ?? 'none'}, ${copy}${o.fileCount !== null ? `, ${o.fileCount} file(s)` : ''}${o.hasOnnxWeights === false ? ', and not one .onnx weight among them' : o.hasOnnxWeights === true ? ', with .onnx weights present' : ''}.`);
+    if (o.alts?.length) lines.push(`Fallback ONNX repos this build would try next: ${o.alts.join(', ')}.`);
+  }
+
+  const l = facts.selfHosted;
+  if (l) {
+    if (l.status === 'present') lines.push(`This site is serving the model itself: ${l.file} is present locally${l.bytes ? ` (${fmtBytes(l.bytes)})` : ''}, so no download was needed for the WLlama path.`);
+    else if (l.status === 'not-found') lines.push(`This site is not serving the model itself — ${l.file} is absent locally (HTTP ${l.http}), so every load has to reach the network. Running \`node scripts/fetch-model.mjs\` once would put it here.`);
+    else lines.push(`The self-hosted copy at ${l.url} reported ${SOURCE_STATUS_COPY[l.status] || l.status}.`);
+  }
+
+  return lines;
+}
+
+/**
+ * The one-line fix that follows from the facts. Kept separate from the report
+ * so a caller can show the evidence without the advice, or the advice without
+ * re-deriving it.
+ */
+export function modelSourceFixAdvice(facts, classified) {
+  const g = facts?.gguf;
+  if (!g) return null;
+  const where = `TEXT_MODELS in waffle-browser-ai.js (entry "${facts.id}")`;
+  if (g.status === 'not-found') return `That GGUF repository is gone. Point hfGgufRepo for this model at a live one in ${where}, or self-host the file.`;
+  if (g.status === 'restricted') return 'A gated or private repository can never load from a public page: accept the licence with a token on a machine, then self-host the file with `node scripts/fetch-model.mjs`.';
+  if (g.status === 'rate-limited') return 'Hugging Face is rate-limiting this IP. Wait, or self-host the model so the site never asks them again.';
+  if (g.status === 'quant-missing' && g.suggested) {
+    const quant = g.suggested.quant || quantFromPath(g.suggested.path);
+    return `Set hfGgufQuant to ${quant || 'a quant that exists in that repo'} in ${where} — the quant in the table is not published there.`;
+  }
+  if (g.status === 'no-gguf') return `That repo publishes no GGUF. Change hfGgufRepo in ${where} to a repo that does, or drop the WLlama attempt for this model.`;
+  if (g.status === 'timeout' || g.status === 'unreachable') return 'The diagnostic call itself could not reach huggingface.co, so treat the network as the suspect before the model: blocked DNS, a firewall, a privacy extension, or no CORS from this origin.';
+  if (g.status === 'ok' && g.wouldLoad && g.budgetBytes > 0 && g.wouldLoad.bytes > g.budgetBytes) {
+    return `Raise ggufMB for this model in ${where} (the real file is ${fmtBytes(g.wouldLoad.bytes)}), or pick a lighter quant — the budget in the table is what the warnings and the WASM heap check are computed from.`;
+  }
+  if (classified?.kind === 'memory') return 'The source is fine, so this is the device: pick a smaller model or a lighter quantization preset in Settings → AI Models.';
+  if (classified?.kind === 'runtime') return 'The source is fine, so this is the runtime: switch the fallback mode to CPU/WASM — Chromium without shader-f16 aborts the whole WebGPU module.';
+  return null;
+}
+
+/** Drops the session cache; used by tests and by a "check again" action. */
+export function clearModelSourceFactsCache() {
+  hfDiagCache.clear();
+}
+
+/* ------------------------------------------------------------------ *
  * Context budgeting.
  *
  * `n_ctx` is the *total* window: prompt and reply share it. The chat used to

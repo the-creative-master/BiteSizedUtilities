@@ -9,7 +9,8 @@ import { mountEnglish } from './tools-english.js';
 import { mountMusic } from './tools-music.js';
 import { mountVideo } from './tools-video.js';
 import { mountGames } from './games.js';
-import { openWaffleAI, warmupWaffleAI, isBetaTesting, isWaffleAiLocked, WAFFLE_AI_LOCK_MESSAGE } from './waffle-ai.js';
+import { openWaffleAI, warmupWaffleAI, isWaffleAiLocked, WAFFLE_AI_LOCK_MESSAGE } from './waffle-ai.js';
+import { isBackupBuild } from './build-mode.js';
 import { openChangelog } from './changelog.js';
 import { APP_LANGUAGES, getAppLanguage, setAppLanguage, initAppI18n } from './i18n.js';
 import { gameSlider } from './ui-kit.js';
@@ -93,12 +94,12 @@ const ALL_CUPBOARDS = [
   { id: 'games', name: 'Games & Fun', short: '51 offline arcade & Fancade hits, four of them drawn in-house', icon: '♧', color: '#d7b5eb', trim: '#9875b4', star: 'games', tools: [] }
 ];
 
-// Beta-only utilities (see `betaToolAdditions` in catalog.js). The public
+// Backup-only utilities (see `backupToolAdditions` in catalog.js). The public
 // kitchen resolves to the identical 115-tool array it always used; only
-// beta.html asks for the extras, which are spliced in beside the tool each one
-// experiments on.
-const BETA_BUILD = isBetaTesting();
-const TOOLS = resolveTools(BETA_BUILD);
+// backup.html asks for the extras, which are spliced in beside the tool each one
+// is an upgrade of.
+const BACKUP_BUILD = isBackupBuild();
+const TOOLS = resolveTools(BACKUP_BUILD);
 
 const app = $('#app');
 const aiLocked = isWaffleAiLocked();
@@ -109,11 +110,11 @@ app.innerHTML = `
     <div class="waffle-pops" id="waffle-pops" aria-hidden="true"></div>
   </div>
   <div class="game-viewport">
-    ${isBetaTesting() ? `
-    <div class="beta-banner" id="beta-banner" data-no-i18n>
-      <span class="gbadge beta-banner-badge">🧪 BETA TESTING</span>
-      <span class="beta-banner-copy">Waffle AI and every AI control are switched back on in this build. Expect bugs — finding them is the whole point.</span>
-      <a class="gbtn gbtn-chip beta-banner-exit" href="./index.html">Leave beta</a>
+    ${isBackupBuild() ? `
+    <div class="backup-banner" id="backup-banner" data-no-i18n>
+      <span class="gbadge backup-banner-badge">🧇 BACKUP KITCHEN</span>
+      <span class="backup-banner-copy">Waffle AI and every AI control are switched on in this build. Everything here is unfinished on purpose.</span>
+      <a class="gbtn gbtn-chip backup-banner-exit" href="./index.html">Back to the kitchen</a>
     </div>` : ''}
     <header class="game-hud">
       <div class="hud-left">
@@ -175,7 +176,7 @@ app.innerHTML = `
           <span class="gfield-label">Language</span>
           <div class="gtabs settings-lang-grid" id="settings-lang-list"></div>
         </div>
-        ${isBetaTesting() ? `
+        ${isBackupBuild() ? `
         <div class="gfield settings-ai-section" id="settings-ai-section" data-no-i18n>
           <span class="gfield-label">AI Models &amp; Device Fallbacks</span>
           <div class="waffle-disclaimer-box">
@@ -296,7 +297,7 @@ async function triggerWallBounce(clientX, clientY) {
     toast(bounceStreak === 10 ? '🍯 ×10 Syrup Frenzy!' : '✨ ×5 Waffle Combo!');
   }
 
-  // AI-powered quips only exist in the beta build. While Waffle AI is paused
+  // AI-powered quips only exist in the backup build. While Waffle AI is paused
   // the wall just bounces, and nothing reaches for a model or an endpoint.
   if (aiLocked) {
     speech.textContent = bounceStreak >= 10 ? '🍯 Syrup Frenzy!' : 'Boing!';
@@ -341,35 +342,33 @@ function handleOpenWaffleAI(e) {
 $('#waffle-mascot').addEventListener('click', handleOpenWaffleAI);
 $('#waffle-speech').addEventListener('click', handleOpenWaffleAI);
 
-/* The beta tester door. Ten taps on Sir Waffle within three seconds opens
- * BiteSizedUtilities Beta Testing, where Waffle AI and every AI control are
- * switched back on. Listened for in the capture phase because the mascot's own
+/* The hidden unlock gesture: a fast run of taps on Sir Waffle opens the backup
+ * kitchen, where Waffle AI and every AI control are switched on. The recipe
+ * lives only in these two constants and is not printed anywhere in the UI or in
+ * the changelog. Listened for in the capture phase because the mascot's own
  * handler calls stopPropagation(), and it also counts taps on Sir Waffle inside
  * the "Waffle AI is paused" notice, so the run does not have to restart. */
-const BETA_TAP_TARGET = 10;
-const BETA_TAP_WINDOW_MS = 3000;
-let betaTaps = [];
+const UNLOCK_TAP_TARGET = 10;
+const UNLOCK_TAP_WINDOW_MS = 3000;
+let unlockTaps = [];
 
-function openBetaTesting() {
+function openBackupKitchen() {
   playSparkle();
-  toast('🧪 Beta door unlocked — Waffle AI is back on');
+  toast('🧇 Unlocked — opening the backup kitchen');
   // Resolved against the document so it works from a GitHub Pages sub-path.
-  setTimeout(() => { window.location.href = new URL('beta.html', document.baseURI).href; }, 260);
+  setTimeout(() => { window.location.href = new URL('backup.html', document.baseURI).href; }, 260);
 }
 
 function registerWaffleTap() {
-  if (isBetaTesting()) { betaTaps = []; return; }
+  if (isBackupBuild()) { unlockTaps = []; return; }
   const now = Date.now();
-  betaTaps = betaTaps.filter(t => now - t <= BETA_TAP_WINDOW_MS).concat(now);
-  // Broadcast the run so it is visible. Ten taps with no feedback feels broken,
-  // and a run that quietly expires feels like a timeout — the paused-AI dialog
-  // listens for this and shows "n / 10".
-  window.dispatchEvent(new CustomEvent('waffle-beta-progress', {
-    detail: { count: betaTaps.length, target: BETA_TAP_TARGET }
-  }));
-  if (betaTaps.length < BETA_TAP_TARGET) return;
-  betaTaps = [];
-  openBetaTesting();
+  unlockTaps = unlockTaps.filter(t => now - t <= UNLOCK_TAP_WINDOW_MS).concat(now);
+  // The run is deliberately not broadcast or counted out loud anywhere. The only
+  // feedback is the paused-AI notice opening on the first tap and one toast when
+  // the run lands — an unlock that narrates its own recipe is not an unlock.
+  if (unlockTaps.length < UNLOCK_TAP_TARGET) return;
+  unlockTaps = [];
+  openBackupKitchen();
 }
 
 document.addEventListener('click', e => {
@@ -417,7 +416,7 @@ function woodenSignboardHTML({ kicker, title, leftDoodle = '', rightDoodle = '',
 
 function cupboardCard(c) {
   const theme = CUPBOARD_THEME[c.id] || { color: c.color, trim: c.trim };
-  const countText = c.id === 'games' ? '51 GAMES' : `${cupboardToolCount(c.id, BETA_BUILD)} UTILITIES`;
+  const countText = c.id === 'games' ? '51 GAMES' : `${cupboardToolCount(c.id, BACKUP_BUILD)} UTILITIES`;
   return `
     <article class="cupboard-card" style="--cup:${theme.color};--trim:${theme.trim}" data-cupboard="${c.id}">
       <div class="cupboard-crown" aria-hidden="true"></div>
@@ -449,7 +448,6 @@ function shelfItemCard(t) {
         ${uiIconSVG('heart')}
       </button>
       <button type="button" class="shelf-object" data-tool="${t.id}" style="--cup:${t.color}">
-        ${t.beta ? '<span class="gbadge shelf-beta-badge" data-no-i18n aria-hidden="true">\u{1F9EA} BETA</span>' : ''}
         <span class="object-tile">${toolPropSVG(t.id)}</span>
         <span class="object-label">${esc(t.name)}</span>
       </button>
@@ -653,7 +651,7 @@ function openTool(id) {
             <div class="window-title-group">
               <span class="window-tool-icon">${toolPropSVG(t.id)}</span>
               <div>
-                <span class="window-kicker">${esc((cup?.name || t.cupboard).toUpperCase())}${t.beta ? ' <span class="gbadge beta-banner-badge" data-no-i18n>\u{1F9EA} BETA</span>' : ''}</span>
+                <span class="window-kicker">${esc((cup?.name || t.cupboard).toUpperCase())}</span>
                 <h1>${esc(t.name)}</h1>
               </div>
             </div>
@@ -785,7 +783,7 @@ let precacheState = { entries: [], storage: null, busy: null, busyDetail: '', er
 let precacheAbort = null;
 
 async function refreshPrecacheState() {
-  // The panel only exists in the beta build; without it there is nothing to
+  // The panel only exists in the backup build; without it there is nothing to
   // refresh and no reason to open OPFS or wake the model manager.
   if (!$('#settings-ai-precache')) return;
   try {
@@ -1064,7 +1062,7 @@ function renderSettingsModal() {
   }
 
   // Both probes only feed the AI panel, so skip them entirely while AI is paused.
-  if (!isBetaTesting()) return;
+  if (!isBackupBuild()) return;
 
   detectDeviceDiagnostics().then(d => {
     const pill = $('#settings-device-pill');

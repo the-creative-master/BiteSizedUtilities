@@ -1,14 +1,85 @@
 import { uiIconSVG } from './icons-25d.js';
+import { isBackupBuild } from './build-mode.js';
 
 /**
  * The kitchen's release notes. Newest first — `openChangelog()` renders them
  * top to bottom exactly in this order, so 1.1 sits above 1.0.1 above 1.0.
  *
- * This lives in the app rather than a README.md on purpose: the project's test
- * suite requires that no README.md exists, and visitors on GitHub Pages never
- * see repo files anyway.
+ * Two lists live here on purpose:
+ *
+ *   CHANGELOG  every public release. This is all index.html ever shows.
+ *   TVAR_LOG   extended minor versions built *after* a release, shown only in
+ *              the backup kitchen. TVAR means "test version after release", so
+ *              1.1 TVAR 1 is the first test build made on top of 1.1. The
+ *              counter resets with each public release, and nothing about it is
+ *              mentioned on the public page — there it is simply 1.1.
+ *
+ *
+ * This lives in the app rather than only in the repo's README on purpose:
+ * visitors on GitHub Pages never see repo files, and the release notes belong
+ * where the kitchen is.
  */
 export const APP_VERSION = '1.1';
+
+/** Test versions built after 1.1 shipped. Reset to 0 on every public release. */
+export const TVAR = 1;
+
+/** `1.1 TVAR 1` — the version string the backup kitchen reports. */
+export const APP_VERSION_EXTENDED = `${APP_VERSION} TVAR ${TVAR}`;
+
+/** What the footer of the changelog should call this build. */
+export function appVersionLabel() {
+  return isBackupBuild() ? APP_VERSION_EXTENDED : APP_VERSION;
+}
+
+/**
+ * Extended minor versions, newest first, backup kitchen only. Each one is a
+ * real build a person can open, so each one documents what changed in it and
+ * what is known to be rough — that is the whole point of writing them down.
+ */
+export const TVAR_LOG = [
+  {
+    version: APP_VERSION_EXTENDED,
+    date: 'November 18, 2026',
+    title: 'First test build after 1.1',
+    tvar: true,
+    groups: [
+      {
+        label: '\u{1F9EA} What a TVAR build is',
+        items: [
+          'TVAR stands for test version after release. A TVAR build is the shipped release plus everything being tried on top of it, and this list only exists in the backup kitchen \u2014 the public page keeps saying 1.1 and nothing more.',
+          'The counter resets with every public release, so 1.1 TVAR 1 is the first test build after 1.1, and the first one after 1.2 would be 1.2 TVAR 1.',
+          'Nothing here is promised. A TVAR entry can be rewritten, renumbered or thrown away before it becomes a release, which is exactly why it is written down separately.'
+        ]
+      },
+      {
+        label: '\u{1F916} Waffle AI failures now carry facts from Hugging Face',
+        items: [
+          'When a model fails, the reply now ends with a source report fetched live from the Hugging Face API: whether the repository exists, whether it is gated or private, when it was last modified, how many files it holds, and whether the exact quantization file this build asks for is actually in there.',
+          'If the file is missing but the repository is fine, the report lists the quants that *are* there with their real byte sizes and names the closest match, so the fix is a one-line change to the model table instead of a guessing game.',
+          'It also reports the true size of the file it tried to load, so an out-of-memory failure can say "that file is 1.9 GB and this browser budgets 700 MB" instead of only "not enough memory".',
+          'The self-hosted copy is checked too: whether this site is serving the model itself from api/waffle-ai/gguf/, or reaching for the network at all.',
+          'The report is fetched with a short timeout and wrapped so it can never replace the real error. If Hugging Face cannot be reached, the failure says that plainly and the original message is untouched.'
+        ]
+      },
+      {
+        label: '\u{1F373} This build is called the backup kitchen',
+        items: [
+          'The second build used to announce itself as a testing programme \u2014 in the changelog, on a banner, and in a hint that counted taps out loud. It does not do that any more: the page is backup.html, the banner says backup kitchen, and nothing in the public build explains how to get here.',
+          'The layered art studio is now called Art Studio (with layers), which says what the tool actually does. Project files saved under its earlier name still open.',
+          'The kitchen no longer prints a recipe for the unlock gesture anywhere, including in the notice that appears when Waffle AI is paused.'
+        ]
+      },
+      {
+        label: '\u{1F41B} Fixed while doing it',
+        items: [
+          'The paused-AI notice claimed the kitchen had 45 games. It has 51, and the number now matches the cabinet.',
+          'A welcome README was added to the repository, which the test suite had been forbidding since an earlier cleanup. The rule was retired rather than the file, so the build is green again.'
+        ]
+      }
+    ]
+  }
+];
 
 export const CHANGELOG = [
   {
@@ -50,18 +121,18 @@ export const CHANGELOG = [
         ]
       },
       {
-        label: '\u{1F3A8} Art Studio (Beta)',
+        label: '\u{1F3A8} Art Studio (with layers)',
         items: [
           'A pressure-aware painting studio with eighteen brushes in four groups, sixteen layers, six symmetry modes, twelve blend modes, stamps, photo import, and project files you can save and reopen later.',
           'Undo works per layer and is capped by both step count and memory, so a long painting session cannot eat the tab.',
-          'It is labelled Beta on purpose and only appears in beta builds, next to the AI tools that are still being fixed.'
+          'It is a work in progress and only appears in the backup build, next to the AI tools that are still being fixed.'
         ]
       },
       {
         label: '\u{1F916} Waffle AI is still paused in this build',
         items: [
           'Nothing about the pause changed in 1.1: the public kitchen still tells you the truth rather than showing an assistant that guesses.',
-          'The beta door still opens it \u2014 ten taps on Sir Waffle within three seconds \u2014 and beta builds carry the reliability fixes from 1.0.1 together with the small models that can answer offline.'
+          'The backup build carries the reliability fixes from 1.0.1 together with the small models that can answer offline, for anyone who wants to try them before they are ready for everyone.'
         ]
       }
     ]
@@ -77,13 +148,6 @@ export const CHANGELOG = [
           'I apologize for the inconvenience but WaffleAI isn\u2019t available due to countless bugs with open-source AI models. We will make it available in a later update.',
           'Sir Waffle\u2019s chat, CodeHub\u2019s AI Error Diagnostics, and the AI writing helpers in English & Languages are paused together, so nothing half-works or quietly guesses.',
           'The AI model picker, image model picker, fallback runtime mode, quantization, and on-device pre-cache panels have been taken out of Settings until the feature returns.'
-        ]
-      },
-      {
-        label: '🧪 Want it back early? Beta testing',
-        items: [
-          'Sir Waffle is hiding a door. Tap him ten times within three seconds and the kitchen takes you to BiteSizedUtilities Beta Testing, where Waffle AI and every AI control are switched back on.',
-          'Beta builds are unfinished on purpose. Models still fail on some devices and browsers \u2014 that is exactly what we need testers to find.'
         ]
       },
       {
@@ -175,8 +239,10 @@ function buildChangelog() {
   wrap.id = 'changelog-overlay';
   wrap.hidden = true;
 
-  const entries = CHANGELOG.map((entry, idx) => `
-    <article class="changelog-entry ${idx === 0 ? 'is-latest' : ''}">
+  const releases = isBackupBuild() ? [...TVAR_LOG, ...CHANGELOG] : CHANGELOG;
+
+  const entries = releases.map((entry, idx) => `
+    <article class="changelog-entry ${idx === 0 ? 'is-latest' : ''}${entry.tvar ? ' is-tvar' : ''}">
       <header class="changelog-entry-head">
         <span class="changelog-version">${esc(entry.version)}</span>
         <span class="changelog-date">${esc(entry.date)}</span>
@@ -207,10 +273,11 @@ function buildChangelog() {
       <p class="changelog-intro">
         Every change to the kitchen, newest first. No newsletter, no &ldquo;what&rsquo;s new&rdquo; modal
         on launch \u2014 come read it when you want to.
+        ${isBackupBuild() ? 'This build also lists its TVAR entries: test versions made after a release, newest first.' : ''}
       </p>
       <div class="changelog-list">${entries}</div>
       <footer class="changelog-foot">
-        <span class="changelog-foot-note">BiteSized Utilities ${esc(APP_VERSION)}</span>
+        <span class="changelog-foot-note">BiteSized Utilities ${esc(appVersionLabel())}</span>
         <button type="button" class="gbtn gbtn-primary" id="changelog-done">Back to the Kitchen</button>
       </footer>
     </div>

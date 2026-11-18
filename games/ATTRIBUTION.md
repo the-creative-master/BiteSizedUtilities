@@ -1,15 +1,37 @@
 # Games & Fun — Attribution
 
-All 49 games in GameHub ship inside this repository under `games/cabinet/` and play offline with no connection at all. Roper is mirrored from Fancade (`louis141414/playyyy`, Martin Magni) and keeps its own credit below.
+All 51 games in GameHub ship inside this repository under `games/cabinet/` and play offline with no connection at all. Roper is mirrored from Fancade (`louis141414/playyyy`, Martin Magni) and keeps its own credit below.
 
 ## Written for this kitchen
 
 Four of the games are originals, written and drawn from scratch for this repository: **Toast Breakout**, **Kitchen Snake**, **Waffle Whisk**, and **Syrup Glide**. Each is one self-contained HTML document with no third-party code, no borrowed art, no build step, and no network requests of any kind — not even a web font. They share the kitchen palette (ink `#4f2f23`, cream `#fff8e8`, parchment `#fbedcf`), load the same `../arcade-controls.js` back-to-arcade button as the rest of the cabinet, keep their best score in `localStorage`, and honour `prefers-reduced-motion` where they animate. Sound is generated with the Web Audio API, so there are no audio files either.
 
+## Vendored under the MIT licence
+
+Two games are other people's work, taken from GitHub with their licences intact. Each ships its own
+upstream `LICENSE` file in its cabinet folder, as the MIT licence requires.
+
+| Game | Copyright notice | Upstream |
+| --- | --- | --- |
+| Andromeda Invaders | `Copyright (c) 2022-2023 Susam Pal` | <https://github.com/susam/invaders> |
+| SpacePi | `Copyright (c) 2014 Jack Rugile` | <https://github.com/jackrugile/spacepi-js13k> |
+
+Both files are the upstream build byte-for-byte, with one line injected at the top
+(`<script src="../../arcade-controls.js"></script>`) to add the same back-to-arcade button every other
+cabinet game has. Neither loads anything at runtime: Andromeda Invaders draws and synthesises
+everything on one canvas, and SpacePi is a self-contained js13kGames build. Their pages do contain
+outbound links to the authors' sites, which is theirs to keep.
+
+Andromeda Invaders is inspired by the 1978 arcade game Space Invaders but, in its author's words,
+"the game characters, gameplay and some technical aspects of this game are very different from those
+of Space Invaders". Nothing was taken from Nintendo, Sega, Ninja Kiwi, or any other rights holder to
+make either game.
+
 | Title | Category | Entrypoint |
 | --- | --- | --- |
 | 2048 | Puzzle | `games/cabinet/2048.html` |
 | Agar.io Lite | Casual | `games/cabinet/agar-io-lite.html` |
+| Andromeda Invaders † | Action | `games/cabinet/invaders/index.html` |
 | Bit Planes | Action | `games/cabinet/bit-planes.htm` |
 | BitLife | Casual | `games/cabinet/bitlife/index.html` |
 | Bloons Tower Defense | Action | `games/cabinet/bloons-TD.html` |
@@ -44,6 +66,7 @@ Four of the games are originals, written and drawn from scratch for this reposit
 | Roper | Fancade | `games/cabinet/roper/index.html` |
 | Sand Game | Casual | `games/cabinet/sand-game.html` |
 | Soccer Random | Action | `games/cabinet/soccer-random.htm` |
+| SpacePi † | Action | `games/cabinet/spacepi/index.html` |
 | Speed King | Fancade | `games/cabinet/speed-king/index.html` |
 | Stack | Casual | `games/cabinet/stack.html` |
 | Stacktris | Fancade | `games/cabinet/stacktris.html` |
@@ -59,3 +82,4 @@ Four of the games are originals, written and drawn from scratch for this reposit
 | Zrist | Casual | `games/cabinet/zrist.html` |
 
 ★ = an original, written and drawn for this repository.
+† = vendored from GitHub under the MIT licence, credited above.

@@ -34,6 +34,25 @@
     "controls": "Keyboard / Mouse / Touch"
   },
   {
+    "id": "andromeda-invaders",
+    "title": "Andromeda Invaders",
+    "category": "Action",
+    "tags": [
+      "Action",
+      "Arcade",
+      "Shooter"
+    ],
+    "description": "A 1980s-arcade-style shooter with its own characters: hover ships, tumbling boulders and a laser pulse, all drawn and synthesised live on one canvas.",
+    "emoji": "👾",
+    "featured": false,
+    "origin": "github",
+    "repo": "https://github.com/susam/invaders",
+    "website": "https://susam.net/invaders.html",
+    "license": "MIT (Susam Pal)",
+    "entrypoint": "games/cabinet/invaders/index.html",
+    "controls": "A D / Arrows / Space or P pause / E enter / M mute / F full screen"
+  },
+  {
     "id": "bit-planes",
     "title": "Bit Planes",
     "category": "Action",
@@ -618,6 +637,25 @@
     "license": "BiteSizedUtilities (the-creative-master)",
     "entrypoint": "games/cabinet/soccer-random.htm",
     "controls": "Keyboard / Mouse / Touch"
+  },
+  {
+    "id": "spacepi",
+    "title": "SpacePi",
+    "category": "Action",
+    "tags": [
+      "Action",
+      "Tower Defense",
+      "Strategy"
+    ],
+    "description": "A mouse-accuracy game about defending 13 bases in deep space: draw lines of energy to block the incoming ones, grow your base to its target radius, and spend coins on upgrades.",
+    "emoji": "🥧",
+    "featured": false,
+    "origin": "github",
+    "repo": "https://github.com/jackrugile/spacepi-js13k",
+    "website": "http://js13kgames.com/entries/spacepi/",
+    "license": "MIT (Jack Rugile)",
+    "entrypoint": "games/cabinet/spacepi/index.html",
+    "controls": "Mouse drag / Touch drag / Space pause"
   },
   {
     "id": "speed-king",

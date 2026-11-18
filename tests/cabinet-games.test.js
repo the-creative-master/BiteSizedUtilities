@@ -93,7 +93,7 @@ class Element {
   setAttribute(name, value) {
     const k = String(name).toLowerCase();
     this.attrs[k] = String(value);
-    if (k === 'id') this.id = String(value);
+    if (k === 'id') { this.id = String(value); if (this._onId) this._onId(this); }
     else if (k.startsWith('data-')) this.dataset[k.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = String(value);
     else if (k === 'value') this.value = String(value);
   }
@@ -115,6 +115,24 @@ class Element {
     this.listeners[type] = this.listeners[type].filter(f => f !== fn);
   }
   dispatchEvent(ev) { fire(this, ev.type, ev); return true; }
+  /**
+   * Scoped queries. Markup parsed from a string has no parent links, so when the
+   * subtree is empty this falls back to the whole document, which is what the
+   * game sees anyway for a flat minified layout.
+   */
+  querySelectorAll(selector) {
+    const scope = [];
+    const walk = el => { for (const c of el.children || []) { scope.push(c); walk(c); } };
+    walk(this);
+    const pool = scope.length ? scope : (Element.all ? Element.all() : []);
+    return matchesAll(pool, selector);
+  }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+  getElementsByClassName(name) { return this.querySelectorAll('.' + name); }
+  getElementsByTagName(name) { return this.querySelectorAll(String(name)); }
+  closest() { return null; }
+  contains(other) { return other === this || (this.children || []).includes(other); }
+  remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(c => c !== this); }
   getBoundingClientRect() { return { left: 0, top: 0, width: 420, height: 560, right: 420, bottom: 560 }; }
   focus() {}
   blur() {}
@@ -130,9 +148,39 @@ class FakeEvent {
   stopPropagation() {}
 }
 
+const KEY_CODES = {
+  ' ': 'Space', enter: 'Enter', escape: 'Escape', tab: 'Tab', shift: 'Shift',
+  arrowleft: 'ArrowLeft', arrowright: 'ArrowRight', arrowup: 'ArrowUp', arrowdown: 'ArrowDown',
+  backspace: 'Backspace', delete: 'Delete'
+};
+
+const KEY_CODES_NUMERIC = {
+  ' ': 32, enter: 13, escape: 27, tab: 9, backspace: 8, delete: 46,
+  arrowleft: 37, arrowup: 38, arrowright: 39, arrowdown: 40
+};
+
+/**
+ * Games read e.key, e.code, or the legacy e.keyCode, so a keystroke carries all
+ * three the way a real KeyboardEvent does.
+ */
+function withCode(key, init) {
+  const k = String(key);
+  const lower = k.toLowerCase();
+  let code = KEY_CODES[lower];
+  if (!code) code = /^[0-9]$/.test(k) ? 'Digit' + k : /^[a-z]$/.test(lower) ? 'Key' + lower.toUpperCase() : k;
+  let keyCode = KEY_CODES_NUMERIC[lower];
+  if (keyCode === undefined) {
+    keyCode = /^[a-z]$/i.test(k) ? k.toUpperCase().charCodeAt(0) : /^[0-9]$/.test(k) ? k.charCodeAt(0) : 0;
+  }
+  return Object.assign({ key: k, code: code, keyCode: keyCode, which: keyCode, charCode: 0 }, init);
+}
+
 function fire(target, type, init = {}) {
   const ev = init instanceof FakeEvent ? init : new FakeEvent(type, init);
-  for (const fn of (target.listeners[type] || []).slice()) fn(ev);
+  const registry = target.listeners || {};
+  // A real handler runs with `this` bound to whatever it was attached to, and
+  // plenty of games read this.className or this.getAttribute() from there.
+  for (const fn of (registry[type] || []).slice()) fn.call(target, ev);
   return ev;
 }
 
@@ -150,9 +198,13 @@ function makeContext(recorder) {
     beginPath: noop, closePath: noop, lineTo: noop, arcTo: noop,
     moveTo(x, y) { recorder.moves.push({ x: x, y: y, style: recorder.style }); },
     arc: noop, bezierCurveTo: noop, quadraticCurveTo: noop, rect: noop,
-    fill: noop, stroke: noop, clip: noop, setLineDash: noop, drawImage: noop,
-    clearRect: noop, fillRect: noop, strokeRect: noop,
+    fill() { recorder.ops += 1; }, stroke() { recorder.ops += 1; },
+    clip: noop, setLineDash: noop, drawImage() { recorder.ops += 1; },
+    clearRect() { recorder.ops += 1; }, fillRect() { recorder.ops += 1; }, strokeRect() { recorder.ops += 1; },
     createLinearGradient: () => ({ addColorStop: noop }),
+    createRadialGradient: () => ({ addColorStop: noop }),
+    createConicGradient: () => ({ addColorStop: noop }),
+    createPattern: () => ({}),
     measureText: () => ({ width: 10 }),
     fillText(text, x, y) { recorder.text.push(String(text)); }
   };
@@ -177,7 +229,7 @@ function bootGame(file, opts = {}) {
   assert.ok(blocks.length, `${file} must contain an inline game script`);
   const code = blocks[blocks.length - 1];
 
-  const recorder = { text: [], moves: [], sprites: [], style: null };
+  const recorder = { text: [], moves: [], sprites: [], style: null, ops: 0 };
   const drawnText = recorder.text;
   let clock = 0;
   let rafId = 0;
@@ -186,21 +238,36 @@ function bootGame(file, opts = {}) {
   const timers = new Map();
   const frames = [];
 
-  const store = new Map();
-  const localStorage = {
-    getItem: k => (store.has(String(k)) ? store.get(String(k)) : null),
-    setItem: (k, v) => { store.set(String(k), String(v)); },
-    removeItem: k => { store.delete(String(k)); },
-    clear: () => store.clear(),
-    key: i => Array.from(store.keys())[i] ?? null,
-    get length() { return store.size; }
-  };
+  class FakeStorage {
+    constructor() { this.store = new Map(); }
+    getItem(k) { return this.store.has(String(k)) ? this.store.get(String(k)) : null; }
+    setItem(k, v) { this.store.set(String(k), String(v)); }
+    removeItem(k) { this.store.delete(String(k)); }
+    clear() { this.store.clear(); }
+    key(i) { return Array.from(this.store.keys())[i] ?? null; }
+    get length() { return this.store.size; }
+  }
+  const localStorage = new FakeStorage();
+  const store = localStorage.store;
 
   const elements = [];
   const byId = new Map();
-  const register = el => { elements.push(el); if (el.id) byId.set(el.id, el); return el; };
+  // Browsers expose every element with an id as a property of window, and older
+  // games lean on that instead of calling getElementById.
+  const NAMED_DENY = new Set(['window', 'document', 'self', 'top', 'parent', 'frames', 'location',
+    'history', 'screen', 'console', 'navigator', 'performance', 'localStorage', 'status', 'name',
+    'length', 'closed', 'opener', 'origin', 'event', 'constructor', '__proto__', 'Math', 'Date',
+    'Storage', 'Audio', 'Image', 'globalThis']);
+  let namedTarget = null;
+  const exposeNamed = el => {
+    const id = el.id;
+    if (!namedTarget || !id || NAMED_DENY.has(id) || id in namedTarget) return;
+    namedTarget[id] = el;
+  };
+  const register = el => { elements.push(el); if (el.id) byId.set(el.id, el); exposeNamed(el); return el; };
 
   // Canvas first: games call getContext('2d') on it.
+  Element.prototype._onId = null;
   const canvasAttrs = tagsNamed(html, 'canvas')[0] || {};
   const canvas = register(new Element('canvas', canvasAttrs));
   canvas.getContext = () => {
@@ -210,7 +277,11 @@ function bootGame(file, opts = {}) {
   };
 
   // Then every element the markup declares, so ids/classes/data-* are real.
-  for (const tag of ['div', 'p', 'b', 'span', 'button', 'h1', 'kbd', 'input']) {
+  const TAGS = ['div', 'p', 'b', 'i', 'span', 'button', 'kbd', 'input', 'a', 'ul', 'ol', 'li',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'strong',
+    'em', 'small', 'label', 'section', 'header', 'footer', 'main', 'nav', 'aside', 'article',
+    'figure', 'img', 'form', 'select', 'option', 'textarea', 'pre', 'code', 'blockquote'];
+  for (const tag of TAGS) {
     for (const attrs of tagsNamed(html, tag)) register(new Element(tag, attrs));
   }
   const htmlEl = register(new Element('html', tagsNamed(html, 'html')[0] || {}));
@@ -218,74 +289,194 @@ function bootGame(file, opts = {}) {
   bodyEl.children = elements.slice();
 
   const document = new Element('document');
-  document.readyState = 'complete';
+  // An inline script runs while the parser is still going, so a game that waits
+  // for DOMContentLoaded or load must see exactly that sequence.
+  document.readyState = 'loading';
   document.hidden = false;
   document.documentElement = htmlEl;
   document.body = bodyEl;
+  document.head = register(new Element('head'));
+  document.title = 'cabinet game';
+  document.createDocumentFragment = () => new Element('fragment');
+  document.getElementsByTagName = name => matchesAll(elements, String(name).toLowerCase());
+  document.createElementNS = (ns, tag) => register(new Element(tag));
   document.getElementById = id => byId.get(String(id)) || null;
-  document.createElement = tag => register(new Element(tag));
+  document.createElement = tag => {
+    const el = register(new Element(tag));
+    if (String(tag).toLowerCase() === 'canvas') {
+      el.width = 300;
+      el.height = 150;
+      el.getContext = () => {
+        const ctx = makeContext(recorder);
+        ctx.canvas = el;
+        return ctx;
+      };
+    }
+    return el;
+  };
   document.currentScript = { src: 'https://example.test/games/arcade-controls.js' };
   document.querySelectorAll = selector => matchesAll(elements, selector);
   document.querySelector = selector => document.querySelectorAll(selector)[0] || null;
 
-  const audioNode = () => ({ connect: () => {}, disconnect: () => {}, start: () => {}, stop: () => {} });
+  class FakeAudio {
+    constructor(src) { this.src = src || ''; this.paused = true; this.volume = 1; this.loop = false; }
+    play() { this.paused = false; return Promise.resolve(); }
+    pause() { this.paused = true; }
+    load() {}
+    addEventListener() {}
+    removeEventListener() {}
+    cloneNode() { return new FakeAudio(this.src); }
+  }
+  // Date.now() must follow the simulated clock, or a game that times itself with
+  // it computes a delta of zero every frame and appears frozen.
+  const EPOCH = 1763438000000;
+  class FakeDate extends Date {
+    constructor(...args) {
+      if (args.length === 0) super(EPOCH + clock);
+      else super(...args);
+    }
+    static now() { return EPOCH + clock; }
+  }
+
+  class FakeImage {
+    constructor(w, h) { this.width = w || 0; this.height = h || 0; this.src = ''; this.complete = true; }
+    addEventListener() {}
+  }
+  const audioParam = (value = 0) => ({
+    value: value, defaultValue: value, minValue: -3.4e38, maxValue: 3.4e38,
+    setValueAtTime: () => {}, linearRampToValueAtTime: () => {}, exponentialRampToValueAtTime: () => {},
+    setTargetAtTime: () => {}, setValueCurveAtTime: () => {},
+    cancelScheduledValues: () => {}, cancelAndHoldAtTime: () => {}
+  });
+
+  const audioNode = (extra = {}) => Object.assign({
+    connect: () => {}, disconnect: () => {}, start: () => {}, stop: () => {},
+    frequency: audioParam(),
+    gain: audioParam(),
+    Q: audioParam(1), detune: audioParam(), pan: audioParam(), playbackRate: audioParam(1),
+    threshold: audioParam(-24), knee: audioParam(30), ratio: audioParam(12),
+    attack: audioParam(0.003), release: audioParam(0.25), curve: null, oversample: 'none',
+    delayTime: audioParam(), positionX: audioParam(), positionY: audioParam(), positionZ: audioParam(),
+    type: 'sine', buffer: null, loop: false, onended: null
+  }, extra);
   class FakeAudioContext {
     constructor() { this.currentTime = 0; this.state = 'running'; this.destination = audioNode(); }
     resume() { this.state = 'running'; }
-    createOscillator() { const n = audioNode(); n.frequency = { value: 0 }; n.type = 'sine'; return n; }
-    createGain() {
-      const n = audioNode();
-      n.gain = { value: 0, setValueAtTime: () => {}, exponentialRampToValueAtTime: () => {}, linearRampToValueAtTime: () => {} };
-      return n;
+    createOscillator() { return audioNode(); }
+    createGain() { return audioNode(); }
+    createBiquadFilter() { return audioNode(); }
+    createDynamicsCompressor() { return audioNode(); }
+    createStereoPanner() { return audioNode(); }
+    createWaveShaper() { return audioNode(); }
+    createDelay() { return audioNode(); }
+    createConvolver() { return audioNode(); }
+    createChannelMerger() { return audioNode(); }
+    createChannelSplitter() { return audioNode(); }
+    createPeriodicWave() { return audioNode(); }
+    createBufferSource() { return audioNode(); }
+    createBuffer(channels, length) {
+      return audioNode({ length: length, duration: length / 44100, sampleRate: 44100, numberOfChannels: channels, getChannelData: () => new Float32Array(length || 1) });
     }
+    createMediaElementSource() { return audioNode(); }
   }
 
-  const window = new Element('window');
-  window.localStorage = localStorage;
-  window.AudioContext = FakeAudioContext;
-  window.webkitAudioContext = FakeAudioContext;
-  window.matchMedia = query => ({
-    matches: Boolean(opts.reduceMotion) && /prefers-reduced-motion/.test(String(query)),
-    media: String(query),
-    addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}
-  });
-  window.opener = null;
-  window.close = () => {};
-  window.history = { length: 1, back: () => {} };
-  window.location = { assign: () => {} };
+  // In a browser the window *is* the global object, and vendored games rely on
+  // that: they assign window.jsfxr and then call the bare global jsfxr.
+  const windowListeners = {};
+  const windowTarget = new Element('window');
+  windowTarget.listeners = windowListeners;
 
   const sandbox = {
-    window,
+    window: null,
+    self: null,
+    globalThis: null,
+    top: null,
+    parent: null,
     document,
+    Audio: FakeAudio,
+    Image: FakeImage,
+    Storage: FakeStorage,
     localStorage,
-    navigator: { userAgent: 'node-test', maxTouchPoints: 0 },
+    navigator: { userAgent: 'node-test', maxTouchPoints: 0, language: 'en' },
     performance: { now: () => clock },
     requestAnimationFrame(cb) { rafQueue.push({ id: ++rafId, cb }); return rafId; },
     cancelAnimationFrame() {},
     setTimeout(fn, ms) { const id = ++timerId; timers.set(id, { at: clock + Math.max(0, Number(ms) || 0), fn }); return id; },
     clearTimeout(id) { timers.delete(id); },
-    setInterval(fn, ms) { return sandbox.setTimeout(function loop() { fn(); sandbox.setInterval(fn, ms); }, ms); },
-    clearInterval(id) { sandbox.clearTimeout(id); },
+    setInterval(fn, ms) {
+      const id = ++timerId;
+      timers.set(id, { at: clock + Math.max(0, Number(ms) || 0), fn: function repeat() { fn(); timers.set(id, { at: clock + Math.max(0, Number(ms) || 0), fn: repeat }); } });
+      return id;
+    },
+    clearInterval(id) { timers.delete(id); },
+    getComputedStyle: () => ({ getPropertyValue: () => '' }),
+    screen: { width: 420, height: 620, availWidth: 420, availHeight: 620 },
+    alert: () => {}, confirm: () => true, prompt: () => '',
+    matchMedia: query => ({
+      matches: Boolean(opts.reduceMotion) && /prefers-reduced-motion/.test(String(query)),
+      media: String(query),
+      addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}
+    }),
+    addEventListener(type, fn) { (windowListeners[type] = windowListeners[type] || []).push(fn); },
+    removeEventListener(type, fn) {
+      if (!windowListeners[type]) return;
+      windowListeners[type] = windowListeners[type].filter(f => f !== fn);
+    },
+    AudioContext: FakeAudioContext,
+    webkitAudioContext: FakeAudioContext,
+    opener: null,
+    close: () => {},
+    history: { length: 1, back: () => {} },
+    location: { href: `https://kitchen.test/games/cabinet/${file}`, assign: () => {}, reload: () => {} },
+    innerWidth: 420,
+    innerHeight: 620,
+    devicePixelRatio: 1,
     Math: Object.create(Math),
+    Date: FakeDate,
     console
   };
-  if (opts.random !== undefined) sandbox.Math.random = () => opts.random;
-  sandbox.globalThis = sandbox;
+  sandbox.window = sandbox;
   sandbox.self = sandbox;
+  sandbox.globalThis = sandbox;
   sandbox.top = sandbox;
   sandbox.parent = sandbox;
-  // window.addEventListener must reach the same registry the games read.
-  sandbox.window.addEventListener = window.addEventListener.bind(window);
-  sandbox.window.removeEventListener = window.removeEventListener.bind(window);
-  sandbox.innerWidth = 420;
-  sandbox.innerHeight = 620;
-  sandbox.devicePixelRatio = 1;
+  if (opts.random !== undefined) sandbox.Math.random = () => opts.random;
+
+  Element.all = () => elements;
+  namedTarget = sandbox;
+  Element.prototype._onId = el => exposeNamed(el);
+  for (const el of elements) exposeNamed(el);
 
   vm.createContext(sandbox);
   vm.runInContext(code, sandbox, { filename: `${CABINET}/${file}` });
 
+  // Then the document finishes parsing, and finally the window loads.
+  document.readyState = 'interactive';
+  fire(document, 'DOMContentLoaded');
+  fire(sandbox, 'DOMContentLoaded');
+  document.readyState = 'complete';
+  fire(windowTarget, 'load');
+  fire(document, 'load');
+
+  /**
+   * Fires on the target, then on the document and the window, the way a real
+   * bubbling event reaches delegated handlers.
+   */
+  const bubble = (target, type, init, label) => {
+    assert.ok(target, `${label}: no such event target`);
+    const ev = fire(target, type, init);
+    if (target !== document) fire(document, type, ev);
+    if (target !== windowTarget) fire(windowTarget, type, ev);
+    return ev;
+  };
+
   const api = {
-    html, code, canvas, document, window, localStorage, store, drawnText,
+    html, code, canvas, document, window: windowTarget, sandbox, localStorage, store, drawnText,
+    scheduled: () => ({ raf: rafQueue.length, timers: timers.size }),
+    bubble,
+    /** How many paint operations the canvas has been asked for. */
+    ops: () => recorder.ops,
+    resetOps() { recorder.ops = 0; },
     byId: id => byId.get(id) || null,
     /** Text of an element by id. */
     text(id) { const el = byId.get(id); assert.ok(el, `${file}: #${id} exists`); return el.textContent; },
@@ -306,16 +497,11 @@ function bootGame(file, opts = {}) {
       }
       return null;
     },
-    key(k, init = {}) { return fire(window, 'keydown', Object.assign({ key: k }, init)); },
-    keyUp(k, init = {}) { return fire(window, 'keyup', Object.assign({ key: k }, init)); },
-    click(el, init = {}) {
-      const target = typeof el === 'string' ? byId.get(el) : el;
-      assert.ok(target, `${file}: click target ${el}`);
-      return fire(target, 'click', init);
-    },
+    key(k, init = {}) { return bubble(windowTarget, 'keydown', withCode(k, init), file); },
+    keyUp(k, init = {}) { return bubble(windowTarget, 'keyup', withCode(k, init), file); },
+    click(el, init = {}) { return bubble(typeof el === 'string' ? byId.get(el) : el, 'click', init, file); },
     pointer(el, type, init = {}) {
-      const target = typeof el === 'string' ? byId.get(el) : el;
-      return fire(target, type, init);
+      return bubble(typeof el === 'string' ? byId.get(el) : el, type, init, file);
     },
     /** Advance the clock, firing due timers in order, without rendering. */
     wait(ms) {
@@ -330,14 +516,15 @@ function bootGame(file, opts = {}) {
       }
       clock = Math.max(clock, target);
     },
-    /** Render n frames of dtMs each, firing the rAF callback every frame. */
+    /**
+     * Advance n frames of dtMs each. Fires the rAF callback when the game has
+     * one, and always fires timers, so a setTimeout-driven loop runs too.
+     */
     run(n, dtMs = 16) {
       for (let i = 0; i < n; i++) {
         clock += dtMs;
         const due = rafQueue.splice(0, rafQueue.length);
-        if (!due.length) throw new Error(`${file}: the render loop stopped after ${i} frames`);
         for (const { cb } of due) frames.push(cb(clock));
-        // Timers scheduled during a frame still fire on the fake clock.
         this.wait(0);
       }
     },
@@ -928,4 +1115,131 @@ test('Syrup Glide mutes, restarts, and honours reduced motion', () => {
   g.key(' ');
   g.run(120);
   assert.ok(g.lastSprite(), 'the waffle still flies with reduced motion');
+});
+
+/* ------------------------------------------- vendored MIT-licensed guests */
+
+const VENDORED = [
+  {
+    file: 'invaders/index.html',
+    id: 'andromeda-invaders',
+    title: 'Andromeda Invaders',
+    holder: 'Susam Pal',
+    repo: 'https://github.com/susam/invaders',
+    website: 'https://susam.net/invaders.html'
+  },
+  {
+    file: 'spacepi/index.html',
+    id: 'spacepi',
+    title: 'SpacePi',
+    holder: 'Jack Rugile',
+    repo: 'https://github.com/jackrugile/spacepi-js13k',
+    website: 'http://js13kgames.com/entries/spacepi/'
+  }
+];
+
+test('the two vendored games are MIT-licensed, credited, and load nothing at runtime', () => {
+  const catalogue = JSON.parse(fs.readFileSync('games/catalog.json', 'utf8'));
+  for (const v of VENDORED) {
+    const html = fs.readFileSync(`${CABINET}/${v.file}`, 'utf8');
+    const licence = fs.readFileSync(`${CABINET}/${v.file.replace('index.html', 'LICENSE')}`, 'utf8');
+
+    // MIT requires the copyright notice to travel with the code.
+    assert.match(licence, /MIT/);
+    assert.ok(licence.includes(v.holder), `${v.id}: the shipped licence names ${v.holder}`);
+    assert.ok(licence.includes('Permission is hereby granted'), `${v.id}: the full MIT grant is shipped`);
+
+    // One injected line, and nothing else, joins it to the cabinet.
+    assert.ok(html.includes('<script src="../../arcade-controls.js"></script>'), `${v.id}: back button injected`);
+    assert.ok(!/<script[^>]+src\s*=\s*["']https?:/i.test(html), `${v.id}: loads no external script`);
+    assert.ok(!/<link[^>]+href\s*=\s*["']https?:/i.test(html), `${v.id}: loads no external style or font`);
+    assert.ok(!html.includes('iframe'), `${v.id}: no iframe`);
+    assert.ok(!/schoolgames/i.test(html), `${v.id}: no retired folder name`);
+
+    const entry = catalogue.find(g => g.id === v.id);
+    assert.ok(entry, `${v.id} is catalogued`);
+    assert.equal(entry.title, v.title);
+    assert.equal(entry.origin, 'github');
+    assert.equal(entry.repo, v.repo, `${v.id} credits its upstream repository`);
+    assert.equal(entry.website, v.website);
+    assert.equal(entry.license, `MIT (${v.holder})`);
+    assert.equal(entry.entrypoint, `games/cabinet/${v.file}`);
+    assert.ok(entry.controls.length > 10, `${v.id} explains its controls`);
+    assert.notEqual(entry.license, 'BiteSizedUtilities (the-creative-master)', `${v.id} is not claimed as in-house`);
+  }
+});
+
+test('Andromeda Invaders boots, paints its screen, plays, and pauses', () => {
+  const g = bootGame('invaders/index.html', { random: 0.5 });
+  g.run(20);
+  const opening = g.ops();
+  assert.ok(opening > 50, `the opening screen is painted (${opening} ops)`);
+
+  // Space/P starts it: the animation loop is a 20 ms setTimeout, not rAF.
+  g.key(' ');
+  const playing = g.ops();
+  g.run(200);
+  assert.ok(g.ops() > playing + 500, `the loop animates while playing (${playing} -> ${g.ops()})`);
+
+  // Steer with every documented movement key; the loop must survive them all.
+  const afterKeys = g.ops();
+  g.key('ArrowLeft'); g.run(20); g.keyUp('ArrowLeft');
+  g.key('KeyD'); g.run(20); g.keyUp('KeyD');
+  g.key('KeyA'); g.run(20); g.keyUp('KeyA');
+  g.key('KeyM'); g.run(10);                       // mute
+  assert.ok(g.ops() > afterKeys + 100, `steering keeps drawing (${afterKeys} -> ${g.ops()})`);
+
+  // P pauses: the frame freezes. P again resumes: it animates.
+  g.key('KeyP');
+  const paused = g.ops();
+  g.run(10);
+  assert.equal(g.ops(), paused, 'pausing freezes the frame');
+  g.key('KeyP');
+  g.run(100);
+  assert.ok(g.ops() > paused + 200, `resuming animates again (${paused} -> ${g.ops()})`);
+
+  // E/Enter opens the on-canvas credits and licence screen, then leaves it.
+  const beforeInfo = g.ops();
+  g.key('KeyE');
+  g.run(10);
+  assert.ok(g.ops() > beforeInfo, 'the info screen is drawn on the canvas');
+  g.key('KeyE');
+  g.run(30);
+  assert.ok(g.scheduled().timers >= 1, 'the game is still alive after leaving the info screen');
+});
+
+test('SpacePi boots into its menu, starts a base, and defends it with a dragged line', () => {
+  const g = bootGame('spacepi/index.html', { random: 0.5 });
+  g.run(10);
+  assert.equal(g.ops(), 0, 'the menu is DOM, not canvas');
+
+  g.click('play-game-button');
+  const levels = g.document.querySelectorAll('.level');
+  assert.equal(levels.length, 13, 'thirteen bases to defend');
+  assert.equal(levels[0].getAttribute('rel'), '0', 'the level buttons carry their index');
+
+  g.click(levels[0]);
+  g.run(30);
+  assert.equal(g.scheduled().timers, 1, 'the level loop is running on a timer');
+  assert.ok(g.ops() > 1000, `the level is painted (${g.ops()} ops)`);
+
+  // Drag a defence line on the canvas, then let the level run.
+  const canvas = g.byId('c');
+  assert.ok(canvas, 'the play canvas is wired by id');
+  const before = g.ops();
+  g.pointer(canvas, 'mousedown', { clientX: 200, clientY: 200 });
+  g.pointer(canvas, 'mousemove', { clientX: 260, clientY: 240 });
+  g.run(20);
+  g.pointer(canvas, 'mouseup', { clientX: 260, clientY: 240 });
+  g.run(400);
+  assert.ok(g.ops() > before + 5000, `the loop keeps painting (${before} -> ${g.ops()})`);
+  assert.equal(g.scheduled().timers, 1, 'still alive after the line was drawn');
+
+  // Pause with the space bar, as the game documents.
+  g.key(' ');
+  g.run(20);
+  assert.equal(g.scheduled().timers, 0, 'the loop stops while paused');
+  g.key(' ');
+  g.run(20);
+  assert.equal(g.scheduled().timers, 1, 'and starts again');
 });

@@ -85,11 +85,11 @@ test('no site or utility embeds iframes anywhere in the application', () => {
   }
 });
 
-test('all 49 games (including Roper) have valid entrypoints, unique logos, and no iframe embedding', () => {
+test('all 51 games (including Roper) have valid entrypoints, unique logos, and no iframe embedding', () => {
   const gamesSrc = fs.readFileSync('games.js', 'utf8');
   assert.ok(!gamesSrc.includes('iframe'), 'games.js must not iframe the game sites');
   const games = JSON.parse(fs.readFileSync('games/catalog.json', 'utf8'));
-  assert.equal(games.length, 49);
+  assert.equal(games.length, 51);
   assert.ok(games.some(g => g.id === 'roper' && g.category === 'Fancade'));
   assert.ok(!fs.existsSync('games/arcade'));
   assert.ok(!fs.existsSync('games/original'));
@@ -105,7 +105,7 @@ test('all 49 games (including Roper) have valid entrypoints, unique logos, and n
     assert.ok(fs.statSync(g.entrypoint).size > 200, g.id + ' entrypoint nonempty');
   }
   const gameLogos = games.map(g => gamePropSVG(g, g.category));
-  assert.equal(new Set(gameLogos).size, 49, 'Every game in the arcade must have a unique 2.5D logo');
+  assert.equal(new Set(gameLogos).size, 51, 'Every game in the arcade must have a unique 2.5D logo');
 });
 
 test('CodeHub runtimes (Luau, Haskell, Ruby, PHP, SQL, C++, Clojure, Prolog, Wasm, etc.) and instant tool loading are wired', () => {

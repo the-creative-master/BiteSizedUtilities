@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<script src="../arcade-controls.js"></script>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="color-scheme" content="light">
+<title>Toast Breakout — BiteSizedUtilities</title>
+<style>
+  :root {
+    --ink: #4f2f23;
+    --cream: #fff8e8;
+    --parchment: #fbedcf;
+    --wood: #d6935c;
+    --wood-dark: #b8733d;
+    --honey: #ffe17d;
+    --coral: #e78167;
+    --sage: #7ec47f;
+    --sky: #82bbb6;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; min-height: 100%;
+    background: #f3ddb4;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-weight: 700; color: var(--ink);
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    padding: 54px 10px 18px;
+  }
+  .wrap { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 10px; }
+  h1 {
+    margin: 0; font-size: clamp(20px, 5.4vw, 30px); text-align: center; letter-spacing: 0.4px;
+    text-shadow: 0 2px 0 #fff6df;
+  }
+  .hud {
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center;
+    background: var(--parchment); border: 3.5px solid var(--ink); border-radius: 16px;
+    padding: 8px 12px; box-shadow: 0 5px 0 #e0c79c;
+  }
+  .hud b { font-size: 15px; }
+  .hud .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button {
+    font: inherit; color: var(--ink); background: var(--honey);
+    border: 3px solid var(--ink); border-radius: 12px; padding: 6px 11px; cursor: pointer;
+    box-shadow: 0 4px 0 #cca43b;
+  }
+  button:active { transform: translateY(3px); box-shadow: 0 1px 0 #cca43b; }
+  .stage {
+    position: relative; background: var(--wood); border: 3.5px solid var(--ink);
+    border-radius: 20px; padding: 10px; box-shadow: 0 8px 0 var(--wood-dark);
+  }
+  canvas {
+    display: block; width: 100%; height: auto; border-radius: 14px;
+    border: 3px solid var(--ink); background: var(--cream); touch-action: none;
+  }
+  .hint {
+    margin: 0; text-align: center; font-size: 13px; line-height: 1.5; color: #6b4530;
+  }
+  kbd {
+    background: var(--cream); border: 2px solid var(--ink); border-bottom-width: 3px;
+    border-radius: 6px; padding: 0 5px; font: inherit; font-size: 12px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🍞 Toast Breakout</h1>
+  <div class="hud">
+    <div class="row">
+      <b>Score <span id="score">0</span></b>
+      <b>Best <span id="best">0</span></b>
+    </div>
+    <div class="row">
+      <b>Lives <span id="lives">♥♥♥</span></b>
+      <b>Level <span id="level">1</span></b>
+      <button id="sound" type="button" aria-label="Toggle sound">🔊</button>
+      <button id="pause" type="button" aria-label="Pause or resume">⏸</button>
+      <button id="restart" type="button" aria-label="Start a new game">↻</button>
+    </div>
+  </div>
+  <div class="stage"><canvas id="game" width="420" height="560"></canvas></div>
+  <p class="hint">
+    Drag, or use <kbd>←</kbd> <kbd>→</kbd>. <kbd>Space</kbd> launches the toast, <kbd>P</kbd> pauses, <kbd>M</kbd> mutes.<br>
+    Catch falling butter for a wide paddle and syrup for a slow ball.
+  </p>
+</div>
+<script>
+(function () {
+  'use strict';
+
+  const W = 420, H = 560;
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const livesEl = document.getElementById('lives');
+  const levelEl = document.getElementById('level');
+  const INK = '#4f2f23';
+  const BEST_KEY = 'toast-breakout-best';
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const COLS = 7, ROWS = 5, GAP = 6, SIDE = 22, TOP = 74;
+  const BRICK_W = (W - SIDE * 2 - GAP * (COLS - 1)) / COLS;
+  const BRICK_H = 21;
+  const ROW_COLORS = ['#e78167', '#f0ba50', '#ffe17d', '#7ec47f', '#82bbb6'];
+
+  let state = 'ready';          // ready | playing | paused | over | clear
+  let score = 0, best = 0, lives = 3, level = 1, clearedLevel = 0;
+  let shake = 0;
+  const paddle = { w: 78, h: 14, x: (W - 78) / 2, y: H - 38, baseW: 78, wideUntil: 0 };
+  const ball = { x: W / 2, y: paddle.y - 10, vx: 0, vy: 0, r: 7, baseSpeed: 250, slowUntil: 0 };
+  let bricks = [];
+  let drops = [];
+  let keys = { left: false, right: false };
+
+  /* ---------------------------------------------------------- storage */
+  function readBest() {
+    try { const v = Number(localStorage.getItem(BEST_KEY)); best = Number.isFinite(v) ? v : 0; }
+    catch { best = 0; }
+  }
+  function writeBest() {
+    try { localStorage.setItem(BEST_KEY, String(best)); } catch { /* private mode */ }
+  }
+
+  /* ------------------------------------------------------------ sound */
+  let audio = null, muted = false;
+  function tone(freq, ms, type, gain) {
+    if (muted) return;
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+      const osc = audio.createOscillator();
+      const vol = audio.createGain();
+      osc.type = type || 'square';
+      osc.frequency.value = freq;
+      vol.gain.value = gain === undefined ? 0.05 : gain;
+      osc.connect(vol); vol.connect(audio.destination);
+      const now = audio.currentTime;
+      vol.gain.setValueAtTime(vol.gain.value, now);
+      vol.gain.exponentialRampToValueAtTime(0.0001, now + (ms || 70) / 1000);
+      osc.start(now); osc.stop(now + (ms || 70) / 1000);
+    } catch { /* no audio here, and that is fine */ }
+  }
+
+  /* ------------------------------------------------------------ bricks */
+  function buildBricks() {
+    bricks = [];
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        // Top rows take two hits, and every level adds a few tougher slices.
+        const tough = r < 2 || (r + c + level) % 7 === 0;
+        bricks.push({
+          x: SIDE + c * (BRICK_W + GAP),
+          y: TOP + r * (BRICK_H + GAP),
+          w: BRICK_W, h: BRICK_H,
+          hp: tough ? 2 : 1,
+          color: ROW_COLORS[r % ROW_COLORS.length],
+          row: r
+        });
+      }
+    }
+  }
+
+  function resetBall() {
+    ball.x = paddle.x + paddle.w / 2;
+    ball.y = paddle.y - ball.r - 2;
+    ball.vx = 0; ball.vy = 0;
+    state = 'ready';
+  }
+
+  function launch() {
+    if (state !== 'ready') return;
+    const speed = ball.baseSpeed * (1 + (level - 1) * 0.08);
+    const angle = (-Math.PI / 2) + (Math.random() * 0.6 - 0.3);
+    ball.vx = Math.cos(angle) * speed;
+    ball.vy = Math.sin(angle) * speed;
+    state = 'playing';
+    tone(520, 90, 'triangle', 0.06);
+  }
+
+  function newGame() {
+    score = 0; lives = 3; level = 1; clearedLevel = 0; drops = [];
+    paddle.w = paddle.baseW; paddle.wideUntil = 0; ball.slowUntil = 0;
+    paddle.x = (W - paddle.w) / 2;
+    buildBricks();
+    resetBall();
+    sync();
+  }
+
+  function nextLevel() {
+    clearedLevel = level;          // the banner names the rack you just broke
+    level += 1;
+    drops = [];
+    paddle.w = paddle.baseW; paddle.wideUntil = 0; ball.slowUntil = 0;
+    buildBricks();
+    resetBall();
+    state = 'clear';
+    sync();
+  }
+
+  function loseLife() {
+    lives -= 1;
+    shake = reduceMotion ? 0 : 9;
+    tone(150, 220, 'sawtooth', 0.07);
+    if (lives <= 0) {
+      state = 'over';
+      if (score > best) { best = score; writeBest(); }
+    } else {
+      resetBall();
+    }
+    sync();
+  }
+
+  /* ------------------------------------------------------------- drops */
+  function maybeDrop(brick) {
+    const roll = Math.random();
+    let kind = null;
+    if (roll < 0.05) kind = 'life';
+    else if (roll < 0.19) kind = 'butter';
+    else if (roll < 0.33) kind = 'syrup';
+    if (kind) drops.push({ x: brick.x + brick.w / 2, y: brick.y + brick.h / 2, vy: 95, kind });
+  }
+
+  function catchDrop(d) {
+    if (d.kind === 'butter') {
+      paddle.w = paddle.baseW * 1.55;
+      paddle.wideUntil = performance.now() + 12000;
+      tone(660, 110, 'triangle', 0.06);
+    } else if (d.kind === 'syrup') {
+      ball.slowUntil = performance.now() + 8000;
+      tone(330, 140, 'sine', 0.06);
+    } else {
+      lives = Math.min(5, lives + 1);
+      tone(880, 160, 'triangle', 0.07);
+    }
+    sync();
+  }
+
+  /* ---------------------------------------------------------- collision */
+  function hitBrick(b) {
+    // Nearest point on the brick to the ball centre decides which face was hit.
+    const nx = Math.max(b.x, Math.min(ball.x, b.x + b.w));
+    const ny = Math.max(b.y, Math.min(ball.y, b.y + b.h));
+    const dx = ball.x - nx, dy = ball.y - ny;
+    if (dx * dx + dy * dy > ball.r * ball.r) return false;
+    if (Math.abs(dx) > Math.abs(dy)) ball.vx = dx >= 0 ? Math.abs(ball.vx) : -Math.abs(ball.vx);
+    else ball.vy = dy >= 0 ? Math.abs(ball.vy) : -Math.abs(ball.vy);
+    return true;
+  }
+
+  function step(dt) {
+    const now = performance.now();
+    if (paddle.wideUntil && now > paddle.wideUntil) { paddle.wideUntil = 0; paddle.w = paddle.baseW; }
+
+    const speedKeys = 380;
+    if (keys.left) paddle.x -= speedKeys * dt;
+    if (keys.right) paddle.x += speedKeys * dt;
+    paddle.x = Math.max(6, Math.min(W - paddle.w - 6, paddle.x));
+
+    if (state === 'ready' || state === 'clear') {
+      ball.x = paddle.x + paddle.w / 2;
+      ball.y = paddle.y - ball.r - 2;
+      return;
+    }
+    if (state !== 'playing') return;
+
+    // Syrup slows the ball without changing its direction.
+    const slow = ball.slowUntil && now < ball.slowUntil ? 0.62 : 1;
+    ball.x += ball.vx * dt * slow;
+    ball.y += ball.vy * dt * slow;
+
+    if (ball.x - ball.r < 4) { ball.x = 4 + ball.r; ball.vx = Math.abs(ball.vx); tone(300, 40); }
+    if (ball.x + ball.r > W - 4) { ball.x = W - 4 - ball.r; ball.vx = -Math.abs(ball.vx); tone(300, 40); }
+    if (ball.y - ball.r < 4) { ball.y = 4 + ball.r; ball.vy = Math.abs(ball.vy); tone(300, 40); }
+    if (ball.y - ball.r > H) { loseLife(); return; }
+
+    // Paddle: bounce angle depends on where the toast lands.
+    if (ball.vy > 0 &&
+        ball.y + ball.r >= paddle.y && ball.y + ball.r <= paddle.y + paddle.h + 12 &&
+        ball.x >= paddle.x - ball.r && ball.x <= paddle.x + paddle.w + ball.r) {
+      const hit = (ball.x - (paddle.x + paddle.w / 2)) / (paddle.w / 2);
+      const clamped = Math.max(-0.85, Math.min(0.85, hit));
+      const speed = Math.hypot(ball.vx, ball.vy);
+      const angle = -Math.PI / 2 + clamped * 1.05;
+      ball.vx = Math.cos(angle) * speed;
+      ball.vy = Math.sin(angle) * speed;
+      ball.y = paddle.y - ball.r;
+      tone(420 + Math.abs(clamped) * 120, 55, 'triangle', 0.05);
+    }
+
+    for (let i = bricks.length - 1; i >= 0; i--) {
+      const b = bricks[i];
+      if (!hitBrick(b)) continue;
+      b.hp -= 1;
+      if (b.hp <= 0) {
+        bricks.splice(i, 1);
+        score += 10 * (1 + b.row);
+        maybeDrop(b);
+        tone(560 + b.row * 70, 60, 'square', 0.045);
+        if (!reduceMotion) shake = Math.max(shake, 3);
+      } else {
+        score += 5;
+        tone(240, 45, 'square', 0.04);
+      }
+      sync();
+      break;                                   // one brick per frame keeps bounces honest
+    }
+
+    for (let i = drops.length - 1; i >= 0; i--) {
+      const d = drops[i];
+      d.y += d.vy * dt;
+      if (d.y > H + 20) { drops.splice(i, 1); continue; }
+      if (d.y + 11 >= paddle.y && d.y - 11 <= paddle.y + paddle.h &&
+          d.x >= paddle.x - 10 && d.x <= paddle.x + paddle.w + 10) {
+        drops.splice(i, 1);
+        catchDrop(d);
+      }
+    }
+
+    if (!bricks.length) { nextLevel(); tone(760, 220, 'triangle', 0.07); }
+  }
+
+  /* -------------------------------------------------------------- paint */
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function draw() {
+    ctx.save();
+    if (shake > 0.4) {
+      ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+      shake *= 0.86;
+    }
+    ctx.clearRect(-12, -12, W + 24, H + 24);
+    ctx.fillStyle = '#fff8ea';
+    ctx.fillRect(-12, -12, W + 24, H + 24);
+
+    // A faint checkered cloth behind the play field.
+    ctx.fillStyle = '#f6ecd6';
+    for (let y = 0; y < H; y += 40) {
+      for (let x = ((y / 40) % 2) * 40; x < W; x += 80) ctx.fillRect(x, y, 40, 40);
+    }
+
+    for (const b of bricks) {
+      ctx.fillStyle = b.hp > 1 ? INK : b.color;
+      roundRect(b.x, b.y, b.w, b.h, 6);
+      ctx.fill();
+      ctx.fillStyle = b.hp > 1 ? b.color : '#fff6df';
+      roundRect(b.x + 2.5, b.y + 2.5, b.w - 5, b.h - 5, 5);
+      ctx.fill();
+      ctx.strokeStyle = INK; ctx.lineWidth = 2.4;
+      roundRect(b.x, b.y, b.w, b.h, 6);
+      ctx.stroke();
+    }
+
+    // Paddle: a butter knife.
+    ctx.fillStyle = '#f0ba50';
+    roundRect(paddle.x, paddle.y, paddle.w, paddle.h, 7);
+    ctx.fill();
+    ctx.strokeStyle = INK; ctx.lineWidth = 3;
+    roundRect(paddle.x, paddle.y, paddle.w, paddle.h, 7);
+    ctx.stroke();
+    if (paddle.wideUntil) {
+      ctx.fillStyle = '#ffe17d';
+      roundRect(paddle.x + 4, paddle.y + 3.5, paddle.w - 8, 4, 2);
+      ctx.fill();
+    }
+
+    // Ball: a slice of toast.
+    ctx.fillStyle = '#e0a86a';
+    roundRect(ball.x - ball.r, ball.y - ball.r, ball.r * 2, ball.r * 2, 3.5);
+    ctx.fill();
+    ctx.strokeStyle = INK; ctx.lineWidth = 2.4;
+    roundRect(ball.x - ball.r, ball.y - ball.r, ball.r * 2, ball.r * 2, 3.5);
+    ctx.stroke();
+
+    for (const d of drops) {
+      ctx.fillStyle = d.kind === 'butter' ? '#ffe17d' : d.kind === 'syrup' ? '#c98550' : '#ff9e9e';
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = INK; ctx.lineWidth = 2.6; ctx.stroke();
+      ctx.fillStyle = INK;
+      ctx.font = '700 12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(d.kind === 'butter' ? 'B' : d.kind === 'syrup' ? 'S' : '+', d.x, d.y + 4.5);
+    }
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = INK;
+    if (state === 'ready') banner('Tap or press Space', 'to launch the toast');
+    else if (state === 'clear') banner('Level ' + clearedLevel + ' cleared!', 'Space for the next rack');
+    else if (state === 'paused') banner('Paused', 'P to carry on');
+    else if (state === 'over') banner('Kitchen closed', 'Score ' + score + ' — R for a fresh rack');
+    ctx.restore();
+  }
+
+  function banner(title, sub) {
+    ctx.fillStyle = 'rgba(255, 248, 234, 0.92)';
+    roundRect(W / 2 - 158, H / 2 - 52, 316, 104, 18);
+    ctx.fill();
+    ctx.strokeStyle = INK; ctx.lineWidth = 3.5;
+    roundRect(W / 2 - 158, H / 2 - 52, 316, 104, 18);
+    ctx.stroke();
+    ctx.fillStyle = INK;
+    ctx.font = '800 23px system-ui, sans-serif';
+    ctx.fillText(title, W / 2, H / 2 - 8);
+    ctx.font = '700 14px system-ui, sans-serif';
+    ctx.fillText(sub, W / 2, H / 2 + 20);
+  }
+
+  function sync() {
+    scoreEl.textContent = String(score);
+    bestEl.textContent = String(Math.max(best, score));
+    livesEl.textContent = lives > 0 ? '♥'.repeat(lives) : '—';
+    levelEl.textContent = String(level);
+  }
+
+  /* --------------------------------------------------------------- loop */
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    if (state === 'playing' || state === 'ready' || state === 'clear') step(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  /* -------------------------------------------------------------- input */
+  function pointerX(e) {
+    const rect = canvas.getBoundingClientRect();
+    return ((e.clientX - rect.left) / (rect.width || 1)) * W;
+  }
+  canvas.addEventListener('pointermove', e => {
+    paddle.x = Math.max(6, Math.min(W - paddle.w - 6, pointerX(e) - paddle.w / 2));
+  });
+  canvas.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    paddle.x = Math.max(6, Math.min(W - paddle.w - 6, pointerX(e) - paddle.w / 2));
+    if (state === 'ready') launch();
+    else if (state === 'clear') { state = 'ready'; resetBall(); }
+    else if (state === 'over') newGame();
+  });
+  window.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if (k === 'arrowleft' || k === 'a') { keys.left = true; e.preventDefault(); }
+    else if (k === 'arrowright' || k === 'd') { keys.right = true; e.preventDefault(); }
+    else if (k === ' ' || k === 'enter') {
+      e.preventDefault();
+      if (state === 'ready') launch();
+      else if (state === 'clear') { state = 'ready'; resetBall(); }
+      else if (state === 'over') newGame();
+    } else if (k === 'p' || k === 'escape') togglePause();
+    else if (k === 'm') toggleSound();
+    else if (k === 'r') newGame();
+  });
+  window.addEventListener('keyup', e => {
+    const k = e.key.toLowerCase();
+    if (k === 'arrowleft' || k === 'a') keys.left = false;
+    else if (k === 'arrowright' || k === 'd') keys.right = false;
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && state === 'playing') togglePause();
+  });
+
+  function togglePause() {
+    if (state === 'playing') { state = 'paused'; tone(200, 90); }
+    else if (state === 'paused') { state = 'playing'; tone(440, 90); }
+    document.getElementById('pause').textContent = state === 'paused' ? '▶' : '⏸';
+  }
+  function toggleSound() {
+    muted = !muted;
+    document.getElementById('sound').textContent = muted ? '🔇' : '🔊';
+    if (!muted) tone(520, 80, 'triangle', 0.05);
+  }
+  document.getElementById('pause').addEventListener('click', togglePause);
+  document.getElementById('sound').addEventListener('click', toggleSound);
+  document.getElementById('restart').addEventListener('click', () => { newGame(); tone(480, 90, 'triangle', 0.05); });
+
+  readBest();
+  newGame();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

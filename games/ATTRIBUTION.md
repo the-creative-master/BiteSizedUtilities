@@ -1,6 +1,10 @@
 # Games & Fun — Attribution
 
-All 45 games in GameHub ship inside this repository under `games/cabinet/` and play offline with no connection at all. Roper is mirrored from Fancade (`louis141414/playyyy`, Martin Magni) and keeps its own credit below.
+All 49 games in GameHub ship inside this repository under `games/cabinet/` and play offline with no connection at all. Roper is mirrored from Fancade (`louis141414/playyyy`, Martin Magni) and keeps its own credit below.
+
+## Written for this kitchen
+
+Four of the games are originals, written and drawn from scratch for this repository: **Toast Breakout**, **Kitchen Snake**, **Waffle Whisk**, and **Syrup Glide**. Each is one self-contained HTML document with no third-party code, no borrowed art, no build step, and no network requests of any kind — not even a web font. They share the kitchen palette (ink `#4f2f23`, cream `#fff8e8`, parchment `#fbedcf`), load the same `../arcade-controls.js` back-to-arcade button as the rest of the cabinet, keep their best score in `localStorage`, and honour `prefers-reduced-motion` where they animate. Sound is generated with the Web Audio API, so there are no audio files either.
 
 | Title | Category | Entrypoint |
 | --- | --- | --- |
@@ -22,6 +26,7 @@ All 45 games in GameHub ship inside this repository under `games/cabinet/` and p
 | It's Raining Boxes | Casual | `games/cabinet/itsrainingboxes.html` |
 | Johnny Trigger | Action | `games/cabinet/johnny-trigger.html` |
 | Just One Boss | Casual | `games/cabinet/justoneboss.html` |
+| Kitchen Snake ★ | Casual | `games/cabinet/kitchen-snake.html` |
 | Level Devil | Action | `games/cabinet/level-devil.html` |
 | Minesweeper | Puzzle | `games/cabinet/minesweeper.html` |
 | Monster Match | Fancade | `games/cabinet/monster-match/index.html` |
@@ -43,9 +48,14 @@ All 45 games in GameHub ship inside this repository under `games/cabinet/` and p
 | Stack | Casual | `games/cabinet/stack.html` |
 | Stacktris | Fancade | `games/cabinet/stacktris.html` |
 | Stickman Hook | Action | `games/cabinet/stickman-hook.html` |
+| Syrup Glide ★ | Action | `games/cabinet/syrup-glide.html` |
 | Territorial Io | Action | `games/cabinet/territorial-io.html` |
 | The Impossible Quiz | Puzzle | `games/cabinet/the-impossible-quiz.html` |
 | Tic Tac Toe | Puzzle | `games/cabinet/tic-tac-toe.html` |
+| Toast Breakout ★ | Action | `games/cabinet/toast-breakout.html` |
 | Trap The Cat | Puzzle | `games/cabinet/trap-the-cat.html` |
+| Waffle Whisk ★ | Puzzle | `games/cabinet/waffle-whisk.html` |
 | Wordle Unlimited | Puzzle | `games/cabinet/wordle-unlimited.html` |
 | Zrist | Casual | `games/cabinet/zrist.html` |
+
+★ = an original, written and drawn for this repository.

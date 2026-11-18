@@ -85,12 +85,12 @@ const CUPBOARD_THEME = {
   english: { color: '#f3be72', trim: '#b87d32', doodles: ['Aa', '文'], tagline: 'ENGLISH & LANGUAGES.' },
   music:   { color: '#f3b07c', trim: '#ba6e3a', doodles: ['♪', '♫'], tagline: 'COMPOSE. PLAY. GROOVE.' },
   video:   { color: '#84b4eb', trim: '#4b78b3', doodles: ['🎬', '✦'], tagline: 'EDIT. GRADE. RENDER.' },
-  games:   { color: '#d7b5eb', trim: '#9875b4', doodles: ['★', '♧'], tagline: '45 GAMES + ROPER FANCADE' }
+  games:   { color: '#d7b5eb', trim: '#9875b4', doodles: ['★', '♧'], tagline: '49 GAMES + ROPER FANCADE' }
 };
 
 const ALL_CUPBOARDS = [
   ...cupboards,
-  { id: 'games', name: 'Games & Fun', short: '45 offline arcade & Fancade hits', icon: '♧', color: '#d7b5eb', trim: '#9875b4', star: 'games', tools: [] }
+  { id: 'games', name: 'Games & Fun', short: '49 offline arcade & Fancade hits, four of them drawn in-house', icon: '♧', color: '#d7b5eb', trim: '#9875b4', star: 'games', tools: [] }
 ];
 
 // Beta-only utilities (see `betaToolAdditions` in catalog.js). The public
@@ -417,7 +417,7 @@ function woodenSignboardHTML({ kicker, title, leftDoodle = '', rightDoodle = '',
 
 function cupboardCard(c) {
   const theme = CUPBOARD_THEME[c.id] || { color: c.color, trim: c.trim };
-  const countText = c.id === 'games' ? '45 GAMES' : `${cupboardToolCount(c.id, BETA_BUILD)} UTILITIES`;
+  const countText = c.id === 'games' ? '49 GAMES' : `${cupboardToolCount(c.id, BETA_BUILD)} UTILITIES`;
   return `
     <article class="cupboard-card" style="--cup:${theme.color};--trim:${theme.trim}" data-cupboard="${c.id}">
       <div class="cupboard-crown" aria-hidden="true"></div>
@@ -571,7 +571,7 @@ async function collection(id) {
         <div class="cabinet-bookcase arcade-bookcase">
           <div class="cabinet-crown" aria-hidden="true"></div>
           <div class="cabinet-interior" id="game-root">
-            <p class="empty-msg">Loading 45 Arcade & Fancade games…</p>
+            <p class="empty-msg">Loading 49 Arcade & Fancade games…</p>
           </div>
         </div>
       </section>

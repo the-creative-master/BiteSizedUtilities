@@ -307,6 +307,25 @@
     "controls": "Keyboard / Mouse / Touch"
   },
   {
+    "id": "kitchen-snake",
+    "title": "Kitchen Snake",
+    "category": "Casual",
+    "tags": [
+      "Casual",
+      "Arcade",
+      "Grid"
+    ],
+    "description": "Steer a snake around the pantry floor, eat strawberries, and grab the golden waffle before it melts. Walls on or wrap-around, your call.",
+    "emoji": "🐍",
+    "featured": false,
+    "origin": "github",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/kitchen-snake.html",
+    "controls": "Arrows / WASD / Swipe / On-screen pad"
+  },
+  {
     "id": "level-devil",
     "title": "Level Devil",
     "category": "Action",
@@ -671,6 +690,25 @@
     "controls": "Keyboard / Mouse / Touch"
   },
   {
+    "id": "syrup-glide",
+    "title": "Syrup Glide",
+    "category": "Action",
+    "tags": [
+      "Action",
+      "Arcade",
+      "Reflex"
+    ],
+    "description": "Flap a buttered waffle through a tightening pantry of shelves. One tap per flap, and the floor is not forgiving.",
+    "emoji": "🧇",
+    "featured": false,
+    "origin": "github",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/syrup-glide.html",
+    "controls": "Tap / Click / Space / Up arrow"
+  },
+  {
     "id": "territorial-io",
     "title": "Territorial Io",
     "category": "Action",
@@ -722,6 +760,25 @@
     "controls": "Keyboard / Mouse / Touch"
   },
   {
+    "id": "toast-breakout",
+    "title": "Toast Breakout",
+    "category": "Action",
+    "tags": [
+      "Action",
+      "Arcade",
+      "Bricks"
+    ],
+    "description": "Bounce a slice of toast off a butter knife and break every rack of bricks. Catch falling butter and syrup for a wider paddle and a slower ball.",
+    "emoji": "🍞",
+    "featured": false,
+    "origin": "github",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/toast-breakout.html",
+    "controls": "Mouse / Touch drag / Arrows / Space"
+  },
+  {
     "id": "trap-the-cat",
     "title": "Trap The Cat",
     "category": "Puzzle",
@@ -737,6 +794,25 @@
     "license": "BiteSizedUtilities (the-creative-master)",
     "entrypoint": "games/cabinet/trap-the-cat.html",
     "controls": "Keyboard / Mouse / Touch"
+  },
+  {
+    "id": "waffle-whisk",
+    "title": "Waffle Whisk",
+    "category": "Puzzle",
+    "tags": [
+      "Puzzle",
+      "Memory",
+      "Sound"
+    ],
+    "description": "Watch the four bowls light up in a recipe, then whisk them back in the same order. Lenient gives three strikes, strict gives none.",
+    "emoji": "🥣",
+    "featured": false,
+    "origin": "github",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/waffle-whisk.html",
+    "controls": "Keys 1-4 / D F J K / Tap a bowl"
   },
   {
     "id": "wordle-unlimited",

@@ -1,4 +1,4 @@
-/** 2.5D Offline Arcade — 45 Games (offline cabinet + Roper Fancade) */
+/** 2.5D Offline Arcade — 49 Games (offline cabinet + four originals + Roper Fancade) */
 import { gamePropSVG } from './icons-25d.js';
 import { playPop, playSquish, playSparkle } from './sfx.js';
 

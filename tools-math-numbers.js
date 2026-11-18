@@ -16,7 +16,7 @@ function integerCheck(n, name, min = Number.MIN_SAFE_INTEGER, max = Number.MAX_S
   return n;
 }
 
-/** Safe recursive-descent expression parser (supports x variable for graphing). */
+/** Safe recursive-descent expression parser (supports the x variable — also spelled t — for graphing). */
 function evalExpression(source, { degrees = false, xValue = null } = {}) {
   if (source.length > 500) throw new Error('Expression is too long.');
   const tokens = [];
@@ -77,7 +77,7 @@ function evalExpression(source, { degrees = false, xValue = null } = {}) {
       if (tokens[i++] !== ')') throw new Error('Missing ).');
     } else if (tok === 'pi') res = PI;
     else if (tok === 'e') res = Math.E;
-    else if (tok === 'x' && xValue !== null) res = xValue;
+    else if ((tok === 'x' || tok === 't') && xValue !== null) res = xValue;
     else if (typeof tok === 'string' && Object.hasOwn(funcs, tok)) {
       if (tokens[i++] !== '(') throw new Error(`Use ${tok}(...)`);
       const args = [sum()];
@@ -426,39 +426,333 @@ function calculator(root) {
 }
 
 // =========================================================================
-// 2. GRAPHING CALCULATOR — 2.5D Wooden Tablet Plotter
+// GRAPH ANALYSIS — pure maths behind the plotter, exported so it is testable
+// without a canvas. Every function returns NaN or [] rather than throwing when
+// a curve is not defined somewhere, because "undefined here" is an answer a
+// graphing calculator has to be able to give.
+// =========================================================================
+
+/** f(x) with every failure flattened to NaN. */
+function graphValue(expr, x) {
+  try {
+    const v = evalExpression(expr, { xValue: x });
+    return Number.isFinite(v) ? v : NaN;
+  } catch { return NaN; }
+}
+
+/** Central-difference slope. */
+function graphDerivative(expr, x, h = 1e-5) {
+  const left = graphValue(expr, x - h);
+  const right = graphValue(expr, x + h);
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return NaN;
+  return (right - left) / (2 * h);
+}
+
+/** Second derivative, used to tell a peak from a valley. */
+function graphSecondDerivative(expr, x, h = 1e-4) {
+  const left = graphValue(expr, x - h);
+  const mid = graphValue(expr, x);
+  const right = graphValue(expr, x + h);
+  if (!Number.isFinite(left) || !Number.isFinite(mid) || !Number.isFinite(right)) return NaN;
+  return (right - 2 * mid + left) / (h * h);
+}
+
+/** Bisection on any sign-changing function; NaN when the bracket is not usable. */
+function bisect(fn, a, b, iterations = 60) {
+  let lo = a, hi = b;
+  let flo = fn(lo), fhi = fn(hi);
+  if (!Number.isFinite(flo) || !Number.isFinite(fhi) || flo * fhi > 0) return NaN;
+  for (let i = 0; i < iterations; i++) {
+    const mid = (lo + hi) / 2;
+    const fmid = fn(mid);
+    if (!Number.isFinite(fmid)) return NaN;
+    if (fmid === 0) return mid;
+    if (flo * fmid < 0) { hi = mid; fhi = fmid; } else { lo = mid; flo = fmid; }
+  }
+  return (lo + hi) / 2;
+}
+
+/** Keep a list of x positions deduplicated and capped, so wiggly curves cannot flood the panel. */
+function pushFound(list, value, limit, tolerance) {
+  if (list.length >= limit) return false;
+  if (list.some(v => Math.abs(v - value) <= tolerance)) return false;
+  list.push(value);
+  return true;
+}
+
+/**
+ * Simpson's rule. Returns NaN when any sample is undefined, which is the honest
+ * answer for an integral that runs through a pole such as 1/x across zero.
+ */
+function graphIntegral(expr, a, b, steps = 400) {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return NaN;
+  if (a === b) return 0;
+  if (a > b) return -graphIntegral(expr, b, a, steps);
+  const n = Math.max(2, Math.round(steps / 2) * 2);
+  const h = (b - a) / n;
+  const first = graphValue(expr, a);
+  const last = graphValue(expr, b);
+  if (!Number.isFinite(first) || !Number.isFinite(last)) return NaN;
+  let sum = first + last;
+  for (let i = 1; i < n; i++) {
+    const v = graphValue(expr, a + i * h);
+    if (!Number.isFinite(v)) return NaN;
+    sum += v * (i % 2 === 0 ? 2 : 4);
+  }
+  return (sum * h) / 3;
+}
+
+/** Signed area enclosed by a polar curve, 1/2 * integral of r^2. */
+function graphPolarArea(expr, t0, t1, steps = 400) {
+  const swept = graphIntegral(`(${expr})^2`, t0, t1, steps);
+  return Number.isFinite(swept) ? swept / 2 : NaN;
+}
+
+/** Length of the curve itself, as a polyline over the samples (gaps break it). */
+function graphArcLength(expr, a, b, samples = 800) {
+  if (!(b > a)) return NaN;
+  let total = 0, prevX = null, prevY = null;
+  for (let i = 0; i <= samples; i++) {
+    const x = a + ((b - a) * i) / samples;
+    const y = graphValue(expr, x);
+    if (Number.isFinite(y)) {
+      if (prevY !== null) total += Math.hypot(x - prevX, y - prevY);
+      prevX = x; prevY = y;
+    } else { prevX = null; prevY = null; }
+  }
+  return total;
+}
+
+/** Length of a polar curve, integral of sqrt(r^2 + (dr/dt)^2) by polyline. */
+function graphPolarArcLength(expr, t0, t1, samples = 900) {
+  if (!(t1 > t0)) return NaN;
+  let total = 0, prev = null;
+  for (let i = 0; i <= samples; i++) {
+    const t = t0 + ((t1 - t0) * i) / samples;
+    const r = graphValue(expr, t);
+    if (!Number.isFinite(r)) { prev = null; continue; }
+    const pt = { x: r * Math.cos(t), y: r * Math.sin(t) };
+    if (prev) total += Math.hypot(pt.x - prev.x, pt.y - prev.y);
+    prev = pt;
+  }
+  return total;
+}
+
+/** Mean height of the curve across [a, b]. */
+function graphAverageValue(expr, a, b, steps = 400) {
+  if (!(b > a)) return NaN;
+  const area = graphIntegral(expr, a, b, steps);
+  return Number.isFinite(area) ? area / (b - a) : NaN;
+}
+
+/** Lowest and highest point actually reached on [a, b]. */
+function graphRangeStats(expr, a, b, samples = 800) {
+  if (!(b > a)) return { min: NaN, max: NaN };
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i <= samples; i++) {
+    const y = graphValue(expr, a + ((b - a) * i) / samples);
+    if (!Number.isFinite(y)) continue;
+    if (y < min) min = y;
+    if (y > max) max = y;
+  }
+  return { min: Number.isFinite(min) ? min : NaN, max: Number.isFinite(max) ? max : NaN };
+}
+
+/**
+ * Zeros of a curve. A sign change is only accepted as a root when the value at
+ * the refined point is genuinely small relative to the bracket ends — that is
+ * what tells x^2 - 2 = 0 at 1.414 apart from 1/x flipping sign across its pole.
+ */
+function graphRoots(expr, a, b, { samples = 800, limit = 24 } = {}) {
+  const found = [];
+  if (!(b > a) || !expr || !expr.trim()) return found;
+  const f = x => graphValue(expr, x);
+  const tol = (b - a) / (samples * 2);
+  let prevX = a, prevY = f(a);
+  for (let i = 1; i <= samples; i++) {
+    const x = a + ((b - a) * i) / samples;
+    const y = f(x);
+    if (Number.isFinite(prevY) && Number.isFinite(y)) {
+      if (prevY === 0) pushFound(found, prevX, limit, tol);
+      else if (prevY * y < 0) {
+        const r = bisect(f, prevX, x);
+        if (Number.isFinite(r)) {
+          const atRoot = f(r);
+          const scale = Math.max(1, Math.abs(prevY), Math.abs(y));
+          if (Number.isFinite(atRoot) && Math.abs(atRoot) <= 1e-4 * scale) pushFound(found, r, limit, tol);
+        }
+      }
+    }
+    prevX = x; prevY = y;
+  }
+  if (Number.isFinite(prevY) && prevY === 0) pushFound(found, prevX, limit, tol);
+  return found.sort((p, q) => p - q);
+}
+
+/**
+ * Peaks and valleys. A sign change of the slope is only a candidate; it is then
+ * confirmed by comparing the curve either side of it. That two-step matters:
+ * it catches a minimum where the slope lands on exactly zero at a sample point
+ * (x^2 - 2 at x = 0, which a pure sign test walks straight past) and it rejects
+ * the slope spikes a jump discontinuity such as floor(x) produces.
+ */
+function graphExtrema(expr, a, b, { samples = 800, limit = 24 } = {}) {
+  const found = [];
+  if (!(b > a) || !expr || !expr.trim()) return found;
+  const slope = x => graphDerivative(expr, x);
+  const tol = (b - a) / (samples * 2);
+  const reach = tol * 4;
+
+  function confirm(at) {
+    const y = graphValue(expr, at);
+    if (!Number.isFinite(y)) return;
+    if (found.length >= limit || found.some(p => Math.abs(p.x - at) <= tol)) return;
+    const left = graphValue(expr, at - reach);
+    const right = graphValue(expr, at + reach);
+    if (!Number.isFinite(left) || !Number.isFinite(right)) return;
+    const isMax = y >= left && y >= right;
+    const isMin = y <= left && y <= right;
+    if (!isMax && !isMin) return;                       // a saddle or a pole
+    // A real turning point arrives at the same height from both sides, so the
+    // two neighbours agree. A jump discontinuity (floor, round, a step) also
+    // satisfies the comparison above but has wildly different neighbours —
+    // that asymmetry is what separates a plateau from a cliff.
+    const margin = isMax ? y - Math.min(left, right) : Math.max(left, right) - y;
+    if (Math.abs(right - left) > Math.abs(margin) * 0.5) return;
+    found.push({ x: at, y, kind: isMax && isMin ? 'flat' : isMax ? 'max' : 'min' });
+  }
+
+  let prevX = a, prevSlope = slope(a);
+  for (let i = 1; i <= samples; i++) {
+    const x = a + ((b - a) * i) / samples;
+    const s = slope(x);
+    if (Number.isFinite(prevSlope) && Number.isFinite(s)) {
+      if (prevSlope * s < 0) confirm(bisect(slope, prevX, x));
+      else if (s === 0 && prevSlope !== 0) confirm(x);  // the slope landed exactly on zero
+    }
+    prevX = x; prevSlope = s;
+  }
+  return found.sort((p, q) => p.x - q.x);
+}
+
+/**
+ * Where two curves cross, which is just the roots of their difference — the
+ * parser handles the combined expression, so both curves stay user-editable.
+ */
+function graphIntersections(exprA, exprB, a, b, opts = {}) {
+  if (!exprA || !exprA.trim() || !exprB || !exprB.trim()) return [];
+  return graphRoots(`(${exprA})-(${exprB})`, a, b, opts);
+}
+
+/** Everything the Analyse button reports, for one curve in one mode. */
+function analyseCurve(expr, { a, b, mode = 'cartesian', others = [] } = {}) {
+  if (!expr || !expr.trim()) return { ok: false, reason: 'Enter a formula first.' };
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a >= b) return { ok: false, reason: 'The range needs a lower bound smaller than the upper bound.' };
+  const probe = graphValue(expr, (a + b) / 2);
+  if (Number.isNaN(probe) && Number.isNaN(graphValue(expr, a)) && Number.isNaN(graphValue(expr, b))) {
+    return { ok: false, reason: 'That formula is undefined across the whole range.' };
+  }
+
+  if (mode === 'polar') {
+    const stats = graphRangeStats(expr, a, b);
+    return {
+      ok: true, mode, expr, a, b,
+      area: graphPolarArea(expr, a, b),
+      arcLength: graphPolarArcLength(expr, a, b),
+      minR: stats.min, maxR: stats.max,
+      zeros: graphRoots(expr, a, b, { limit: 12 }),
+      crossings: []
+    };
+  }
+
+  const stats = graphRangeStats(expr, a, b);
+  const roots = graphRoots(expr, a, b, { limit: 12 });
+  const extrema = graphExtrema(expr, a, b, { limit: 12 });
+  return {
+    ok: true, mode, expr, a, b,
+    integral: graphIntegral(expr, a, b),
+    arcLength: graphArcLength(expr, a, b),
+    average: graphAverageValue(expr, a, b),
+    min: stats.min, max: stats.max,
+    slopeAtA: graphDerivative(expr, a),
+    slopeAtB: graphDerivative(expr, b),
+    curvature: graphSecondDerivative(expr, (a + b) / 2),
+    roots, extrema,
+    crossings: others
+      .filter(o => o && o.expr && o.expr.trim() && o.id !== undefined)
+      .map(o => ({ id: o.id, label: o.label, points: graphIntersections(expr, o.expr, a, b, { limit: 8 }) }))
+      .filter(o => o.points.length)
+  };
+}
+
+const GRAPH_ANALYSIS = Object.freeze({
+  graphValue, graphDerivative, graphSecondDerivative, bisect, graphIntegral, graphPolarArea,
+  graphArcLength, graphPolarArcLength, graphAverageValue, graphRangeStats,
+  graphRoots, graphExtrema, graphIntersections, analyseCurve
+});
+
+// =========================================================================
+// 2. GRAPHING CALCULATOR — 2.5D Wooden Tablet Plotter: five curves, polar mode,
+//    derivative and area overlays, and a full analysis report per curve.
 // =========================================================================
 function graphingCalculator(root) {
   const slots = [
     { id: 'f', label: 'f(x)', color: '#d96b6b', expr: 'sin(x) + 0.3*x', visible: true },
     { id: 'g', label: 'g(x)', color: '#589c61', expr: '0.2*x^2 - 2', visible: true },
-    { id: 'h', label: 'h(x)', color: '#8a6bb8', expr: 'cos(2*x)', visible: false }
+    { id: 'h', label: 'h(x)', color: '#8a6bb8', expr: 'cos(2*x)', visible: false },
+    { id: 'p', label: 'p(x)', color: '#d99a3c', expr: 'exp(-x^2/2)*3', visible: false },
+    { id: 'q', label: 'q(x)', color: '#3f8fa8', expr: '0.5*x^3 - 2*x', visible: false }
   ];
   let activeSlot = 'f';
+  let mode = 'cartesian';
   let centerX = 0, centerY = 0, scale = 42;
   let hoverPt = null;
+  let showDerivative = false;
+  let showArea = false;
+  let showMarkers = true;
+  let polarTurns = 1;
+  let bounds = { a: -6, b: 6 };
+  let analysis = null;
+  let analysisFor = null;
 
   const canvas = el('canvas', { class: 'graph-canvas', width: 680, height: 390, 'aria-label': '2.5D Graphing calculator grid' });
   const readout = el('div', { class: 'graph-readout' }, 'Slide or tap the 2.5D grid to trace points');
+  const modeHint = el('p', { class: 'graph-mode-hint' });
+  const analysisBox = el('div', { class: 'graph-analysis', hidden: true });
+  const tableBox = el('div', { class: 'graph-table', hidden: true });
+
   const exprField = createGameField({
     label: 'Formula y =',
     value: slots[0].expr,
     placeholder: 'e.g. sin(x) or x^2 - 3',
     onInput: val => {
       const s = slots.find(x => x.id === activeSlot);
-      if (s) { s.expr = val; s.visible = true; syncVisibility(); draw(); }
+      if (s) { s.expr = val; s.visible = true; invalidateAnalysis(); syncVisibility(); draw(); }
     }
   });
+  const boundA = createGameField({ label: 'from a', value: String(bounds.a), placeholder: '-6', inputmode: 'decimal', cls: 'graph-bound', onInput: v => setBound('a', v) });
+  const boundB = createGameField({ label: 'to b', value: String(bounds.b), placeholder: '6', inputmode: 'decimal', cls: 'graph-bound', onInput: v => setBound('b', v) });
+
   const visToggle = createGameToggle({
-    checked: true,
-    onLabel: 'SHOWN',
-    offLabel: 'HIDDEN',
-    label: 'Show curve',
-    onChange: v => {
-      playPop(500);
-      const s = slots.find(x => x.id === activeSlot);
-      if (s) { s.visible = v; draw(); }
-    }
+    checked: true, onLabel: 'SHOWN', offLabel: 'HIDDEN', label: 'Show curve',
+    onChange: v => { playPop(500); const s = slots.find(x => x.id === activeSlot); if (s) { s.visible = v; draw(); } }
+  });
+  const derivToggle = createGameToggle({
+    checked: false, onLabel: 'SLOPE ON', offLabel: 'SLOPE OFF', label: 'Plot the derivative',
+    onChange: v => { playPop(560); showDerivative = v; draw(); }
+  });
+  const areaToggle = createGameToggle({
+    checked: false, onLabel: 'AREA ON', offLabel: 'AREA OFF', label: 'Shade the area under the curve',
+    onChange: v => { playPop(520); showArea = v; draw(); }
+  });
+  const markerToggle = createGameToggle({
+    checked: true, onLabel: 'MARKS ON', offLabel: 'MARKS OFF', label: 'Mark roots and turning points',
+    onChange: v => { playPop(520); showMarkers = v; draw(); }
+  });
+  const turnsSlider = createGameSlider({
+    label: 'Polar turns', min: 1, max: 8, step: 1, value: 1, unit: '×2π', color: '#8a6bb8',
+    // syncMode, not draw: the hint line and the polar table both quote the turn count.
+    onChange: v => { polarTurns = v; invalidateAnalysis(); syncMode(); }
   });
 
   function syncVisibility() {
@@ -469,37 +763,107 @@ function graphingCalculator(root) {
     visToggle.el.querySelector('.gtoggle-text').textContent = s.visible ? 'SHOWN' : 'HIDDEN';
   }
 
-  const tableBox = el('div', { class: 'graph-table', hidden: true });
+  /** Anything that changes what the report was about makes the report stale. */
+  function invalidateAnalysis() {
+    analysis = null;
+    analysisFor = null;
+    analysisBox.hidden = true;
+  }
+
+  function setBound(which, raw) {
+    const v = Number(String(raw).trim());
+    if (!Number.isFinite(v)) return;
+    bounds[which] = v;
+    invalidateAnalysis();
+  }
+
+  /** The x range currently on screen, used by "Use window". */
+  function windowRange() {
+    const w = canvas.width;
+    const originX = w / 2 - centerX * scale;
+    return { a: (0 - originX) / scale, b: (w - originX) / scale };
+  }
 
   const tabs = createGameTabs({
     items: [
       ...slots.map(s => ({ value: s.id, label: s.label, icon: el('span', { class: 'color-dot', style: `background:${s.color}` }) })),
-      { value: 'table', label: 'Table' }
+      { value: 'table', label: 'Table' },
+      { value: 'analyse', label: 'Analyse' }
     ],
     value: 'f',
     onChange: val => {
       playPop(540);
-      if (val === 'table') {
-        tableBox.hidden = false;
-        renderTable();
-      } else {
-        tableBox.hidden = true;
-        activeSlot = val;
-        const s = slots.find(x => x.id === activeSlot);
-        exprField.input.value = s.expr;
-        syncVisibility();
-      }
+      if (val === 'table') { tableBox.hidden = false; analysisBox.hidden = true; renderTable(); return; }
+      if (val === 'analyse') { tableBox.hidden = true; runAnalysis(); return; }
+      tableBox.hidden = true;
+      analysisBox.hidden = true;
+      if (val !== activeSlot) invalidateAnalysis();
+      activeSlot = val;
+      const s = slots.find(x => x.id === activeSlot);
+      exprField.input.value = s.expr;
+      syncVisibility();
     }
   });
 
+  const modeTabs = createGameTabs({
+    items: [{ value: 'cartesian', label: 'Cartesian y = f(x)' }, { value: 'polar', label: 'Polar r = f(θ)' }],
+    value: 'cartesian',
+    cls: 'graph-mode-tabs',
+    onChange: val => {
+      if (val === mode) return;
+      playPop(580);
+      mode = val;
+      invalidateAnalysis();
+      syncMode();
+    }
+  });
+
+  const CARTESIAN_PRESETS = ['sin(x)', 'x^2 - 2', 'cos(2*x)', '0.2*x^3 - x', 'abs(x) - 2', '2/x', 'tan(x)',
+    'sin(x)/x', 'exp(-x^2/2)', 'ln(abs(x))', 'floor(x)', 'x*sin(1/x)', 'sqrt(abs(x))*2', 'sin(x^2)', '3*sin(x)*cos(3*x)'];
+  const POLAR_PRESETS = ['1+cos(x)', 'cos(3*x)', 'sin(5*x)', 'x/2', '2+sin(4*x)', 'cos(x/3)', '1+2*sin(x)',
+    'abs(sin(2*x))*3', '3+2*cos(5*t)', 'sin(t)*exp(cos(t))*3'];
+  const presetRow = el('div', { class: 'preset-row' });
+
+  function renderPresets() {
+    const list = mode === 'polar' ? POLAR_PRESETS : CARTESIAN_PRESETS;
+    presetRow.replaceChildren(...list.map(p => el('button', {
+      type: 'button',
+      class: 'gbtn gbtn-chip',
+      onclick: () => {
+        playPop(580);
+        const s = slots.find(x => x.id === activeSlot);
+        if (s) { s.expr = p; s.visible = true; exprField.input.value = p; invalidateAnalysis(); syncVisibility(); draw(); }
+      }
+    }, p)));
+  }
+
+  /** Labels and controls that only make sense in one of the two modes. */
+  function syncMode() {
+    const polar = mode === 'polar';
+    modeHint.textContent = polar
+      ? `Polar mode: the formula is r(θ), and θ is written as x (or t). Sweeping ${polarTurns} full turn${polarTurns === 1 ? '' : 's'}.`
+      : 'Cartesian mode: the formula is y = f(x). Analyse reports roots, turning points, area, arc length and crossings.';
+    turnsSlider.el.hidden = !polar;
+    derivToggle.el.hidden = polar;
+    renderPresets();
+    if (tableBox.hidden === false && tabs.getValue() === 'table') renderTable();
+    draw();
+  }
+
   function renderTable() {
+    const polar = mode === 'polar';
     const rows = [];
-    for (let x = -4; x <= 4; x += 1) {
-      const cells = [el('td', {}, String(x))];
+    const steps = polar ? 12 : 9;
+    const lo = polar ? 0 : -4;
+    const hi = polar ? PI * 2 * polarTurns : 4;
+    for (let i = 0; i <= steps; i++) {
+      const x = lo + ((hi - lo) * i) / steps;
+      const cells = [el('td', {}, Number(x.toPrecision(4)).toString())];
       for (const s of slots) {
         let out = '—';
         if (s.visible && s.expr.trim()) {
-          try { out = numberText(evalExpression(s.expr, { xValue: x })); } catch { out = 'undef'; }
+          const v = graphValue(s.expr, x);
+          out = Number.isFinite(v) ? numberText(v) : 'undef';
         }
         cells.push(el('td', {}, out));
       }
@@ -507,16 +871,236 @@ function graphingCalculator(root) {
     }
     tableBox.replaceChildren(
       el('table', { class: 'gtable' },
-        el('thead', {}, el('tr', {}, el('th', {}, 'x'), ...slots.map(s => el('th', { style: `color:${s.color}` }, s.label)))),
+        el('thead', {}, el('tr', {}, el('th', {}, polar ? 'θ (rad)' : 'x'), ...slots.map(s => el('th', { style: `color:${s.color}` }, polar ? `r from ${s.label}` : s.label)))),
         el('tbody', {}, ...rows)
       )
     );
+  }
+
+  function runAnalysis() {
+    const s = slots.find(x => x.id === activeSlot);
+    const polar = mode === 'polar';
+    const range = polar ? { a: 0, b: PI * 2 * polarTurns } : { a: bounds.a, b: bounds.b };
+    const result = analyseCurve(s.expr, {
+      a: range.a,
+      b: range.b,
+      mode,
+      others: polar ? [] : slots.filter(o => o.id !== s.id && o.visible && o.expr.trim())
+    });
+    analysisFor = { slot: s.id, mode, a: range.a, b: range.b };
+    analysis = result.ok ? result : null;
+    renderAnalysis(s, result, polar);
+    tableBox.hidden = true;
+    analysisBox.hidden = false;
+    draw();
+  }
+
+  const fmt = v => Number.isFinite(v) ? Number(v.toPrecision(6)).toString() : 'undefined';
+  const fmtList = (list, mapper) => list.length ? list.map(mapper).join(',  ') : 'none in range';
+
+  function renderAnalysis(slot, result, polar) {
+    const rows = [];
+    const add = (label, value) => rows.push(el('div', { class: 'graph-analysis-row' },
+      el('span', { class: 'graph-analysis-label' }, label),
+      el('span', { class: 'graph-analysis-value' }, value)));
+
+    if (!result.ok) {
+      analysisBox.replaceChildren(
+        el('h4', { class: 'graph-analysis-title' }, `Analysis · ${slot.label}`),
+        el('p', { class: 'graph-analysis-empty' }, result.reason)
+      );
+      return;
+    }
+
+    const rangeText = polar
+      ? `θ from ${fmt(result.a)} to ${fmt(result.b)}`
+      : `x from ${fmt(result.a)} to ${fmt(result.b)}`;
+    add('Formula', `${slot.label} = ${result.expr}`);
+    add('Range', rangeText);
+    if (polar) {
+      add('Area swept (½∫r² dθ)', fmt(result.area));
+      add('Curve length', fmt(result.arcLength));
+      add('Smallest r', fmt(result.minR));
+      add('Largest r', fmt(result.maxR));
+      add('θ where r = 0', fmtList(result.zeros, v => `${fmt(v)} rad`));
+    } else {
+      add('Area under curve (∫)', fmt(result.integral));
+      add('Curve length (arc)', fmt(result.arcLength));
+      add('Average height', fmt(result.average));
+      add('Lowest point', fmt(result.min));
+      add('Highest point', fmt(result.max));
+      add('Slope at a', fmt(result.slopeAtA));
+      add('Slope at b', fmt(result.slopeAtB));
+      add('Concavity at midpoint', fmt(result.curvature));
+      add('Roots (y = 0)', fmtList(result.roots, v => `x = ${fmt(v)}`));
+      add('Turning points', fmtList(result.extrema, p =>
+        `${p.kind === 'max' ? 'peak' : p.kind === 'min' ? 'valley' : 'flat'} at (${fmt(p.x)}, ${fmt(p.y)})`));
+      for (const c of result.crossings) {
+        add(`Crosses ${c.label}`, fmtList(c.points, v => `x = ${fmt(v)}`));
+      }
+      if (!result.crossings.length) add('Crosses other curves', 'none in range');
+    }
+    analysisBox.replaceChildren(
+      el('h4', { class: 'graph-analysis-title' }, `Analysis · ${slot.label} · ${polar ? 'polar' : 'cartesian'}`),
+      ...rows,
+      el('button', {
+        type: 'button',
+        class: 'gbtn gbtn-chip',
+        onclick: () => { playPop(560); runAnalysis(); }
+      }, '↻ Run it again')
+    );
+  }
+
+  /** A grid spacing that reads as 1, 2, 5 or 10 at any zoom. */
+  function niceStep(target) {
+    const mag = 10 ** Math.floor(Math.log10(target));
+    const norm = target / mag;
+    return (norm < 1.5 ? 1 : norm < 3.5 ? 2 : norm < 7.5 ? 5 : 10) * mag;
+  }
+
+  function plotCartesian(ctx, s, originX, originY, w, h) {
+    const stepPx = 2;
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 4.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    let drawing = false;
+    let prevPy = null;
+    for (let px = 0; px <= w; px += stepPx) {
+      const xv = (px - originX) / scale;
+      const yv = graphValue(s.expr, xv);
+      const py = originY - yv * scale;
+      if (!Number.isFinite(py) || Math.abs(py) > h * 4 || (prevPy !== null && Math.abs(py - prevPy) > h * 0.9)) {
+        drawing = false; prevPy = null;
+      } else if (!drawing) {
+        ctx.moveTo(px, py); drawing = true; prevPy = py;
+      } else {
+        ctx.lineTo(px, py); prevPy = py;
+      }
+    }
+    ctx.stroke();
+  }
+
+  function shadeArea(ctx, s, originX, originY, w, h) {
+    const x0 = Math.max(0, originX + bounds.a * scale);
+    const x1 = Math.min(w, originX + bounds.b * scale);
+    if (x1 <= x0) return;
+    ctx.save();
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = s.color;
+    ctx.beginPath();
+    let started = false;
+    const axisY = Math.min(Math.max(originY, 0), h);
+    for (let px = x0; px <= x1; px += 2) {
+      const xv = (px - originX) / scale;
+      const yv = graphValue(s.expr, xv);
+      const py = originY - yv * scale;
+      if (!Number.isFinite(py) || Math.abs(py) > h * 4) continue;
+      const clamped = Math.min(Math.max(py, -h), h * 2);
+      if (!started) { ctx.moveTo(px, axisY); ctx.lineTo(px, clamped); started = true; }
+      else ctx.lineTo(px, clamped);
+    }
+    if (started) { ctx.lineTo(x1, axisY); ctx.closePath(); ctx.fill(); }
+    ctx.restore();
+  }
+
+  function plotDerivative(ctx, s, originX, originY, w, h) {
+    const hh = Math.max(1e-6, 1 / (scale * 8));
+    ctx.save();
+    ctx.strokeStyle = s.color;
+    ctx.globalAlpha = 0.75;
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([7, 6]);
+    ctx.beginPath();
+    let drawing = false;
+    let prevPy = null;
+    for (let px = 0; px <= w; px += 3) {
+      const xv = (px - originX) / scale;
+      const left = graphValue(s.expr, xv - hh);
+      const right = graphValue(s.expr, xv + hh);
+      const slope = Number.isFinite(left) && Number.isFinite(right) ? (right - left) / (2 * hh) : NaN;
+      const py = originY - slope * scale;
+      if (!Number.isFinite(py) || Math.abs(py) > h * 4 || (prevPy !== null && Math.abs(py - prevPy) > h * 0.9)) {
+        drawing = false; prevPy = null;
+      } else if (!drawing) { ctx.moveTo(px, py); drawing = true; prevPy = py; }
+      else { ctx.lineTo(px, py); prevPy = py; }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function plotPolar(ctx, s, originX, originY, w, h) {
+    const turns = polarTurns;
+    const steps = 1400;
+    const points = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = (PI * 2 * turns * i) / steps;
+      const r = graphValue(s.expr, t);
+      if (!Number.isFinite(r)) { points.push(null); continue; }
+      const px = originX + r * Math.cos(t) * scale;
+      const py = originY - r * Math.sin(t) * scale;
+      if (Math.abs(px) > w * 4 || Math.abs(py) > h * 4) { points.push(null); continue; }
+      points.push({ px, py });
+    }
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    let drawing = false;
+    for (const p of points) {
+      if (!p) { drawing = false; continue; }
+      if (!drawing) { ctx.moveTo(p.px, p.py); drawing = true; } else ctx.lineTo(p.px, p.py);
+    }
+    ctx.stroke();
+
+    if (showArea && s.id === activeSlot) {
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = s.color;
+      ctx.beginPath();
+      let started = false;
+      for (const p of points) {
+        if (!p) continue;
+        if (!started) { ctx.moveTo(originX, originY); ctx.lineTo(p.px, p.py); started = true; }
+        else ctx.lineTo(p.px, p.py);
+      }
+      if (started) { ctx.closePath(); ctx.fill(); }
+      ctx.restore();
+    }
+  }
+
+  function drawMarkers(ctx, s, originX, originY, h) {
+    if (!analysis || !analysisFor || analysisFor.slot !== s.id || analysisFor.mode !== mode) return;
+    ctx.save();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = INK;
+    const mark = (x, y, kind) => {
+      const px = originX + x * scale;
+      const py = originY - y * scale;
+      if (px < -12 || px > canvas.width + 12 || py < -12 || py > h + 12) return;
+      ctx.beginPath();
+      if (kind === 'root') { ctx.fillStyle = '#fff8ea'; ctx.arc(px, py, 5.5, 0, PI * 2); ctx.fill(); ctx.stroke(); return; }
+      if (kind === 'cross') {
+        ctx.beginPath(); ctx.moveTo(px - 5, py - 5); ctx.lineTo(px + 5, py + 5);
+        ctx.moveTo(px + 5, py - 5); ctx.lineTo(px - 5, py + 5); ctx.stroke(); return;
+      }
+      ctx.fillStyle = s.color;
+      ctx.moveTo(px, py - 6); ctx.lineTo(px + 6, py); ctx.lineTo(px, py + 6); ctx.lineTo(px - 6, py);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    };
+    for (const r of analysis.roots || analysis.zeros || []) mark(r, 0, 'root');
+    for (const p of analysis.extrema || []) mark(p.x, p.y, p.kind === 'max' ? 'peak' : 'valley');
+    for (const c of analysis.crossings || []) for (const x of c.points) mark(x, graphValue(s.expr, x), 'cross');
+    ctx.restore();
   }
 
   function draw() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const w = canvas.width, h = canvas.height;
+    const polar = mode === 'polar';
     ctx.clearRect(0, 0, w, h);
 
     ctx.fillStyle = '#fff8ea';
@@ -527,89 +1111,84 @@ function graphingCalculator(root) {
 
     const originX = w / 2 - centerX * scale;
     const originY = h / 2 + centerY * scale;
+    const step = niceStep(65 / scale);
 
-    const rawStep = 65 / scale;
-    const mag = 10 ** Math.floor(Math.log10(rawStep));
-    const norm = rawStep / mag;
-    const step = (norm < 1.5 ? 1 : norm < 3.5 ? 2 : norm < 7.5 ? 5 : 10) * mag;
-
-    ctx.strokeStyle = '#efe2c9';
-    ctx.lineWidth = 1.5;
-    const minX = Math.floor((0 - originX) / (scale * step)) * step;
-    const maxX = Math.ceil((w - originX) / (scale * step)) * step;
-    for (let x = minX; x <= maxX; x += step) {
-      const px = originX + x * scale;
-      ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, h); ctx.stroke();
-    }
-    const minY = Math.floor((originY - h) / (scale * step)) * step;
-    const maxY = Math.ceil(originY / (scale * step)) * step;
-    for (let y = minY; y <= maxY; y += step) {
-      const py = originY - y * scale;
-      ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(w, py); ctx.stroke();
-    }
-
-    ctx.strokeStyle = '#8b6647';
-    ctx.lineWidth = 3;
-    if (originX >= 0 && originX <= w) {
-      ctx.beginPath(); ctx.moveTo(originX, 0); ctx.lineTo(originX, h); ctx.stroke();
-    }
-    if (originY >= 0 && originY <= h) {
+    if (polar) {
+      ctx.strokeStyle = '#efe2c9';
+      ctx.lineWidth = 1.5;
+      const maxR = (Math.max(w, h) / 2 + Math.abs(centerX) + Math.abs(centerY)) / scale + step;
+      for (let r = step; r <= maxR; r += step) {
+        ctx.beginPath(); ctx.arc(originX, originY, r * scale, 0, PI * 2); ctx.stroke();
+      }
+      for (let i = 0; i < 12; i++) {
+        const t = (PI * 2 * i) / 12;
+        ctx.beginPath();
+        ctx.moveTo(originX, originY);
+        ctx.lineTo(originX + Math.cos(t) * maxR * scale, originY - Math.sin(t) * maxR * scale);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = '#8b6647';
+      ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(0, originY); ctx.lineTo(w, originY); ctx.stroke();
-    }
+      ctx.beginPath(); ctx.moveTo(originX, 0); ctx.lineTo(originX, h); ctx.stroke();
+      ctx.fillStyle = '#6d4b33';
+      ctx.font = '700 13px Nunito, sans-serif';
+      for (let r = step; r <= maxR; r += step) {
+        ctx.fillText(Number(r.toPrecision(3)).toString(), originX + r * scale + 4, originY - 6);
+      }
+    } else {
+      ctx.strokeStyle = '#efe2c9';
+      ctx.lineWidth = 1.5;
+      const minX = Math.floor((0 - originX) / (scale * step)) * step;
+      const maxX = Math.ceil((w - originX) / (scale * step)) * step;
+      for (let x = minX; x <= maxX; x += step) {
+        const px = originX + x * scale;
+        ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, h); ctx.stroke();
+      }
+      const minY = Math.floor((originY - h) / (scale * step)) * step;
+      const maxY = Math.ceil(originY / (scale * step)) * step;
+      for (let y = minY; y <= maxY; y += step) {
+        const py = originY - y * scale;
+        ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(w, py); ctx.stroke();
+      }
 
-    ctx.fillStyle = '#6d4b33';
-    ctx.font = '700 13px Nunito, sans-serif';
-    for (let x = minX; x <= maxX; x += step) {
-      if (Math.abs(x) < step * 0.1) continue;
-      const px = originX + x * scale;
-      const py = Math.min(h - 18, Math.max(20, originY + 18));
-      ctx.fillText(Number(x.toPrecision(4)).toString(), px + 4, py);
-    }
-    for (let y = minY; y <= maxY; y += step) {
-      if (Math.abs(y) < step * 0.1) continue;
-      const py = originY - y * scale;
-      const px = Math.min(w - 38, Math.max(8, originX + 8));
-      ctx.fillText(Number(y.toPrecision(4)).toString(), px, py - 5);
+      ctx.strokeStyle = '#8b6647';
+      ctx.lineWidth = 3;
+      if (originX >= 0 && originX <= w) { ctx.beginPath(); ctx.moveTo(originX, 0); ctx.lineTo(originX, h); ctx.stroke(); }
+      if (originY >= 0 && originY <= h) { ctx.beginPath(); ctx.moveTo(0, originY); ctx.lineTo(w, originY); ctx.stroke(); }
+
+      ctx.fillStyle = '#6d4b33';
+      ctx.font = '700 13px Nunito, sans-serif';
+      for (let x = minX; x <= maxX; x += step) {
+        if (Math.abs(x) < step * 0.1) continue;
+        ctx.fillText(Number(x.toPrecision(4)).toString(), originX + x * scale + 4, Math.min(h - 18, Math.max(20, originY + 18)));
+      }
+      for (let y = minY; y <= maxY; y += step) {
+        if (Math.abs(y) < step * 0.1) continue;
+        ctx.fillText(Number(y.toPrecision(4)).toString(), Math.min(w - 38, Math.max(8, originX + 8)), originY - y * scale - 5);
+      }
     }
 
     const errors = [];
     for (const s of slots) {
       if (!s.visible || !s.expr.trim()) continue;
-      try {
-        evalExpression(s.expr, { xValue: 0 });
-      } catch (err) {
-        if (err.message !== 'Undefined math result.' && err.message !== 'Cannot divide by zero.') {
-          errors.push(`${s.label}: ${err.message}`);
-          continue;
+      const probe = graphValue(s.expr, polar ? 0.7 : 0);
+      if (Number.isNaN(probe)) {
+        try { evalExpression(s.expr, { xValue: polar ? 0.7 : 0 }); } catch (err) {
+          if (err.message !== 'Undefined math result.' && err.message !== 'Cannot divide by zero.') errors.push(`${s.label}: ${err.message}`);
         }
       }
-      ctx.strokeStyle = s.color;
-      ctx.lineWidth = 4.5;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.beginPath();
-      let drawing = false;
-      let prevPy = null;
-      for (let px = 0; px <= w; px += 2) {
-        const xv = (px - originX) / scale;
-        try {
-          const yv = evalExpression(s.expr, { xValue: xv });
-          const py = originY - yv * scale;
-          if (!Number.isFinite(py) || Math.abs(py) > h * 4 || (prevPy !== null && Math.abs(py - prevPy) > h * 0.9)) {
-            drawing = false; prevPy = null;
-          } else if (!drawing) {
-            ctx.moveTo(px, py); drawing = true; prevPy = py;
-          } else {
-            ctx.lineTo(px, py); prevPy = py;
-          }
-        } catch {
-          drawing = false; prevPy = null;
-        }
+      if (polar) {
+        plotPolar(ctx, s, originX, originY, w, h);
+      } else {
+        if (showArea && s.id === activeSlot) shadeArea(ctx, s, originX, originY, w, h);
+        plotCartesian(ctx, s, originX, originY, w, h);
+        if (showDerivative && s.id === activeSlot) plotDerivative(ctx, s, originX, originY, w, h);
+        if (showMarkers) drawMarkers(ctx, s, originX, originY, h);
       }
-      ctx.stroke();
     }
 
-    if (hoverPt) {
+    if (hoverPt && !polar) {
       const xv = (hoverPt.x - originX) / scale;
       ctx.strokeStyle = '#c49d78';
       ctx.lineWidth = 2;
@@ -620,8 +1199,8 @@ function graphingCalculator(root) {
       const parts = [`x = ${xv.toFixed(2)}`];
       for (const s of slots) {
         if (!s.visible || !s.expr.trim()) continue;
-        try {
-          const yv = evalExpression(s.expr, { xValue: xv });
+        const yv = graphValue(s.expr, xv);
+        if (Number.isFinite(yv)) {
           const py = originY - yv * scale;
           if (py >= -10 && py <= h + 10) {
             ctx.fillStyle = s.color;
@@ -630,35 +1209,40 @@ function graphingCalculator(root) {
             ctx.beginPath(); ctx.arc(hoverPt.x, py, 6.5, 0, PI * 2); ctx.fill(); ctx.stroke();
           }
           parts.push(`${s.label} = ${Number(yv.toFixed(3))}`);
-        } catch {}
+          if (s.id === activeSlot) {
+            const slope = graphDerivative(s.expr, xv);
+            if (Number.isFinite(slope)) parts.push(`slope = ${Number(slope.toFixed(3))}`);
+          }
+        }
       }
       readout.textContent = errors.length ? errors[0] : parts.join('   •   ');
+    } else if (hoverPt && polar) {
+      const dx = (hoverPt.x - originX) / scale;
+      const dy = -(hoverPt.y - originY) / scale;
+      const r = Math.hypot(dx, dy);
+      let t = Math.atan2(dy, dx);
+      if (t < 0) t += PI * 2;
+      readout.textContent = `r = ${r.toFixed(2)}   •   θ = ${t.toFixed(2)} rad (${((t * 180) / PI).toFixed(0)}°)`;
     } else if (errors.length) {
       readout.textContent = errors[0];
     } else {
-      readout.textContent = `Center (${centerX.toFixed(1)}, ${centerY.toFixed(1)})  •  Tap grid to inspect`;
+      readout.textContent = polar
+        ? `Pole at (${centerX.toFixed(1)}, ${centerY.toFixed(1)})  •  ${polarTurns} turn${polarTurns === 1 ? '' : 's'}  •  Tap the grid to read r and θ`
+        : `Center (${centerX.toFixed(1)}, ${centerY.toFixed(1)})  •  Tap grid to inspect`;
     }
   }
 
-  canvas.addEventListener('pointermove', e => {
+  function trace(e) {
     const r = canvas.getBoundingClientRect();
-    hoverPt = { x: ((e.clientX - r.left) / r.width) * canvas.width, y: ((e.clientY - r.top) / r.height) * canvas.height };
+    hoverPt = {
+      x: ((e.clientX - r.left) / (r.width || 1)) * canvas.width,
+      y: ((e.clientY - r.top) / (r.height || 1)) * canvas.height
+    };
     draw();
-  });
+  }
+  canvas.addEventListener('pointerdown', trace);
+  canvas.addEventListener('pointermove', trace);
   canvas.addEventListener('pointerleave', () => { hoverPt = null; draw(); });
-
-  const presets = ['sin(x)', 'x^2 - 2', 'cos(2*x)', '0.2*x^3 - x', 'abs(x) - 2', '2/x'];
-  const presetRow = el('div', { class: 'preset-row' },
-    presets.map(p => el('button', {
-      type: 'button',
-      class: 'gbtn gbtn-chip',
-      onclick: () => {
-        playPop(580);
-        const s = slots.find(x => x.id === activeSlot);
-        if (s) { s.expr = p; s.visible = true; exprField.input.value = p; syncVisibility(); draw(); }
-      }
-    }, p))
-  );
 
   const zoomPad = el('div', { class: 'graph-controls' },
     el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { playPop(600); scale = Math.min(200, scale * 1.25); draw(); } }, 'Zoom +'),
@@ -667,21 +1251,41 @@ function graphingCalculator(root) {
     el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { playPop(460); centerX += 1.5; draw(); } }, '→'),
     el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { playPop(460); centerY += 1.5; draw(); } }, '↑'),
     el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => { playPop(460); centerY -= 1.5; draw(); } }, '↓'),
+    el('button', { type: 'button', class: 'gbtn gbtn-mini', onclick: () => {
+      playPop(460);
+      const win = windowRange();
+      bounds = { a: Number(win.a.toPrecision(4)), b: Number(win.b.toPrecision(4)) };
+      boundA.input.value = String(bounds.a);
+      boundB.input.value = String(bounds.b);
+      invalidateAnalysis();
+    } }, 'Use window'),
     el('button', { type: 'button', class: 'gbtn gbtn-mini warn', onclick: () => { playSquish(); centerX = 0; centerY = 0; scale = 42; draw(); } }, 'Center')
+  );
+
+  const analysisPad = el('div', { class: 'graph-controls' },
+    boundA.el,
+    boundB.el,
+    el('button', { type: 'button', class: 'gbtn gbtn-primary', onclick: () => { playSparkle(); runAnalysis(); } }, '⚡ Analyse curve')
   );
 
   root.replaceChildren(
     el('div', { class: 'game-panel' },
+      modeTabs.el,
+      modeHint,
       tabs.el,
       el('div', { class: 'graph-expr-row' }, exprField.el, visToggle.el),
+      el('div', { class: 'graph-overlay-row' }, derivToggle.el, areaToggle.el, markerToggle.el),
+      turnsSlider.el,
       presetRow,
+      analysisPad,
+      analysisBox,
       tableBox,
       el('div', { class: 'graph-bezel' }, canvas),
       zoomPad,
       readout
     )
   );
-  draw();
+  syncMode();
 }
 
 // =========================================================================
@@ -2027,6 +2631,8 @@ function sequencePlayground(root) {
   renderSequence();
   renderInspector();
 }
+
+export { GRAPH_ANALYSIS };
 
 export const MATH_NUMBER_TOOLS = Object.freeze({
   'calculator': calculator,

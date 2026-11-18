@@ -1300,6 +1300,28 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 .graph-canvas { display: block; width: 100%; height: auto; border-radius: 14px; border: var(--outline-thin); touch-action: none; }
 .graph-controls { display: flex; flex-wrap: wrap; gap: 8px; }
 .graph-readout { background: var(--parchment); border: var(--outline-thin); border-radius: 15px; padding: 10px 14px; font-size: 14px; }
+
+/* Graphing calculator: polar/cartesian modes, overlay switches and the analysis report. */
+
+.graph-mode-tabs { margin: 0 0 4px; }
+
+.graph-mode-hint { margin: 0 0 8px; font-family: var(--body); font-size: 13px; line-height: 1.45; color: var(--ink-soft); }
+
+.graph-overlay-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+
+.graph-controls .gfield.graph-bound { flex: 0 1 130px; min-width: 110px; }
+
+.graph-analysis { background: var(--parchment); border: var(--outline-thin); border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+
+.graph-analysis-title { margin: 0 0 4px; font-family: var(--display); font-size: 16px; color: var(--ink); }
+
+.graph-analysis-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: baseline; border-bottom: 2px dashed #e2cda6; padding-bottom: 5px; }
+
+.graph-analysis-label { font-family: var(--body); font-size: 13px; color: var(--ink-soft); }
+
+.graph-analysis-value { font-family: var(--display); font-size: 14px; color: var(--ink); text-align: right; word-break: break-word; }
+
+.graph-analysis-empty { margin: 0; font-family: var(--body); font-size: 14px; color: var(--ink-soft); }
 .gtable { width: 100%; border-collapse: collapse; background: #fffbf2; border-radius: 14px; overflow: hidden; border: var(--outline-thin); }
 .gtable th, .gtable td { padding: 8px 10px; border-bottom: 2px solid #ead8b7; text-align: center; }
 

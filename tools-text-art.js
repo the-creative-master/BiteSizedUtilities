@@ -1,9 +1,24 @@
 /** Cozy 2.5D Text, File & Art Toys — zero default HTML select/range/checkbox/color inputs */
 import { gEl, gameBtn, gameTabs, gameToggle, gameSlider, gameColorPicker, gameFilePill, gameField, statBox, copyToClipboard } from './ui-kit.js';
 import { playPop, playSparkle } from './sfx.js';
+import {
+  BETA_STUDIO_ID, isBetaPage, createDoc, createHistory, cloneDoc, touchedLayerIds,
+  BRUSH_GROUPS, STAMP_GLYPHS, SYMMETRY_MODES, BLEND_MODES, CANVAS_PRESETS, blendLabel,
+  SIZE_RANGE, OPACITY_RANGE, FLOW_RANGE, SMOOTH_RANGE, MAX_DOC_W, MAX_DOC_H, MAX_LAYER_NAME, MAX_PROJECT_BYTES,
+  brushById, brushesForGroup, paintSegment, drawShape, stampGlyph, pressureOf,
+  mirrorPoints, midpoint, smoothedSegment, cssBlend,
+  layerById, activeLayer, layerAcceptsPaint, compositePlan, maxLayersFor, validateCanvasSize,
+  createLayer, addLayer, removeLayer, duplicateLayer, moveLayer, setLayer, setActiveLayer,
+  mergeDown, flattenDoc, resizeDoc,
+  pushUndo, popUndo, pushRedo, popRedo, historyBytes, clearHistory,
+  serializeProject, parseProject
+} from './art-studio-beta.js';
 
 const TEXT_IDS = ['file-converter', 'crazy-text-filters', 'word-counter', 'case-converter', 'json-formatter', 'base64', 'url-codec', 'markdown-preview', 'text-diff', 'find-replace', 'lorem-ipsum', 'hash-generator', 'csv-editor', 'notepad', 'file-inspector'];
 const ART_IDS = ['art-studio', 'color-picker', 'palette-generator', 'gradient-maker', 'pixel-art', 'image-resizer', 'image-cropper', 'image-filters', 'svg-editor', 'contrast-checker', 'color-converter', 'pattern-maker', 'collage-maker', 'ascii-art', 'mandala'];
+// Beta-only art toy. Kept out of ART_IDS so the shipped catalogue stays 115 tools;
+// it is dispatched from here but refuses to mount unless the page is beta.html.
+const ART_BETA_IDS = [BETA_STUDIO_ID];
 const LIMIT = 20 * 1024 * 1024;
 
 function area(value = '', rows = 7) {
@@ -1103,14 +1118,745 @@ function mandala(ctx) {
   );
 }
 
+/* ============ ART STUDIO (BETA) — layers, 18 brushes, pressure ============ */
+
+const BETA_PAPERS = {
+  Cream: { css: '#fff8e8', flat: '#fff8e8' },
+  Transparent: { css: 'repeating-conic-gradient(#f5ebd6 0% 25%,#fffdf8 0% 50%) 0 / 24px 24px', flat: null },
+  Chalkboard: { css: '#2c211d', flat: '#2c211d' },
+  Sky: { css: '#dff0fc', flat: '#dff0fc' },
+  DotGrid: { css: 'radial-gradient(#d8bd93 1.8px, #fff9ec 1.8px) 0 / 22px 22px', flat: '#fff9ec', dots: '#d8bd93' }
+};
+
+/** Paints the paper backdrop into an export canvas so the file matches the preview. */
+function paintPaperBackdrop(g, mode, width, height) {
+  const paper = BETA_PAPERS[mode] || BETA_PAPERS.Cream;
+  if (!paper.flat) return;
+  g.save();
+  g.globalCompositeOperation = 'source-over';
+  g.globalAlpha = 1;
+  g.fillStyle = paper.flat;
+  g.fillRect(0, 0, width, height);
+  if (paper.dots) {
+    g.fillStyle = paper.dots;
+    for (let y = 11; y < height; y += 22) {
+      for (let x = 11; x < width; x += 22) { g.beginPath(); g.arc(x, y, 1.8, 0, Math.PI * 2); g.fill(); }
+    }
+  }
+  g.restore();
+}
+
+function artStudioBeta(ctx) {
+  let doc = createDoc({ width: 1024, height: 1024, name: 'Untitled' });
+  const history = createHistory();
+  const surfaces = new Map();
+  let pendingEntry = null;
+  let painting = false, pid = null, lastPt = null, previewBase = null, strokePts = [], hue = 0, lastPressure = 1, reportedPressure = false;
+
+  const stage = gEl('div', { class: 'beta-stage', 'aria-label': 'Layer stack canvas' });
+  const paperEl = gEl('div', { class: 'beta-stage-paper', 'aria-hidden': 'true' });
+  stage.append(paperEl);
+  const layerList = gEl('div', { class: 'beta-layer-list', role: 'list', 'aria-label': 'Layers' });
+
+  /* ------------------------------- controls ------------------------------- */
+
+  const brushItems = group => brushesForGroup(group).map(b => [b.id, `${b.icon} ${b.label}`]);
+  const groupTabs = gameTabs(BRUSH_GROUPS.map(g => [g.id, g.label]), 'ink', () => {
+    brushTabs.setItems(brushItems(groupTabs.value), brushesForGroup(groupTabs.value)[0].id);
+    syncBrushDefaults();
+  }, 'Brush Box');
+  const brushTabs = gameTabs(brushItems('ink'), 'pen', () => syncBrushDefaults(), 'Brush');
+  const brushHint = gEl('p', { class: 'beta-brush-hint', 'aria-live': 'polite' });
+  const glyphTabs = gameTabs(STAMP_GLYPHS, 'Waffle', null, 'Sticker');
+  const glyphRow = gEl('div', { hidden: true }, glyphTabs.el);
+  const fillTog = gameToggle('Filled shapes', false);
+  const shapeRow = gEl('div', { class: 'gtabs', hidden: true }, fillTog.el);
+  const symTabs = gameTabs(SYMMETRY_MODES.map(s => [s.id, s.label]), 'off', null, 'Symmetry');
+  const paperTabs = gameTabs(Object.keys(BETA_PAPERS).map(k => [k, k]), 'Cream', () => { paperEl.style.background = BETA_PAPERS[paperTabs.value].css; }, 'Paper Backdrop');
+  const colorPick = gameColorPicker('Studio Ink', '#e78167');
+
+  const sizeSl = gameSlider({ label: 'Brush Size', min: SIZE_RANGE.min, max: SIZE_RANGE.max, step: 1, value: 12, unit: 'px', color: '#e78167' });
+  const opacitySl = gameSlider({ label: 'Opacity', min: OPACITY_RANGE.min, max: OPACITY_RANGE.max, step: 5, value: 100, unit: '%', color: '#7eb7b5' });
+  const flowSl = gameSlider({ label: 'Flow (build-up)', min: FLOW_RANGE.min, max: FLOW_RANGE.max, step: 5, value: 100, unit: '%', color: '#f0a5a5' });
+  const smoothSl = gameSlider({ label: 'Stroke Smoothing', min: SMOOTH_RANGE.min, max: SMOOTH_RANGE.max, step: 5, value: 55, unit: '%', color: '#8fc487' });
+  const pressureTog = gameToggle('Pen pressure', true, () => updatePressureReadout());
+  const pressureReadout = gEl('span', { class: 'beta-pressure-readout' });
+
+  const layerOpacitySl = gameSlider({ label: 'Active Layer Opacity', min: 0, max: 100, step: 5, value: 100, unit: '%', color: '#c79ae0', onChange: v => patchActive({ opacity: v }) });
+  const lockTog = gameToggle('Lock active layer', false, () => patchActive({ locked: lockTog.checked }));
+  const blendRow = gEl('div', { class: 'beta-chip-row', role: 'group', 'aria-label': 'Layer blend mode' });
+  const blendBtns = new Map();
+  for (const mode of BLEND_MODES) {
+    const b = gEl('button', { type: 'button', class: 'beta-chip', 'data-blend': mode, 'aria-pressed': 'false' }, blendLabel(mode));
+    b.addEventListener('click', () => { playPop(560); patchActive({ blend: mode }); });
+    blendBtns.set(mode, b);
+    blendRow.append(b);
+  }
+
+  const sizePresetTabs = gameTabs(CANVAS_PRESETS.map(p => [p.id, p.label]), 'square', () => {
+    const preset = CANVAS_PRESETS.find(p => p.id === sizePresetTabs.value);
+    if (!preset) return;
+    wIn.value = String(preset.width);
+    hIn.value = String(preset.height);
+    resizeCanvas(preset.width, preset.height);
+  }, 'Canvas Size');
+  const wIn = numInput('1024', 8, MAX_DOC_W);
+  const hIn = numInput('1024', 8, MAX_DOC_H);
+
+  const stSize = statBox('Canvas', '1024×1024', 'peach');
+  const stLayers = statBox('Layers', '1 / 16', 'cream');
+  const stHistory = statBox('Undo stack', '0 steps', 'peach');
+  const stPressure = statBox('Pen pressure', '—', 'cream');
+
+  /* ------------------------------ layer surfaces ------------------------------ */
+
+  function syncSurfaces() {
+    for (const [id, s] of [...surfaces]) {
+      if (!layerById(doc, id)) { s.canvas.remove(); surfaces.delete(id); }
+    }
+    for (const layer of doc.layers) {
+      if (!surfaces.has(layer.id)) {
+        const c = canvas(doc.width, doc.height);
+        c.classList.add('beta-layer-canvas');
+        c.dataset.layerId = layer.id;
+        c.setAttribute('aria-label', `${layer.name} layer canvas`);
+        surfaces.set(layer.id, { canvas: c, g: c.getContext('2d', { willReadFrequently: true }) });
+      }
+    }
+    for (const layer of doc.layers) {
+      const s = surfaces.get(layer.id);
+      s.canvas.style.mixBlendMode = cssBlend(layer.blend);
+      s.canvas.style.opacity = String((layer.opacity ?? 100) / 100);
+      s.canvas.style.display = layer.visible === false ? 'none' : '';
+      stage.append(s.canvas);
+    }
+    stage.style.aspectRatio = `${doc.width} / ${doc.height}`;
+    paperEl.style.background = BETA_PAPERS[paperTabs.value].css;
+  }
+
+  function activeSurface() { return surfaces.get(doc.activeId) || null; }
+
+  /* -------------------------------- history -------------------------------- */
+
+  function snapshotLayers(ids) {
+    return [...new Set(ids || [])].map(id => {
+      const s = surfaces.get(id);
+      if (!s) return null;
+      return { id, width: s.canvas.width, height: s.canvas.height, data: s.g.getImageData(0, 0, s.canvas.width, s.canvas.height) };
+    }).filter(Boolean);
+  }
+
+  function beginAction(label, ids) {
+    pendingEntry = { label, doc: cloneDoc(doc), pixels: snapshotLayers(ids && ids.length ? ids : [doc.activeId]) };
+  }
+
+  function commitAction() {
+    if (!pendingEntry) return;
+    pushUndo(history, pendingEntry);
+    pendingEntry = null;
+    updateHistoryReadout();
+  }
+
+  function cancelAction() { pendingEntry = null; }
+
+  function restoreState(entry) {
+    if (entry.doc) doc = cloneDoc(entry.doc);
+    syncSurfaces();
+    for (const p of entry.pixels || []) {
+      const s = surfaces.get(p.id);
+      if (!s) continue;
+      if (s.canvas.width !== p.width || s.canvas.height !== p.height) { s.canvas.width = p.width; s.canvas.height = p.height; }
+      s.g.putImageData(p.data, 0, 0);
+    }
+    syncAll();
+  }
+
+  function undo() {
+    const entry = popUndo(history);
+    if (!entry) { ctx.say('Nothing left to undo.'); return; }
+    const ids = (entry.pixels || []).map(p => p.id).filter(id => surfaces.has(id));
+    pushRedo(history, { label: entry.label, doc: cloneDoc(doc), pixels: snapshotLayers(ids) });
+    restoreState(entry);
+    ctx.say(`Undid: ${entry.label}`);
+  }
+
+  function redo() {
+    const entry = popRedo(history);
+    if (!entry) { ctx.say('Nothing to redo.'); return; }
+    const ids = (entry.pixels || []).map(p => p.id).filter(id => surfaces.has(id));
+    // clearRedo:false — otherwise the second redo in a row has nothing left to replay.
+    pushUndo(history, { label: entry.label, doc: cloneDoc(doc), pixels: snapshotLayers(ids) }, { clearRedo: false });
+    restoreState(entry);
+    ctx.say(`Redid: ${entry.label}`);
+  }
+
+  function updateHistoryReadout() {
+    const mb = historyBytes(history) / (1024 * 1024);
+    stHistory.set(`${history.undo.length} undo · ${history.redo.length} redo · ${mb.toFixed(1)} MB`);
+  }
+
+  /* ------------------------------ document ops ------------------------------ */
+
+  /** Runs a layer op, recording exactly the pixels it will destroy or repaint. */
+  function runOp(label, op) {
+    const ids = touchedLayerIds(op, [doc.activeId]);
+    const entry = { label, doc: cloneDoc(doc), pixels: snapshotLayers(ids) };
+    if (op.merge) {
+      const target = op.merge.targetId;
+      const sources = op.merge.sourceIds || (op.merge.sourceId ? [op.merge.sourceId] : []);
+      mergeInto(target, sources);
+    }
+    doc = op.doc;
+    if (op.resize) rebuildSurfacesForResize(op.resize);
+    pushUndo(history, entry);
+    syncAll();
+    updateHistoryReadout();
+    // Layer buttons are small and the stack changes shape under them, so every
+    // op confirms itself instead of leaving the tester guessing.
+    ctx.say(`${label} — ${doc.layers.length} layer${doc.layers.length === 1 ? '' : 's'}.`);
+    return op;
+  }
+
+  function mergeInto(targetId, sourceIds) {
+    const t = surfaces.get(targetId);
+    if (!t) return;
+    t.g.save();
+    for (const sid of sourceIds) {
+      const s = surfaces.get(sid);
+      const layer = layerById(doc, sid);
+      if (!s || !layer || sid === targetId) continue;
+      t.g.globalAlpha = (layer.opacity ?? 100) / 100;
+      t.g.globalCompositeOperation = layer.blend || 'source-over';
+      t.g.drawImage(s.canvas, 0, 0);
+    }
+    t.g.restore();
+  }
+
+  function rebuildSurfacesForResize(resize) {
+    for (const [id, s] of [...surfaces]) {
+      const next = canvas(resize.width, resize.height);
+      next.classList.add('beta-layer-canvas');
+      next.dataset.layerId = id;
+      next.setAttribute('aria-label', `${layerById(doc, id)?.name || id} layer canvas`);
+      next.getContext('2d').drawImage(s.canvas, 0, 0);
+      s.canvas.replaceWith(next);
+      surfaces.set(id, { canvas: next, g: next.getContext('2d', { willReadFrequently: true }) });
+    }
+  }
+
+  function resizeCanvas(width, height) {
+    const size = validateCanvasSize(width, height);
+    if (size.width === doc.width && size.height === doc.height) { ctx.say(`Canvas is already ${size.width}×${size.height}.`); return; }
+    const op = resizeDoc(doc, size.width, size.height);
+    runOp(`Resize to ${size.width}×${size.height}`, op);
+    wIn.value = String(doc.width);
+    hIn.value = String(doc.height);
+    ctx.say(`Canvas resized to ${doc.width}×${doc.height} — layers kept their top-left corner.`);
+  }
+
+  let lastMeta = { key: '', at: 0 };
+
+  /**
+   * Records a metadata-only change (opacity, blend, lock). The entry is built
+   * from the document as it was *before* the change, or undo would put the new
+   * value straight back. Slider drags fire dozens of times a second, so those
+   * are coalesced into a single undo step.
+   */
+  function pushMeta(label, beforeDoc, coalesceKey = '') {
+    const now = Date.now();
+    if (coalesceKey && lastMeta.key === coalesceKey && now - lastMeta.at < 700) { lastMeta.at = now; return; }
+    lastMeta = { key: coalesceKey, at: now };
+    pushUndo(history, { label, doc: cloneDoc(beforeDoc), pixels: [] });
+    updateHistoryReadout();
+  }
+
+  function patchActive(patch) {
+    const layer = activeLayer(doc);
+    if (!layer) return;
+    const before = cloneDoc(doc);
+    doc = setLayer(doc, layer.id, patch).doc;
+    const label = 'blend' in patch ? `Blend ${layer.name} → ${blendLabel(patch.blend)}`
+      : 'opacity' in patch ? `${layer.name} opacity ${layer.opacity}%`
+        : 'locked' in patch ? `${patch.locked ? 'Lock' : 'Unlock'} ${layer.name}`
+          : `Edit ${layer.name}`;
+    pushMeta(label, before, 'opacity' in patch ? `opacity:${layer.id}` : '');
+    syncAll();
+  }
+
+  function addPhotoLayer(img, name) {
+    const op = addLayer(doc, { name });
+    runOp(`Add layer ${name}`, op);
+    const s = surfaces.get(op.created[0]);
+    if (!s) return;
+    const scale = Math.min(doc.width / img.naturalWidth, doc.height / img.naturalHeight);
+    const w = img.naturalWidth * scale;
+    const h = img.naturalHeight * scale;
+    s.g.drawImage(img, (doc.width - w) / 2, (doc.height - h) / 2, w, h);
+  }
+
+  /* ------------------------------- layer panel ------------------------------- */
+
+  function renderLayers() {
+    layerList.replaceChildren();
+    for (const layer of [...doc.layers].reverse()) {
+      const isActive = layer.id === doc.activeId;
+      const row = gEl('div', { class: `beta-layer-row${isActive ? ' is-active' : ''}`, role: 'listitem', 'data-layer': layer.id });
+
+      const eye = gEl('button', {
+        type: 'button', class: 'beta-layer-eye', 'aria-pressed': String(layer.visible !== false),
+        'aria-label': `${layer.visible === false ? 'Show' : 'Hide'} ${layer.name}`, title: 'Show / hide'
+      }, layer.visible === false ? '🚫' : '👁');
+      eye.addEventListener('click', () => {
+        const next = layer.visible === false;
+        const entry = { label: `${next ? 'Show' : 'Hide'} ${layer.name}`, doc: cloneDoc(doc), pixels: [] };
+        doc = setLayer(doc, layer.id, { visible: next }).doc;
+        pushUndo(history, entry);
+        syncAll();
+      });
+
+      const nameBtn = gEl('button', { type: 'button', class: 'beta-layer-name', title: 'Make this the active layer' },
+        `${layer.locked ? '🔒 ' : ''}${layer.name}`);
+      nameBtn.addEventListener('click', () => { playPop(600); doc = setActiveLayer(doc, layer.id).doc; syncAll(); });
+
+      const chip = gEl('span', { class: 'beta-layer-chip' },
+        `${blendLabel(layer.blend)}${layer.opacity === 100 ? '' : ` · ${layer.opacity}%`}`);
+
+      const btns = gEl('span', { class: 'beta-layer-btns' },
+        miniBtn('▲', `Raise ${layer.name}`, () => runOp(`Raise ${layer.name}`, moveLayer(doc, layer.id, 'up'))),
+        miniBtn('▼', `Lower ${layer.name}`, () => runOp(`Lower ${layer.name}`, moveLayer(doc, layer.id, 'down'))),
+        miniBtn('⧉', `Duplicate ${layer.name}`, () => runOp(`Duplicate ${layer.name}`, duplicateLayer(doc, layer.id))),
+        miniBtn('⤓', `Merge ${layer.name} down`, () => runOp(`Merge ${layer.name} down`, mergeDown(doc, layer.id))),
+        miniBtn('✎', `Rename ${layer.name}`, () => startRename(layer, row)),
+        miniBtn('🗑', `Delete ${layer.name}`, () => runOp(`Delete ${layer.name}`, removeLayer(doc, layer.id)))
+      );
+
+      row.append(eye, nameBtn, chip, btns);
+      layerList.append(row);
+    }
+  }
+
+  function miniBtn(label, ariaLabel, onClick) {
+    const b = gEl('button', { type: 'button', class: 'gbtn gbtn-mini beta-layer-btn', 'aria-label': ariaLabel, title: ariaLabel }, label);
+    b.addEventListener('click', () => {
+      try { playPop(520); onClick(); }
+      catch (err) { ctx.say(err.message || String(err)); }
+    });
+    return b;
+  }
+
+  function startRename(layer, row) {
+    const input = textInput(layer.name, 'Layer name');
+    input.maxLength = MAX_LAYER_NAME;
+    input.classList.add('beta-layer-rename');
+    input.setAttribute('aria-label', `New name for ${layer.name}`);
+    let done = false;
+    const commit = () => {
+      if (done) return;
+      done = true;
+      if (input.value.trim() && input.value.trim() !== layer.name) {
+        pushUndo(history, { label: `Rename ${layer.name}`, doc: cloneDoc(doc), pixels: [] });
+        doc = setLayer(doc, layer.id, { name: input.value }).doc;
+      }
+      syncAll();
+    };
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      if (e.key === 'Escape') { done = true; syncAll(); }
+    });
+    input.addEventListener('blur', commit);
+    row.replaceChildren(input);
+    input.focus();
+    input.select();
+  }
+
+  function updateLayerControls() {
+    const layer = activeLayer(doc);
+    if (!layer) return;
+    layerOpacitySl.value = layer.opacity;
+    lockTog.checked = Boolean(layer.locked);
+    for (const [mode, b] of blendBtns) {
+      const on = mode === layer.blend;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-pressed', String(on));
+    }
+    stLayers.set(`${doc.layers.length} / ${maxLayersFor(doc.width, doc.height)}`);
+    stSize.set(`${doc.width}×${doc.height}`);
+  }
+
+  function updatePressureReadout() {
+    const brush = brushById(brushTabs.value);
+    if (!brush) return;
+    if (!brush.pressure) { stPressure.set('This brush ignores pressure'); pressureReadout.textContent = 'Pressure does not affect this brush.'; return; }
+    if (!pressureTog.checked) { stPressure.set('Off'); pressureReadout.textContent = 'Pen pressure is switched off.'; return; }
+    if (reportedPressure) { stPressure.set('Live'); pressureReadout.textContent = 'Pen pressure is live — press harder for a wider stroke.'; return; }
+    stPressure.set('Not reported');
+    pressureReadout.textContent = 'This device reports no pen pressure (mouse or touch), so strokes stay full width.';
+  }
+
+  function syncBrushDefaults() {
+    const brush = brushById(brushTabs.value) || brushById('pen');
+    sizeSl.value = brush.size;
+    opacitySl.value = brush.opacity;
+    flowSl.value = brush.flow;
+    smoothSl.value = Math.round(brush.smooth * 100);
+    glyphRow.hidden = !brush.stamp;
+    shapeRow.hidden = !brush.shape;
+    brushHint.textContent = `${brush.icon} ${brush.label} — ${brush.hint}`;
+    updatePressureReadout();
+  }
+
+  function selectBrush(id) {
+    const brush = brushById(id);
+    if (!brush) return;
+    groupTabs.value = brush.group;
+    brushTabs.setItems(brushItems(brush.group), brush.id);
+    syncBrushDefaults();
+  }
+
+  function syncAll() { syncSurfaces(); renderLayers(); updateLayerControls(); updateHistoryReadout(); }
+
+  /* -------------------------------- painting -------------------------------- */
+
+  function stagePoint(e) {
+    const s = activeSurface();
+    return pointer(s ? s.canvas : stage, e);
+  }
+
+  function segOpts() {
+    return {
+      brush: brushTabs.value, size: sizeSl.num, opacity: opacitySl.num, flow: flowSl.num,
+      color: colorPick.value, pressure: lastPressure, hue
+    };
+  }
+
+  function paintMirrored(p1, p2, opts) {
+    const s = activeSurface();
+    if (!s) return null;
+    const a = mirrorPoints(p1, symTabs.value, doc.width, doc.height);
+    const b = mirrorPoints(p2, symTabs.value, doc.width, doc.height);
+    let result = null;
+    for (let i = 0; i < a.length; i++) result = paintSegment(s.g, { ...opts, from: a[i], to: b[i] });
+    if (result && result.hue !== undefined) hue = result.hue;
+    return result;
+  }
+
+  function paintShapesMirrored(p1, p2, brush) {
+    const s = activeSurface();
+    if (!s) return;
+    const a = mirrorPoints(p1, symTabs.value, doc.width, doc.height);
+    const b = mirrorPoints(p2, symTabs.value, doc.width, doc.height);
+    for (let i = 0; i < a.length; i++) {
+      drawShape(s.g, { brush, from: a[i], to: b[i], size: sizeSl.num, color: colorPick.value, opacity: opacitySl.num, filled: fillTog.checked });
+    }
+  }
+
+  function onStrokePoint(pt) {
+    strokePts.push(pt);
+    const k = smoothSl.num / 100;
+    if (k <= 0) {
+      if (strokePts.length >= 2) paintMirrored(lastPt, pt, segOpts());
+      lastPt = pt;
+      return;
+    }
+    // Smoothed strokes lag one point behind: the curve through p2 is only known
+    // once p3 arrives, so nothing is painted until then.
+    if (strokePts.length < 3) { lastPt = pt; return; }
+    if (strokePts.length === 3) paintMirrored(strokePts[0], midpoint(strokePts[0], strokePts[1]), segOpts());
+    const [p1, p2, p3] = strokePts.slice(-3);
+    const curve = smoothedSegment(p1, p2, p3, 6);
+    for (let i = 1; i < curve.length; i++) paintMirrored(curve[i - 1], curve[i], segOpts());
+    lastPt = pt;
+  }
+
+  function finishStroke() {
+    const k = smoothSl.num / 100;
+    if (k > 0) {
+      if (strokePts.length === 1) paintMirrored(strokePts[0], strokePts[0], segOpts());
+      else if (strokePts.length === 2) paintMirrored(strokePts[0], strokePts[1], segOpts());
+      else {
+        const [p1, p2] = strokePts.slice(-2);
+        paintMirrored(midpoint(p1, p2), p2, segOpts());
+      }
+    } else if (strokePts.length === 1) {
+      paintMirrored(strokePts[0], strokePts[0], segOpts());
+    }
+  }
+
+  function readPressure(e) {
+    const brush = brushById(brushTabs.value);
+    if (e.pointerType === 'pen' && Number(e.pressure) > 0) reportedPressure = true;
+    lastPressure = pressureOf(e, pressureTog.checked && Boolean(brush?.pressure));
+  }
+
+  stage.addEventListener('pointerdown', e => {
+    if (painting || (e.button !== 0 && e.pointerType === 'mouse')) return;
+    const surface = activeSurface();
+    if (!surface) return;
+    const layer = activeLayer(doc);
+    if (!layerAcceptsPaint(doc)) {
+      ctx.say(layer && layer.visible === false ? 'That layer is hidden — pick a visible one to draw on.' : 'That layer is locked.');
+      return;
+    }
+    e.preventDefault();
+    const brush = brushById(brushTabs.value) || brushById('pen');
+    const pt = stagePoint(e);
+    readPressure(e);
+    painting = true;
+    pid = e.pointerId;
+    stage.setPointerCapture?.(pid);
+    strokePts = [pt];
+    lastPt = pt;
+
+    if (brush.id === 'fill') {
+      beginAction('Fill', [doc.activeId]);
+      const rgb = hexRGB(colorPick.value);
+      const alpha = Math.round(opacitySl.num * 2.55);
+      for (const mpt of mirrorPoints(pt, symTabs.value, doc.width, doc.height)) {
+        floodFillCanvas(surface.g, doc.width, doc.height, mpt.x, mpt.y, [...rgb, alpha], 30);
+      }
+      commitAction();
+      painting = false;
+      playPop(640);
+      ctx.say('Filled the active layer.');
+      return;
+    }
+
+    if (brush.stamp) {
+      beginAction(`Stamp ${glyphTabs.value}`, [doc.activeId]);
+      const size = Math.max(12, sizeSl.num * 1.4);
+      for (const mpt of mirrorPoints(pt, symTabs.value, doc.width, doc.height)) {
+        stampGlyph(surface.g, glyphTabs.value, mpt.x, mpt.y, size, colorPick.value);
+      }
+      commitAction();
+      painting = false;
+      playPop(700);
+      return;
+    }
+
+    beginAction(brush.shape ? `${brush.label} shape` : `${brush.label} stroke`, [doc.activeId]);
+    if (brush.shape) {
+      previewBase = surface.g.getImageData(0, 0, doc.width, doc.height);
+      paintShapesMirrored(pt, pt, brush.id);
+    }
+    updatePressureReadout();
+  });
+
+  stage.addEventListener('pointermove', e => {
+    if (!painting || e.pointerId !== pid) return;
+    e.preventDefault();
+    readPressure(e);
+    const brush = brushById(brushTabs.value) || brushById('pen');
+    const events = typeof e.getCoalescedEvents === 'function' && !brush.shape ? (e.getCoalescedEvents() || [e]) : [e];
+    for (const ev of events.length ? events : [e]) {
+      const pt = pointer(activeSurface()?.canvas || stage, ev);
+      if (brush.shape) {
+        const s = activeSurface();
+        if (s && previewBase) s.g.putImageData(previewBase, 0, 0);
+        paintShapesMirrored(strokePts[0], pt, brush.id);
+      } else {
+        onStrokePoint(pt);
+      }
+    }
+  });
+
+  const endStroke = e => {
+    if (!painting || (e.pointerId !== pid && e.type !== 'pointercancel')) return;
+    const brush = brushById(brushTabs.value) || brushById('pen');
+    if (!brush.shape) finishStroke();
+    painting = false;
+    pid = null;
+    previewBase = null;
+    strokePts = [];
+    commitAction();
+    updatePressureReadout();
+  };
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(n => stage.addEventListener(n, endStroke));
+
+  /* -------------------------------- exporting -------------------------------- */
+
+  function compositeTo(target, { layerOnly = false, withPaper = true } = {}) {
+    const g = target.getContext('2d');
+    g.clearRect(0, 0, target.width, target.height);
+    if (withPaper) paintPaperBackdrop(g, paperTabs.value, target.width, target.height);
+    const ids = layerOnly ? [doc.activeId] : compositePlan(doc);
+    for (const id of ids) {
+      const s = surfaces.get(id);
+      const layer = layerById(doc, id);
+      if (!s || !layer) continue;
+      g.globalAlpha = (layer.opacity ?? 100) / 100;
+      g.globalCompositeOperation = layer.blend || 'source-over';
+      g.drawImage(s.canvas, 0, 0);
+    }
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = 'source-over';
+  }
+
+  async function exportImage(mime, ext, opts) {
+    const out = canvas(doc.width, doc.height);
+    compositeTo(out, opts);
+    const name = `${(doc.name || 'art-studio-beta').replace(/[^\w.-]+/g, '-').toLowerCase()}${opts?.layerOnly ? '-layer' : ''}.${ext}`;
+    download(await blobFromCanvas(out, mime, 0.94), name);
+    ctx.say(`Saved ${name}.`);
+  }
+
+  async function saveProject() {
+    const images = new Map();
+    for (const layer of doc.layers) {
+      const s = surfaces.get(layer.id);
+      if (s) images.set(layer.id, s.canvas.toDataURL('image/png'));
+    }
+    const json = serializeProject(doc, images);
+    download(json, `${(doc.name || 'art-studio-beta').replace(/[^\w.-]+/g, '-').toLowerCase()}.waffleart.json`, 'application/json');
+    ctx.say(`Project saved — ${(json.length / 1024).toFixed(0)} KB with ${doc.layers.length} layers.`);
+  }
+
+  async function loadProjectFile(file) {
+    if (!file) throw new Error('Choose a project file first.');
+    if (file.size > MAX_PROJECT_BYTES) throw new Error('That project file is too large to open.');
+    const parsed = parseProject(await file.text());
+    doc = parsed.doc;
+    surfaces.forEach(s => s.canvas.remove());
+    surfaces.clear();
+    clearHistory(history);
+    syncAll();
+    let loaded = 0;
+    for (const [id, dataUrl] of parsed.images) {
+      const img = new Image();
+      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = () => reject(new Error('A layer image in that project could not be decoded.')); img.src = dataUrl; });
+      const s = surfaces.get(id);
+      if (!s) continue;
+      s.g.drawImage(img, 0, 0, doc.width, doc.height);
+      loaded++;
+    }
+    wIn.value = String(doc.width);
+    hIn.value = String(doc.height);
+    ctx.say(`Opened "${doc.name}" — ${doc.layers.length} layers, ${loaded} with pixels.`);
+  }
+
+  /* --------------------------------- actions --------------------------------- */
+
+  const importPill = gameFilePill('🖼 Photo → new layer', 'image/*', false, ctx.run(async files => {
+    if (!files[0]) return;
+    const img = await loadImage(files[0]);
+    addPhotoLayer(img, files[0].name.slice(0, MAX_LAYER_NAME - 6) || 'Photo');
+    ctx.say('Photo added on its own layer.');
+  }));
+
+  const projectPill = gameFilePill('📂 Open project', '.waffleart.json,application/json', false, ctx.run(async files => {
+    await loadProjectFile(files[0]);
+  }));
+
+  ctx.form.addEventListener('keydown', e => {
+    if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+    const mod = e.ctrlKey || e.metaKey;
+    const key = e.key.toLowerCase();
+    if (mod && key === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
+    if (mod && key === 'y') { e.preventDefault(); redo(); return; }
+    if (mod) return;
+    if (e.key === '[') { e.preventDefault(); sizeSl.value = sizeSl.num - 2; return; }
+    if (e.key === ']') { e.preventDefault(); sizeSl.value = sizeSl.num + 2; return; }
+    const hotkeys = { b: 'pen', p: 'pencil', m: 'marker', c: 'calligraphy', w: 'watercolour', k: 'chalk', a: 'airbrush', n: 'neon', r: 'rainbow', s: 'spray', g: 'stamp', l: 'line', f: 'fill', e: 'eraser' };
+    if (hotkeys[key]) { e.preventDefault(); selectBrush(hotkeys[key]); }
+  });
+
+  const clearLayerBtn = gameBtn('🧹 Clear layer', 'chip', () => {
+    const s = activeSurface();
+    if (!s) return;
+    beginAction(`Clear ${activeLayer(doc)?.name}`, [doc.activeId]);
+    s.g.clearRect(0, 0, doc.width, doc.height);
+    commitAction();
+    ctx.say('Cleared the active layer.');
+  });
+
+  ctx.form.append(
+    gEl('div', { class: 'pastel-card cream beta-note' },
+      gEl('strong', {}, '🧪 Beta experiment'),
+      gEl('span', {}, ' Layers, 18 brushes (10 of them pressure-aware), stroke smoothing and a canvas up to 4096×4096. The public Art Studio is untouched — this tile only appears on the beta page, and rough edges are expected.')
+    ),
+    groupTabs.el,
+    brushTabs.el,
+    brushHint,
+    glyphRow,
+    shapeRow,
+    symTabs.el,
+    paperTabs.el,
+    colorPick.el,
+    gEl('div', { class: 'two-col' }, sizeSl.el, opacitySl.el),
+    gEl('div', { class: 'two-col' }, flowSl.el, smoothSl.el),
+    gEl('div', { class: 'gtabs' }, pressureTog.el, pressureReadout),
+    gEl('div', { class: 'gtabs' },
+      gameBtn('↩ Undo', '', () => undo()),
+      gameBtn('↪ Redo', '', () => redo()),
+      clearLayerBtn,
+      gameBtn('🗑 Clear all layers', 'danger', () => {
+        beginAction('Clear all layers', doc.layers.map(l => l.id));
+        for (const s of surfaces.values()) s.g.clearRect(0, 0, doc.width, doc.height);
+        commitAction();
+        ctx.say('Cleared every layer.');
+      })
+    ),
+    gEl('div', { class: 'graph-bezel beta-bezel' }, stage),
+    gEl('div', { class: 'beta-layer-panel' },
+      gEl('div', { class: 'gfield' }, gEl('span', { class: 'gfield-label' }, `Layers (top first)`), layerList),
+      gEl('div', { class: 'gtabs' },
+        miniBtn('＋', 'Add a layer above', () => runOp('Add layer', addLayer(doc))),
+        miniBtn('⧉', 'Duplicate the active layer', () => runOp('Duplicate layer', duplicateLayer(doc))),
+        miniBtn('⤒', 'Move the active layer to the top', () => runOp('Layer to top', moveLayer(doc, doc.activeId, 'top'))),
+        miniBtn('⤓', 'Merge the active layer down', () => runOp('Merge down', mergeDown(doc, doc.activeId))),
+        miniBtn('▣', 'Flatten every visible layer', () => runOp('Flatten', flattenDoc(doc))),
+        miniBtn('🗑', 'Delete the active layer', () => runOp('Delete layer', removeLayer(doc, doc.activeId)))
+      ),
+      gEl('div', { class: 'beta-layer-controls' }, layerOpacitySl.el, blendRow, lockTog.el)
+    ),
+    sizePresetTabs.el,
+    gEl('div', { class: 'two-col' }, gameField('Width (px)', wIn), gameField('Height (px)', hIn)),
+    gameBtn('↔ Resize canvas', 'chip', ctx.run(() => resizeCanvas(Number(wIn.value), Number(hIn.value)))),
+    gEl('div', { class: 'gtabs' },
+      importPill.el,
+      gameBtn('↓ Save PNG', 'primary', ctx.run(() => exportImage('image/png', 'png'))),
+      gameBtn('↓ Save JPG', 'chip', ctx.run(() => exportImage('image/jpeg', 'jpg'))),
+      gameBtn('↓ Active layer PNG', 'chip', ctx.run(() => exportImage('image/png', 'png', { layerOnly: true, withPaper: false }))),
+      gameBtn('💾 Save project', 'chip', ctx.run(() => saveProject())),
+      projectPill.el
+    ),
+    gEl('div', { class: 'stat-grid' }, stSize.el, stLayers.el, stHistory.el, stPressure.el)
+  );
+
+  syncAll();
+  syncBrushDefaults();
+  updatePressureReadout();
+
+  // Waffle AI hands generated images over through sessionStorage; in the beta
+  // studio they land on their own layer instead of being painted flat.
+  try {
+    const pending = sessionStorage.getItem('waffle-art-import');
+    if (pending) {
+      sessionStorage.removeItem('waffle-art-import');
+      const im = new Image();
+      im.onload = () => {
+        if (!ctx.alive()) return;
+        addPhotoLayer(im, 'Waffle AI');
+        ctx.say('Loaded the Waffle AI image onto its own layer!');
+      };
+      im.src = pending;
+    }
+  } catch {}
+
+  ctx.say('Beta Art Studio ready — pick a brush, then draw. Every layer has its own opacity and blend mode.');
+}
+
 export function mountTextArt(id, root) {
-  if ((!TEXT_IDS.includes(id) && !ART_IDS.includes(id)) || !root || typeof root.append !== 'function' || typeof root.querySelectorAll !== 'function') return false;
+  if ((!TEXT_IDS.includes(id) && !ART_IDS.includes(id) && !ART_BETA_IDS.includes(id)) || !root || typeof root.append !== 'function' || typeof root.querySelectorAll !== 'function') return false;
   root.querySelectorAll('.tool-form').forEach(n => n.dispatchEvent(new Event('tool-dispose')));
   root.replaceChildren();
   const ctx = init(root);
   try {
     if (TEXT_IDS.includes(id)) textTools(id, ctx);
     else if (id === 'art-studio' || id === 'pixel-art') artStudio(ctx, id === 'pixel-art');
+    else if (id === BETA_STUDIO_ID) {
+      if (!isBetaPage()) { ctx.say('Art Studio (Beta) only runs on the beta testing page.'); return false; }
+      artStudioBeta(ctx);
+    }
     else if (['color-picker', 'palette-generator', 'gradient-maker', 'contrast-checker', 'color-converter'].includes(id)) colorTools(id, ctx);
     else if (['image-resizer', 'image-cropper', 'image-filters'].includes(id)) imageTools(id, ctx);
     else if (id === 'svg-editor') svgEditor(ctx);

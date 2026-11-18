@@ -2994,3 +2994,131 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ==================== Art Studio (Beta) — layers, brushes, pressure ==================== */
+.beta-note {
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: #eaf7e2;
+  border: 3px solid var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.beta-note strong { font-size: 12px; letter-spacing: .05em; text-transform: uppercase; }
+.beta-brush-hint {
+  margin: 0;
+  padding: 8px 12px;
+  background: var(--parchment);
+  border: var(--outline-thin);
+  border-radius: 13px;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+.beta-pressure-readout { flex: 1 1 180px; font-size: 11.5px; font-weight: 800; color: #6b4632; }
+
+.beta-bezel { padding: 12px; }
+.beta-stage {
+  position: relative;
+  width: 100%;
+  isolation: isolate;
+  overflow: hidden;
+  background: #fff8e8;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: inset 0 3px 10px rgba(79, 47, 35, .18);
+  touch-action: none;
+  cursor: crosshair;
+}
+.beta-stage-paper { position: absolute; inset: 0; pointer-events: none; }
+/* Every layer is its own canvas stacked in the stage; CSS carries opacity and
+   blend mode so drawing only ever touches the active layer. */
+.beta-layer-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
+
+.beta-layer-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: #fff6e2;
+  border: var(--outline-thin);
+  border-radius: 18px;
+}
+.beta-layer-list { display: flex; flex-direction: column; gap: 7px; max-height: 340px; overflow-y: auto; padding: 2px; }
+.beta-layer-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  background: #fffbf2;
+  border: 2.5px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: 0 3px 0 rgba(79, 47, 35, .14);
+}
+.beta-layer-row.is-active { background: #ffeec2; box-shadow: 0 3px 0 #d3a441; }
+.beta-layer-eye {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: #dff0fc;
+  border: 2.5px solid var(--ink);
+  border-radius: 11px;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.beta-layer-eye[aria-pressed="false"] { background: #eadfd6; opacity: .72; }
+.beta-layer-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 2px;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--ink);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.beta-layer-chip {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  background: var(--butter);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+.beta-layer-btns { flex: 0 0 auto; display: flex; gap: 4px; }
+.beta-layer-btn { min-height: 32px; min-width: 32px; padding: 3px 7px; border-radius: 10px; font-size: 13px; }
+.beta-layer-rename { flex: 1 1 auto; min-width: 0; }
+.beta-layer-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 2.5px dashed rgba(79, 47, 35, .28);
+}
+.beta-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.beta-chip {
+  min-height: 32px;
+  padding: 4px 10px;
+  background: var(--parchment);
+  border: 2.5px solid var(--ink);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 3px 0 rgba(79, 47, 35, .18);
+}
+.beta-chip.is-active { background: #8fd47c; box-shadow: 0 3px 0 #5f9a52; }
+.shelf-beta-badge { position: absolute; top: 8px; left: 8px; z-index: 2; padding: 2px 7px; background: #8fd47c; font-size: 9.5px; }

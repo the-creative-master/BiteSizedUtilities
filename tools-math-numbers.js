@@ -137,11 +137,134 @@ function evalExpression(source, { degrees = false, xValue = null } = {}) {
 }
 
 // =========================================================================
-// 1. CALCULATOR — 2.5D Handheld Pocket Toy
+// 1. CALCULATOR — eight WAFFLE-CALC chassis (2500 / 2200 / 2900 / 1900, each with a -PRO twin)
 // =========================================================================
+/**
+ * Eight calculator chassis. The model numbers are the product names: the 2500
+ * is the everyday one, the 2200 the slim pocket model, the 2900 the fat desk
+ * model and the 1900 the sideways landscape model. Every chassis has a -PRO
+ * twin that bolts a scientific block onto the same keypad — those keys only
+ * insert text that evalExpression already parses, so PRO is a keyboard, not
+ * new maths.
+ *
+ * A key is [label, style, insert?]; `insert` defaults to the label.
+ */
+const SCIENCE_KEYS = Object.freeze({
+  sin: ['sin', 'sci', 'sin('],
+  cos: ['cos', 'sci', 'cos('],
+  tan: ['tan', 'sci', 'tan('],
+  ln: ['ln', 'sci', 'ln('],
+  log: ['log', 'sci', 'log('],
+  abs: ['abs', 'sci', 'abs('],
+  asin: ['asin', 'sci', 'asin('],
+  acos: ['acos', 'sci', 'acos('],
+  atan: ['atan', 'sci', 'atan('],
+  cbrt: ['∛', 'sci', 'cbrt('],
+  square: ['x²', 'sci', '^2'],
+  exp: ['eˣ', 'sci', 'exp('],
+  floor: ['floor', 'sci', 'floor('],
+  ceil: ['ceil', 'sci', 'ceil('],
+  round: ['round', 'sci', 'round('],
+  e: ['e', 'sci', 'e']
+});
+
+/** The twelve functions every PRO model carries, in reading order. */
+const CORE_SCIENCE = ['sin', 'cos', 'tan', 'ln', 'log', 'abs', 'asin', 'acos', 'atan', 'cbrt', 'square', 'exp'];
+/** Flagships also get the rounding family and Euler's number. */
+const FLAGSHIP_SCIENCE = [...CORE_SCIENCE, 'floor', 'ceil', 'round', 'e'];
+
+const CALC_CHASSIS = Object.freeze([
+  {
+    id: '2500',
+    tab: '2500 Normal',
+    blurb: 'the everyday four-column calculator',
+    columns: 4,
+    cls: '',
+    science: FLAGSHIP_SCIENCE,
+    keys: [
+      ['C', 'danger'], ['(', 'soft'], [')', 'soft'], ['⌫', 'warn'],
+      ['7', 'num'], ['8', 'num'], ['9', 'num'], ['÷', 'op', '/'],
+      ['4', 'num'], ['5', 'num'], ['6', 'num'], ['×', 'op', '*'],
+      ['1', 'num'], ['2', 'num'], ['3', 'num'], ['−', 'op', '-'],
+      ['0', 'num'], ['.', 'num'], ['^', 'soft'], ['+', 'op', '+'],
+      ['√', 'soft', 'sqrt('], ['π', 'soft', 'pi'], ['!', 'soft'], ['=', 'eq']
+    ]
+  },
+  {
+    id: '2200',
+    tab: '2200 Slim',
+    blurb: 'a narrow pocket calculator with tall keys',
+    columns: 3,
+    cls: 'calc-slim',
+    science: CORE_SCIENCE,
+    keys: [
+      ['C', 'danger'], ['⌫', 'warn'], ['(', 'soft'],
+      ['7', 'num'], ['8', 'num'], ['9', 'num'],
+      ['4', 'num'], ['5', 'num'], ['6', 'num'],
+      ['1', 'num'], ['2', 'num'], ['3', 'num'],
+      ['0', 'num'], ['.', 'num'], [')', 'soft'],
+      ['+', 'op', '+'], ['−', 'op', '-'], ['×', 'op', '*'],
+      ['÷', 'op', '/'], ['^', 'soft'], ['√', 'soft', 'sqrt('],
+      ['π', 'soft', 'pi'], ['!', 'soft'], ['=', 'eq']
+    ]
+  },
+  {
+    id: '2900',
+    tab: '2900 Fat',
+    blurb: 'a fat desk calculator with big chunky keys and a 00 key',
+    columns: 5,
+    cls: 'calc-fat',
+    science: [...CORE_SCIENCE, 'floor', 'ceil', 'round'],
+    keys: [
+      ['C', 'danger'], ['⌫', 'warn'], ['(', 'soft'], [')', 'soft'], ['π', 'soft', 'pi'],
+      ['7', 'num'], ['8', 'num'], ['9', 'num'], ['÷', 'op', '/'], ['√', 'soft', 'sqrt('],
+      ['4', 'num'], ['5', 'num'], ['6', 'num'], ['×', 'op', '*'], ['^', 'soft'],
+      ['1', 'num'], ['2', 'num'], ['3', 'num'], ['−', 'op', '-'], ['!', 'soft'],
+      ['0', 'num'], ['00', 'num', '00'], ['.', 'num'], ['+', 'op', '+'], ['=', 'eq']
+    ]
+  },
+  {
+    id: '1900',
+    tab: '1900 Sideways',
+    blurb: 'a sideways landscape calculator for wide screens',
+    columns: 6,
+    cls: 'calc-sideways',
+    science: CORE_SCIENCE,
+    keys: [
+      ['C', 'danger'], ['⌫', 'warn'], ['7', 'num'], ['8', 'num'], ['9', 'num'], ['÷', 'op', '/'],
+      ['(', 'soft'], [')', 'soft'], ['4', 'num'], ['5', 'num'], ['6', 'num'], ['×', 'op', '*'],
+      ['^', 'soft'], ['√', 'soft', 'sqrt('], ['1', 'num'], ['2', 'num'], ['3', 'num'], ['−', 'op', '-'],
+      ['π', 'soft', 'pi'], ['!', 'soft'], ['0', 'num'], ['.', 'num'], ['+', 'op', '+'], ['=', 'eq']
+    ]
+  }
+]);
+
+const CALC_MODEL_STORE = 'bite-calculator-model';
+const calcModelName = (chassis, pro) => `WAFFLE-CALC-${chassis.id}${pro ? '-PRO' : ''}`;
+const calcKeysFor = (chassis, pro) => pro
+  ? [...chassis.science.map(name => SCIENCE_KEYS[name]), ...chassis.keys]
+  : chassis.keys;
+
+function readStoredCalcModel() {
+  try {
+    const saved = String(localStorage.getItem(CALC_MODEL_STORE) || '');
+    const m = saved.match(/^WAFFLE-CALC-(\d+)(-PRO)?$/);
+    if (!m) return null;
+    const chassis = CALC_CHASSIS.find(c => c.id === m[1]);
+    return chassis ? { chassis, pro: Boolean(m[2]) } : null;
+  } catch { return null; }
+}
+
+function storeCalcModel(model) {
+  try { localStorage.setItem(CALC_MODEL_STORE, model); } catch { /* private mode */ }
+}
+
 function calculator(root) {
   let degrees = false;
   const history = [];
+  const restored = readStoredCalcModel();
+  let chassis = restored ? restored.chassis : CALC_CHASSIS[0];
+  let pro = restored ? restored.pro : false;
 
   const exprInput = el('input', {
     type: 'text',
@@ -154,6 +277,9 @@ function calculator(root) {
   });
   const resultOut = el('div', { class: 'output calc-result', 'aria-live': 'polite' }, '30');
   const tapeEl = el('div', { class: 'calc-tape' });
+  const badge = el('span', { class: 'gbadge' }, calcModelName(chassis, pro));
+  const modelNote = el('p', { class: 'calc-model-note' });
+  const keypad = el('div', { class: 'calc-keypad' });
 
   const angleToggle = createGameToggle({
     checked: false,
@@ -161,6 +287,27 @@ function calculator(root) {
     onLabel: 'DEG',
     label: 'Angle unit',
     onChange: v => { degrees = v; playPop(540); evaluate(); }
+  });
+
+  const proToggle = createGameToggle({
+    checked: pro,
+    offLabel: 'STD',
+    onLabel: 'PRO',
+    label: 'Scientific PRO keys',
+    onChange: v => { pro = v; playPop(640); applyLayout(true); }
+  });
+
+  const chassisTabs = createGameTabs({
+    items: CALC_CHASSIS.map(c => ({ value: c.id, label: c.tab })),
+    value: chassis.id,
+    cls: 'calc-model-tabs',
+    onChange: v => {
+      const next = CALC_CHASSIS.find(c => c.id === v);
+      if (!next || next === chassis) return;
+      chassis = next;
+      playPop(500);
+      applyLayout(true);
+    }
   });
 
   function renderTape() {
@@ -228,33 +375,19 @@ function calculator(root) {
     if (e.key === 'Enter') { e.preventDefault(); evaluate(true); }
   });
 
-  const rows = [
-    [['C', 'danger'], ['(', 'soft'], [')', 'soft'], ['⌫', 'warn']],
-    [['7', 'num'], ['8', 'num'], ['9', 'num'], ['÷', 'op', '/']],
-    [['4', 'num'], ['5', 'num'], ['6', 'num'], ['×', 'op', '*']],
-    [['1', 'num'], ['2', 'num'], ['3', 'num'], ['−', 'op', '-']],
-    [['0', 'num'], ['.', 'num'], ['^', 'soft'], ['+', 'op', '+']],
-    [['sqrt(', 'soft'], ['pi', 'soft'], ['!', 'soft'], ['=', 'eq']]
-  ];
-
-  const keypad = el('div', { class: 'calc-keypad' },
-    rows.flat().map(([label, style, insert]) =>
-      el('button', {
-        type: 'button',
-        class: `gbtn calc-key key-${style}`,
-        'aria-label': label === '⌫' ? 'Backspace' : label === '=' ? 'Calculate equals' : label,
-        onclick: () => insertKey(insert ?? label)
-      }, label)
-    )
-  );
-
   const shell = el('div', { class: 'game-panel calc-shell' },
     el('div', { class: 'calc-top-row' },
       el('span', { class: 'toy-screw' }),
-      el('span', { class: 'gbadge' }, 'WAFFLE-CALC 2500'),
+      badge,
       angleToggle.el,
       el('span', { class: 'toy-screw' })
     ),
+    chassisTabs.el,
+    el('div', { class: 'calc-top-row' },
+      proToggle.el,
+      el('span', { class: 'calc-pro-hint' }, 'PRO adds sin, cos, tan and the rest')
+    ),
+    modelNote,
     el('div', { class: 'calc-screen' },
       exprInput,
       resultOut
@@ -262,6 +395,32 @@ function calculator(root) {
     tapeEl,
     keypad
   );
+
+  function applyLayout(announce = false) {
+    const keys = calcKeysFor(chassis, pro);
+    // The badge is the model number, so it has to move with the chassis — a
+    // 2200 that still says 2500 on its face is lying about what you are using.
+    badge.textContent = calcModelName(chassis, pro);
+    shell.className = `game-panel calc-shell calc-cols-${chassis.columns}${chassis.cls ? ` ${chassis.cls}` : ''}`;
+    keypad.replaceChildren(...keys.map(([label, style, insert]) =>
+      el('button', {
+        type: 'button',
+        class: `gbtn calc-key key-${style}`,
+        'aria-label': label === '⌫' ? 'Backspace' : label === '=' ? 'Calculate equals' : label,
+        onclick: () => insertKey(insert ?? label)
+      }, label)
+    ));
+    const scienceNote = pro
+      ? ` Scientific block: ${chassis.science.map(n => SCIENCE_KEYS[n][0]).join(', ')}.`
+      : '';
+    modelNote.textContent = `${calcModelName(chassis, pro)} · ${keys.length} keys · ${chassis.blurb}.${scienceNote}`;
+    if (announce) {
+      storeCalcModel(calcModelName(chassis, pro));
+      evaluate(false);
+    }
+  }
+
+  applyLayout(false);
   root.replaceChildren(shell);
   evaluate();
 }

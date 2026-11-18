@@ -1239,6 +1239,12 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 .calc-result { border: 0; box-shadow: none; padding: 4px 0 0; background: transparent; font-family: var(--display); font-size: 34px; text-align: right; }
 .calc-tape { display: flex; flex-wrap: wrap; gap: 6px; }
 .calc-keypad { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+
+.calc-shell.calc-cols-3 .calc-keypad { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.calc-shell.calc-cols-5 .calc-keypad { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+.calc-shell.calc-cols-6 .calc-keypad { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .calc-key { min-height: 54px; font-size: 20px; border-radius: 16px; }
 .calc-key.key-num { background: #fff9ec; }
 .calc-key.key-op { background: #ffe58f; box-shadow: 0 5px 0 #cca43b; }
@@ -1246,6 +1252,46 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 .calc-key.key-danger { background: #f9c2cc; box-shadow: 0 5px 0 #c97787; }
 .calc-key.key-warn { background: #ffd2b8; box-shadow: 0 5px 0 #cf8c6d; }
 .calc-key.key-eq { background: #98d898; box-shadow: 0 5px 0 #5b9a5a; }
+
+/* Eight WAFFLE-CALC chassis: 2500 normal, 2200 slim, 2900 fat, 1900 sideways, each with a -PRO twin. */
+
+.calc-model-tabs { margin: 2px 0 0; }
+
+.calc-pro-hint { font-family: var(--body); font-size: 12px; color: #ffe9d6; text-shadow: 0 1px 0 rgba(79, 47, 35, 0.35); }
+
+.calc-model-note { margin: 0 0 8px; font-family: var(--body); font-size: 12px; line-height: 1.45; color: #ffe9d6; text-shadow: 0 1px 0 rgba(79, 47, 35, 0.35); }
+
+.calc-key.key-sci { background: #d9cdf2; box-shadow: 0 5px 0 #a68fd0; font-size: 16px; }
+
+.calc-slim { max-width: 340px; }
+
+.calc-slim .calc-key { min-height: 46px; font-size: 17px; border-radius: 14px; }
+
+.calc-slim .calc-key.key-sci { font-size: 14px; }
+
+.calc-fat { max-width: 580px; }
+
+.calc-fat .calc-key { min-height: 76px; font-size: 27px; border-radius: 20px; }
+
+.calc-fat .calc-key.key-sci { font-size: 19px; }
+
+.calc-fat .calc-keypad { gap: 12px; }
+
+.calc-fat .calc-result { font-size: 42px; }
+
+.calc-sideways { max-width: 820px; }
+
+.calc-sideways .calc-key { min-height: 50px; font-size: 18px; }
+
+.calc-sideways .calc-key.key-sci { font-size: 15px; }
+
+.calc-sideways .calc-keypad { gap: 8px; }
+
+.calc-sideways .calc-screen { display: flex; align-items: baseline; gap: 14px; }
+
+.calc-sideways .calc-expr-input { flex: 1 1 55%; }
+
+.calc-sideways .calc-result { flex: 1 1 45%; font-size: 30px; padding: 0; }
 
 /* 2. Graphing Calculator */
 .graph-expr-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }

@@ -182,10 +182,10 @@ test('the paused dialog cannot swallow the taps meant for the beta door', () => 
   assert.match(css, /\.waffle-ai-locked-tap-hint\.is-counting \{/, 'and changes while counting');
 });
 
-test('the changelog puts 1.0.1 above the original 1.0 release', () => {
-  assert.equal(APP_VERSION, '1.0.1');
-  assert.equal(CHANGELOG.length, 2, 'exactly two releases are documented');
-  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.0.1', '1.0'], 'newest release is listed first');
+test('the changelog puts 1.1 above 1.0.1 above the original 1.0 release', () => {
+  assert.equal(APP_VERSION, '1.1');
+  assert.equal(CHANGELOG.length, 3, 'exactly three releases are documented');
+  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.1', '1.0.1', '1.0'], 'newest release is listed first');
 
   for (const entry of CHANGELOG) {
     assert.match(entry.version, /^\d+\.\d+(\.\d+)?$/);
@@ -197,17 +197,44 @@ test('the changelog puts 1.0.1 above the original 1.0 release', () => {
     }
   }
 
-  const latest = CHANGELOG[0];
-  const latestText = latest.groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
-  assert.match(latestText, /Waffle AI is paused/, '1.0.1 says the AI is paused');
-  assert.ok(latestText.includes(WAFFLE_AI_LOCK_MESSAGE), '1.0.1 carries the same apology visitors see');
-  assert.match(latestText, /Beta Testing/, '1.0.1 tells testers how to get the AI back');
-  assert.match(latestText, /ten times within three seconds/, 'the beta door recipe is documented');
+  const textOf = v => {
+    const entry = CHANGELOG.find(e => e.version === v);
+    assert.ok(entry, `${v} is documented`);
+    return entry.groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
+  };
 
-  const original = CHANGELOG[1];
-  const originalText = original.groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
+  const latest = textOf('1.1');
+  assert.match(latest, /WAFFLE-CALC-2500/, '1.1 names the calculator chassis it shipped');
+  assert.match(latest, /-PRO/, '1.1 says the scientific keypads are a -PRO model');
+  assert.match(latest, /polar mode|polar turns/, '1.1 records the graphing polar work');
+  assert.match(latest, /Analyse report/, '1.1 records the analysis engine');
+  assert.match(latest, /Two-a-days/, '1.1 records the new bodily tab');
+  assert.match(latest, /Toast Breakout/, '1.1 names an original game');
+  assert.match(latest, /Kitchen Snake/);
+  assert.match(latest, /Syrup Glide/);
+  assert.match(latest, /Waffle Whisk/);
+  assert.match(latest, /51 games/, '1.1 states the new cabinet size');
+  assert.match(latest, /Art Studio \(Beta\)/, '1.1 records the beta art studio');
+  assert.match(latest, /Waffle AI is still paused/, '1.1 does not pretend the AI came back');
+  assert.match(latest, /ten taps on Sir Waffle within three seconds/, '1.1 repeats the beta door recipe');
+
+  // Vendored games are credited in the release notes, and the retired folder
+  // name is not: that rename was never a user-facing change to announce.
+  assert.match(latest, /Susam Pal/, '1.1 credits the MIT authors it vendored from');
+  assert.match(latest, /Jack Rugile/);
+  assert.match(latest, /MIT licence/, '1.1 says under what licence they arrived');
+  const wholeChangelog = JSON.stringify(CHANGELOG);
+  assert.ok(!/schoolgames/i.test(wholeChangelog), 'the changelog never names the retired folder');
+
+  const honest = textOf('1.0.1');
+  assert.match(honest, /Waffle AI is paused/, '1.0.1 says the AI is paused');
+  assert.ok(honest.includes(WAFFLE_AI_LOCK_MESSAGE), '1.0.1 carries the same apology visitors see');
+  assert.match(honest, /Beta Testing/, '1.0.1 tells testers how to get the AI back');
+  assert.match(honest, /ten times within three seconds/, 'the beta door recipe is documented');
+
+  const originalText = textOf('1.0');
   assert.match(originalText, /115 bite-sized utilities across 8 cupboards/, '1.0 records the launch scope');
-  assert.match(originalText, /45 offline games/);
+  assert.match(originalText, /45 offline games/, '1.0 keeps its launch-day count as history');
   assert.match(originalText, /CodeHub/);
   assert.match(originalText, /No accounts, no subscriptions, no uploads/);
 });

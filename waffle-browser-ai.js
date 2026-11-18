@@ -403,6 +403,176 @@ function writeCachePref(key, value) {
 const HF_BASE = 'https://huggingface.co';
 const hfTreeCache = new Map();
 
+/**
+ * Turn a raw runtime error into something a person can act on.
+ *
+ * Every engine reports a network failure as a bare "Failed to fetch", which
+ * reads like a model problem and is not one: six runtimes can all fail
+ * identically because the model host was simply unreachable, and nothing in the
+ * text says so. That ambiguity costs hours, so the kitchen classifies the
+ * failure and leads with the cause instead of a wall of engine names.
+ */
+export function classifyAiFailure(err) {
+  const raw = String(err?.message || err || '');
+  const text = raw.toLowerCase();
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return {
+      kind: 'offline',
+      title: 'This device is offline',
+      hint: 'Nothing can be downloaded without a connection. A model already pre-cached on this device would still run — pre-cache one while online from Settings \u2192 AI Models.'
+    };
+  }
+  // Covers the browser's own wording plus what the engines wrap around it.
+  if (/failed to fetch|networkerror|network error|load failed|net::err_|could not resolve|err_name_not_resolved|err_internet|err_connection|err_cert|err_blocked|econnrefused|enotfound|etimedout|request failed|status 429|status 503|\(429\)|\(503\)/.test(text)) {
+    return {
+      kind: 'network',
+      title: 'Could not reach the model host',
+      hint: 'The download never started \u2014 huggingface.co was unreachable from this browser (blocked network, firewall, DNS, a privacy extension, or CORS from this origin). This is not a model, memory or device problem. Fix: run `node scripts/fetch-model.mjs` once so the site serves the model itself, or open the site from a network that can reach Hugging Face.'
+    };
+  }
+  if (/out of memory|\boom\b|allocation failed|cannot allocate|memory access out of bounds|ran out of memory|bad_alloc|abort\(\).*memory/.test(text)) {
+    return {
+      kind: 'memory',
+      title: 'Not enough memory for this model',
+      hint: 'The weights would not fit this browser\u2019s WASM heap. Choose a smaller model or a lighter quantization preset in Settings \u2192 AI Models.'
+    };
+  }
+  if (/version_mismatch|checkwasmversion|shader-f16|shader f16|unsupported feature|wasm.*compil|compil.*wasm|instantiate.*fail/.test(text)) {
+    return {
+      kind: 'runtime',
+      title: 'This browser cannot run the AI runtime',
+      hint: 'A WASM or WebGPU capability is missing or mismatched. Chromium without shader-f16 aborts the whole GPU module (ngxson/wllama#241), so switch the fallback mode to CPU/WASM.'
+    };
+  }
+  if (/gguf|corrupt|invalid model|bad magic|unsupported model|unknown architecture|truncated/.test(text)) {
+    return {
+      kind: 'model',
+      title: 'The model file could not be loaded',
+      hint: 'The download may be incomplete or in a format this runtime does not support. Re-fetch the model and try again.'
+    };
+  }
+  return { kind: 'unknown', title: 'The AI runtime failed', hint: raw.slice(0, 220) };
+}
+
+/**
+ * One headline for a whole failed fallback chain. When every runtime died the
+ * same way, repeating it six times is noise — the cause is what matters.
+ */
+export function summarizeAiFailures(classified) {
+  if (!classified.length) return null;
+  const kinds = new Set(classified.map(c => c.kind));
+  if (kinds.size === 1) {
+    const only = classified[0];
+    return { ...only, uniform: true, count: classified.length };
+  }
+  // Mixed causes: lead with the most common one, because that is what the
+  // visitor is actually hitting. A fixed priority would report "network" for a
+  // chain where five runtimes ran out of memory and one could not fetch — but
+  // a memory failure proves the host *was* reachable, so it is the better lead.
+  // Ties break toward whichever runtime got furthest.
+  const depth = ['memory', 'runtime', 'model', 'offline', 'network', 'unknown'];
+  const counts = new Map();
+  for (const c of classified) counts.set(c.kind, (counts.get(c.kind) || 0) + 1);
+  const ranked = [...counts.entries()].sort((a, b) =>
+    (b[1] - a[1]) || (depth.indexOf(a[0]) - depth.indexOf(b[0])));
+  const hit = classified.find(c => c.kind === ranked[0][0]);
+  return { ...hit, uniform: false, count: classified.length };
+}
+
+/* ------------------------------------------------------------------ *
+ * Context budgeting.
+ *
+ * `n_ctx` is the *total* window: prompt and reply share it. The chat used to
+ * reserve 560 tokens for a reply inside a 768-token CPU context, leaving 208
+ * tokens (~800 characters) for the system prompt, the question and eight turns
+ * of history combined — and a file attachment is clipped to 5200 characters,
+ * roughly six times the entire budget. Overflowing the window does not produce
+ * a short answer, it produces no answer, which reads as "the AI is broken".
+ * ------------------------------------------------------------------ */
+
+export const CTX_MARGIN_TOKENS = 24;
+export const WLAMA_CTX_CPU = 1024;
+export const WLAMA_CTX_GPU = 2048;
+export const ONNX_PROMPT_BUDGET = 1536;
+export const MAX_HISTORY_MESSAGES = 8;
+
+/**
+ * Rough token count. Deliberately conservative (3.5 chars/token rather than 4):
+ * over-estimating costs a little context, under-estimating overflows the window
+ * and the model returns nothing.
+ */
+export function estimateTokens(text) {
+  const s = String(text ?? '');
+  return s ? Math.ceil(s.length / 3.5) : 0;
+}
+
+/**
+ * Clip to a character budget keeping both ends. A file attachment usually
+ * matters at the top (what it is) and the bottom (the conclusion), and a
+ * question keeps its opening words; the middle is the cheapest thing to lose.
+ */
+export function clipToCharBudget(text, maxChars) {
+  const s = String(text ?? '');
+  if (maxChars <= 0) return '';
+  if (s.length <= maxChars) return s;
+  if (maxChars < 80) return s.slice(0, maxChars);
+  const head = Math.floor(maxChars * 0.7);
+  const tail = Math.max(0, maxChars - head - 40);
+  return `${s.slice(0, head)}\n\u2026[trimmed to fit the model\u2019s context window]\u2026\n${tail ? s.slice(s.length - tail) : ''}`;
+}
+
+/**
+ * Fit a conversation into `promptBudget` tokens, newest first.
+ *
+ * Dropping the *oldest* history is free; dropping the newest message would
+ * generate a reply to nothing, so when the newest one is too big it is clipped
+ * instead of discarded. Returns the messages to send and the tokens they cost
+ * (excluding the system prompt) so the caller can size the reply.
+ */
+export function fitChatToTokenBudget({ systemPrompt, messages, promptBudget, maxMessages = MAX_HISTORY_MESSAGES, systemShare = 0.4 }) {
+  const budget = Math.max(0, Math.floor(promptBudget));
+  // The system prompt is fitted as well. A long one can consume the entire
+  // window before the visitor’s question arrives, and nothing downstream
+  // re-checks it, so it is capped at a share of the budget and clipped like any
+  // other message. Callers must send the returned `systemPrompt`, not the input.
+  const sysCap = Math.max(32, Math.floor(budget * systemShare));
+  let sys = systemPrompt == null ? '' : String(systemPrompt);
+  if (estimateTokens(sys) > sysCap) sys = clipToCharBudget(sys, Math.floor(sysCap * 3.5));
+  const sysTokens = estimateTokens(sys);
+  let room = Math.max(0, budget - sysTokens);
+  const usable = (Array.isArray(messages) ? messages : [])
+    .filter(m => m?.role && typeof m.content === 'string')
+    .slice(-maxMessages);
+
+  const kept = [];
+  let usedTokens = 0;
+  for (let i = usable.length - 1; i >= 0; i--) {
+    const m = usable[i];
+    const t = estimateTokens(m.content);
+    if (t <= room) {
+      kept.unshift({ role: m.role, content: m.content });
+      room -= t;
+      usedTokens += t;
+      continue;
+    }
+    if (!kept.length && room > 40) {
+      const clipped = clipToCharBudget(m.content, Math.floor(room * 3.5));
+      kept.unshift({ role: m.role, content: clipped });
+      usedTokens += estimateTokens(clipped);
+    }
+    // Older history cannot fit either once a newer message did not.
+    break;
+  }
+  return {
+    systemPrompt: sys,
+    messages: kept,
+    promptTokens: usedTokens,
+    systemTokens: sysTokens,
+    dropped: usable.length - kept.length
+  };
+}
+
 async function fetchHfTree(repo, signal) {
   if (hfTreeCache.has(repo)) return hfTreeCache.get(repo);
   const pending = (async () => {
@@ -689,9 +859,16 @@ export async function streamBrowserChat({
   const { TextStreamer, RawImage } = await getTransformers();
   onStatus?.({ state: 'generating', detail: `${cfg.label}${useVision ? ' Vision' : ''} · ${loaded.device.toUpperCase()}` });
 
+  // Fit by tokens, not by message count: eight long turns overflow the window
+  // and the model then answers with nothing at all.
+  const onnxFit = fitChatToTokenBudget({
+    systemPrompt,
+    messages,
+    promptBudget: ONNX_PROMPT_BUDGET
+  });
   const chat = [];
-  if (systemPrompt) chat.push({ role: 'system', content: systemPrompt });
-  const recent = messages.slice(-8);
+  if (onnxFit.systemPrompt) chat.push({ role: 'system', content: onnxFit.systemPrompt });
+  const recent = onnxFit.messages;
   for (let i = 0; i < recent.length; i++) {
     const m = recent[i];
     if (!m?.role || typeof m.content !== 'string') continue;
@@ -829,21 +1006,44 @@ async function resolveBestHFGguf(repo, preferredQuants, signal, budgetBytes = 0)
   if (!candidates.length) throw new Error(`No GGUF files found in ${repo}`);
 
   const choose = hits => {
-    const bySize = [...hits].sort((a, b) => (a.size || Infinity) - (b.size || Infinity));
-    const sized = bySize.map(c => {
+    // Dedupe by first shard, then sort by the *total* bytes of the whole shard
+    // set. Sorting on one shard's size picks the wrong model for any sharded
+    // repo, and without the dedupe the same file could be chosen twice.
+    const seen = new Map();
+    for (const c of hits) {
       const file = firstShardOf(candidates, c.path);
-      return { file, sizeBytes: shardTotalBytes(candidates, file) };
-    });
-    const fitting = budgetBytes > 0 ? sized.filter(s => s.sizeBytes > 0 && s.sizeBytes <= budgetBytes) : [];
-    const [chosen] = fitting.length ? fitting : sized;
-    return { ...chosen, overBudget: Boolean(budgetBytes > 0 && chosen.sizeBytes > budgetBytes) };
+      if (seen.has(file)) continue;
+      seen.set(file, { file, path: c.path, sizeBytes: shardTotalBytes(candidates, file), size: c.size || 0 });
+    }
+    const sized = [...seen.values()].sort((a, b) =>
+      (a.sizeBytes || a.size || Infinity) - (b.sizeBytes || b.size || Infinity));
+    const fitting = budgetBytes > 0 ? sized.filter(x => x.sizeBytes > 0 && x.sizeBytes <= budgetBytes) : [];
+    const chosen = (fitting.length ? fitting : sized)[0];
+    if (!chosen) throw new Error(`No usable GGUF file in ${repo}`);
+    return {
+      file: chosen.file,
+      path: chosen.path,
+      sizeBytes: chosen.sizeBytes,
+      overBudget: Boolean(budgetBytes > 0 && chosen.sizeBytes > budgetBytes)
+    };
   };
 
   for (const q of preferredQuants) {
     const hits = candidates.filter(f => f.path.toUpperCase().includes(q.toUpperCase()));
     if (hits.length) return { ...choose(hits), quant: q };
   }
-  return { ...choose(candidates), quant: 'smallest' };
+  // Name the quant actually taken rather than the sentinel 'smallest'. That
+  // sentinel made the on-device cache permanently unusable for these repos: the
+  // load path only accepts a cached quant that appears in the preset's list, and
+  // 'smallest' never does, so every load went back to the network for nothing.
+  const fallback = choose(candidates);
+  return { ...fallback, quant: quantFromPath(fallback.path) || 'smallest' };
+}
+
+/** The quantization token in a GGUF filename, when it uses a name we know. */
+function quantFromPath(p) {
+  const m = String(p || '').toUpperCase().match(/(IQ[1-8]_[A-Z0-9_]+|Q[1-8]_[A-Z0-9_]+|BF16|F16)/);
+  return m ? m[1] : null;
 }
 
 function fmtMB(bytes) {
@@ -881,10 +1081,13 @@ function readPrecacheIndex() {
   return raw && typeof raw === 'object' ? raw : {};
 }
 
-function rememberPrecachedGguf(repo, { url, quant, sizeBytes }) {
+function rememberPrecachedGguf(repo, { url, quant, sizeBytes, preset }) {
   if (!repo || !url) return;
   const index = readPrecacheIndex();
-  index[repo] = { url, quant, sizeBytes: sizeBytes || 0, at: Date.now() };
+  // The preset is recorded because the same repo resolves to a different file
+  // under a different quantization preset; without it a cached entry cannot be
+  // validated after the visitor changes their mind.
+  index[repo] = { url, quant, sizeBytes: sizeBytes || 0, preset: preset || null, at: Date.now() };
   writePrecacheIndex(index);
 }
 
@@ -940,7 +1143,7 @@ export async function precacheTextModel(modelId, { onProgress, signal } = {}) {
   });
 
   const sizeBytes = model?.size > 0 ? model.size : picked.sizeBytes;
-  rememberPrecachedGguf(cfg.hfGgufRepo, { url, quant: picked.quant, sizeBytes });
+  rememberPrecachedGguf(cfg.hfGgufRepo, { url, quant: picked.quant, sizeBytes, preset: preset.id });
   return { modelId, url, quant: picked.quant, sizeBytes, overBudget: Boolean(picked.overBudget) };
 }
 
@@ -1108,6 +1311,22 @@ export async function streamWllamaChat({
   const localGgufUrl = ggufFile ? resolveAssetUrl(`api/waffle-ai/gguf/${ggufFile}`) : null;
   const budget = diag?.wasmBudgetBytes || 0;
 
+  // Fit the prompt once against the *smallest* window we might end up loading
+  // with, so the result is valid on either the CPU or the GPU path. Reserving
+  // max_tokens inside n_ctx is what used to leave ~208 tokens for everything
+  // the visitor actually typed.
+  const fitted = fitChatToTokenBudget({
+    systemPrompt,
+    messages,
+    promptBudget: Math.max(64, WLAMA_CTX_CPU - maxTokens - CTX_MARGIN_TOKENS)
+  });
+  // If the trimmed prompt plus the requested reply still will not fit, shrink
+  // the reply rather than overflowing: a short answer beats no answer.
+  // Both halves of the prompt count: ignoring systemTokens let a long system
+  // prompt push prompt+reply past n_ctx even after the messages were trimmed.
+  const usedPromptTokens = fitted.systemTokens + fitted.promptTokens;
+  const effectiveMaxTokens = Math.max(48, Math.min(maxTokens, WLAMA_CTX_CPU - usedPromptTokens - CTX_MARGIN_TOKENS));
+
   // GPU offload aborts the whole WASM module when the adapter has no
   // shader-f16 feature (ngxson/wllama#241), so only ask for it when safe.
   let useGpu = Boolean(useWebGPU && diag?.wllamaGpuSafe && !wllamaGpuPoisoned);
@@ -1141,7 +1360,7 @@ export async function streamWllamaChat({
     const loadParams = {
       // A smaller context keeps the KV cache affordable when everything has
       // to live in one single-threaded WASM heap.
-      n_ctx: gpu ? 1024 : 768,
+      n_ctx: gpu ? WLAMA_CTX_GPU : WLAMA_CTX_CPU,
       n_batch: gpu ? 256 : 128,
       n_threads: threads,
       n_gpu_layers: gpu ? 99 : 0,
@@ -1161,7 +1380,14 @@ export async function streamWllamaChat({
 
     // 1) Already pre-cached on this device → start with zero network at all.
     const cachedEntry = hfRepo ? readPrecacheIndex()[hfRepo] : null;
-    if (cachedEntry?.url && quantList.includes(cachedEntry.quant)) {
+    // Valid only for the preset it was fetched with. Entries written before the
+    // preset was recorded fall back to the quant-name check, and an unrecognised
+    // quant ('smallest') is still accepted — re-resolving it would mean another
+    // trip to the network to arrive at the same file.
+    const cacheUsable = cachedEntry?.preset
+      ? cachedEntry.preset === preset.id
+      : (quantList.includes(cachedEntry?.quant) || cachedEntry?.quant === 'smallest');
+    if (cachedEntry?.url && cacheUsable) {
       try {
         const mm = await getModelManager();
         const hit = (await mm.getModels()).find(m => m.url === cachedEntry.url);
@@ -1198,7 +1424,7 @@ export async function streamWllamaChat({
       const url = ggufUrlFor(hfRepo, picked.file);
       await inst.loadModelFromUrl(url, loadParams);
       // Remember it so the next start is fully offline.
-      rememberPrecachedGguf(hfRepo, { url, quant: picked.quant, sizeBytes: picked.sizeBytes });
+      rememberPrecachedGguf(hfRepo, { url, quant: picked.quant, sizeBytes: picked.sizeBytes, preset: preset.id });
       return { source: 'hf', quant: quantLabel, sizeBytes: picked.sizeBytes };
     }
 
@@ -1261,11 +1487,10 @@ export async function streamWllamaChat({
   });
 
   const chat = [];
-  if (systemPrompt) chat.push({ role: 'system', content: systemPrompt });
-  for (const m of messages.slice(-8)) {
-    if (m?.role && typeof m.content === 'string') {
-      chat.push({ role: m.role, content: m.content });
-    }
+  if (fitted.systemPrompt) chat.push({ role: 'system', content: fitted.systemPrompt });
+  // Already role-checked and token-fitted above.
+  for (const m of fitted.messages) {
+    chat.push({ role: m.role, content: m.content });
   }
 
   let acc = '';
@@ -1273,7 +1498,7 @@ export async function streamWllamaChat({
   try {
     stream = await wllamaInstance.createChatCompletion({
       messages: chat,
-      max_tokens: maxTokens,
+      max_tokens: effectiveMaxTokens,
       temperature,
       stream: true
     });

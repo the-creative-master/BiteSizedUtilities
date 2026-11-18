@@ -296,6 +296,41 @@ export default defineConfig({
       for (const dir of ['games', 'runtimes']) {
         if (fs.existsSync(dir)) fs.cpSync(dir, `dist/${dir}`, { recursive: true });
       }
+      // Self-hosted model weights. `scripts/fetch-model.mjs` downloads GGUFs into
+      // .cache/waffle-ai/ (gitignored); the dev server already serves that folder
+      // at /api/waffle-ai/gguf/, and this makes the *production* build serve the
+      // same path, so a deployed site can run AI without touching huggingface.co.
+      //
+      // Absent folder is normal and silent: weights are never committed, so CI
+      // builds without them and the browser downloads from HF as it always has.
+      const ggufSrc = path.resolve('.cache/waffle-ai');
+      if (fs.existsSync(ggufSrc)) {
+        // GitHub Pages has a ~1 GB soft cap per site and this build already ships
+        // ~340 MB, so cap what we add rather than quietly pushing a deploy over
+        // it. Smallest first: a tight budget should still yield a working model
+        // instead of one huge file and nothing else.
+        const SELF_HOST_TOTAL_MAX = 400 * 1024 ** 2;
+        const ggufOut = path.resolve('dist/api/waffle-ai/gguf');
+        const files = fs.readdirSync(ggufSrc)
+          .filter(f => f.endsWith('.gguf'))
+          .map(f => ({ f, size: fs.statSync(path.join(ggufSrc, f)).size }))
+          .sort((a, b) => a.size - b.size);
+        let used = 0;
+        let copied = 0;
+        for (const { f, size } of files) {
+          if (used + size > SELF_HOST_TOTAL_MAX) {
+            console.warn(`[waffle] not self-hosting ${f} (${Math.round(size / 1024 ** 2)} MB) — would exceed the ${Math.round(SELF_HOST_TOTAL_MAX / 1024 ** 2)} MB budget; it will download from Hugging Face instead`);
+            continue;
+          }
+          fs.mkdirSync(ggufOut, { recursive: true });
+          fs.copyFileSync(path.join(ggufSrc, f), path.join(ggufOut, f));
+          used += size;
+          copied++;
+        }
+        if (copied) {
+          console.log(`[waffle] self-hosting ${copied} GGUF model(s), ${Math.round(used / 1024 ** 2)} MB, at dist/api/waffle-ai/gguf/`);
+        }
+      }
       const ortRuntimes = resolveOrtRuntimes();
       const copyOrtRuntime = (srcDist, outDir, version) => {
         if (!srcDist || !fs.existsSync(srcDist)) return false;

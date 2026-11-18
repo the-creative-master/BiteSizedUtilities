@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<script src="../arcade-controls.js"></script>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="color-scheme" content="light">
+<title>Waffle Whisk — BiteSizedUtilities</title>
+<style>
+  :root {
+    --ink: #4f2f23; --cream: #fff8e8; --parchment: #fbedcf;
+    --wood: #d6935c; --wood-dark: #b8733d; --honey: #ffe17d;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; min-height: 100%; background: #f3ddb4;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-weight: 700; color: var(--ink); -webkit-tap-highlight-color: transparent;
+  }
+  body { display: flex; align-items: center; justify-content: center; padding: 54px 10px 18px; }
+  .wrap { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 10px; }
+  h1 { margin: 0; font-size: clamp(20px, 5.4vw, 30px); text-align: center; text-shadow: 0 2px 0 #fff6df; }
+  .hud {
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center;
+    background: var(--parchment); border: 3.5px solid var(--ink); border-radius: 16px;
+    padding: 8px 12px; box-shadow: 0 5px 0 #e0c79c;
+  }
+  .hud .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button {
+    font: inherit; color: var(--ink); background: var(--honey);
+    border: 3px solid var(--ink); border-radius: 12px; padding: 6px 11px; cursor: pointer;
+    box-shadow: 0 4px 0 #cca43b;
+  }
+  button:active { transform: translateY(3px); box-shadow: 0 1px 0 #cca43b; }
+  button[aria-pressed="true"] { background: #8fd3a4; box-shadow: 0 4px 0 #5b9a5a; }
+  .status {
+    background: var(--cream); border: 3px solid var(--ink); border-radius: 14px;
+    padding: 10px 12px; text-align: center; font-size: 15px; min-height: 46px;
+    box-shadow: inset 0 4px 0 #eedcbf;
+  }
+  .bowls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .bowl {
+    position: relative; aspect-ratio: 1 / 1; border: 4px solid var(--ink); border-radius: 24px;
+    box-shadow: 0 8px 0 rgba(79, 47, 35, 0.35); cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: filter 0.09s linear, transform 0.09s linear;
+  }
+  .bowl[data-i="0"] { background: #f5b8a8; }
+  .bowl[data-i="1"] { background: #ffe17d; }
+  .bowl[data-i="2"] { background: #bde2b3; }
+  .bowl[data-i="3"] { background: #a9dbd6; }
+  .bowl.lit { filter: brightness(1.45) saturate(1.2); transform: scale(0.975); box-shadow: 0 4px 0 rgba(79, 47, 35, 0.35); }
+  .bowl.wrong { background: #e0553f; }
+  .bowl::after {
+    content: attr(data-key); position: absolute; bottom: 8px; right: 12px;
+    font-size: 13px; opacity: 0.55;
+  }
+  .bowl span {
+    display: block; width: 54%; height: 34%; border: 3.5px solid var(--ink);
+    border-radius: 0 0 60px 60px; border-top: 0; background: rgba(255, 248, 234, 0.55);
+  }
+  .hint { margin: 0; text-align: center; font-size: 13px; line-height: 1.5; color: #6b4530; }
+  kbd { background: var(--cream); border: 2px solid var(--ink); border-bottom-width: 3px; border-radius: 6px; padding: 0 5px; font: inherit; font-size: 12px; }
+  @media (prefers-reduced-motion: reduce) {
+    .bowl { transition: none; }
+    .bowl.lit { transform: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🥣 Waffle Whisk</h1>
+  <div class="hud">
+    <div class="row"><b>Round <span id="round">0</span></b><b>Best <span id="best">0</span></b><b>Strikes <span id="strikes">♥♥♥</span></b></div>
+    <div class="row">
+      <button id="strict" type="button" aria-pressed="false" aria-label="Toggle strict mode">😌 Lenient</button>
+      <button id="sound" type="button" aria-label="Toggle sound">🔊</button>
+      <button id="start" type="button" aria-label="Start a new sequence">▶ Start</button>
+    </div>
+  </div>
+  <p class="status" id="status" aria-live="polite">Watch the bowls, then repeat the recipe.</p>
+  <div class="bowls">
+    <button class="bowl" type="button" data-i="0" data-key="1" aria-label="Coral bowl, key 1"><span></span></button>
+    <button class="bowl" type="button" data-i="1" data-key="2" aria-label="Honey bowl, key 2"><span></span></button>
+    <button class="bowl" type="button" data-i="2" data-key="3" aria-label="Green bowl, key 3"><span></span></button>
+    <button class="bowl" type="button" data-i="3" data-key="4" aria-label="Blue bowl, key 4"><span></span></button>
+  </div>
+  <p class="hint">
+    Keys <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> or <kbd>D</kbd> <kbd>F</kbd> <kbd>J</kbd> <kbd>K</kbd>, or tap a bowl.
+    <kbd>M</kbd> mutes.<br>
+    Lenient gives you three strikes and replays the recipe. Strict ends it on the first wrong bowl.
+  </p>
+</div>
+<script>
+(function () {
+  'use strict';
+
+  const NAMES = ['coral', 'honey', 'green', 'blue'];
+  // A rising four-note set, so a sequence sounds like a tune rather than beeps.
+  const PITCH = [329.63, 415.3, 493.88, 587.33];
+  const BEST_KEY = 'waffle-whisk-best';
+
+  const statusEl = document.getElementById('status');
+  const roundEl = document.getElementById('round');
+  const bestEl = document.getElementById('best');
+  const strikesEl = document.getElementById('strikes');
+  const strictBtn = document.getElementById('strict');
+  const startBtn = document.getElementById('start');
+  const bowls = Array.from(document.querySelectorAll('.bowl'));
+
+  let sequence = [], inputAt = 0, round = 0, best = 0, strikes = 3;
+  let phase = 'idle';              // idle | showing | input | between | over
+  let strict = false, muted = false, audio = null, timers = [];
+
+  function readBest() {
+    try { const v = Number(localStorage.getItem(BEST_KEY)); best = Number.isFinite(v) ? v : 0; }
+    catch { best = 0; }
+  }
+  function writeBest() { try { localStorage.setItem(BEST_KEY, String(best)); } catch { /* private mode */ } }
+
+  function tone(index, ms) {
+    if (muted) return;
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+      const osc = audio.createOscillator(), vol = audio.createGain();
+      osc.type = 'triangle';
+      osc.frequency.value = PITCH[index] || 440;
+      vol.gain.value = 0.07;
+      osc.connect(vol); vol.connect(audio.destination);
+      const now = audio.currentTime, dur = (ms || 300) / 1000;
+      vol.gain.setValueAtTime(0.07, now);
+      vol.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+      osc.start(now); osc.stop(now + dur);
+    } catch { /* silence is fine */ }
+  }
+  function buzz() {
+    if (muted) return;
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audio.createOscillator(), vol = audio.createGain();
+      osc.type = 'sawtooth'; osc.frequency.value = 120;
+      vol.gain.value = 0.08;
+      osc.connect(vol); vol.connect(audio.destination);
+      const now = audio.currentTime;
+      vol.gain.setValueAtTime(0.08, now);
+      vol.gain.exponentialRampToValueAtTime(0.0001, now + 0.4);
+      osc.start(now); osc.stop(now + 0.4);
+    } catch { /* silence is fine */ }
+  }
+
+  function clearTimers() { for (const t of timers) clearTimeout(t); timers = []; }
+  function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
+
+  function say(text) { statusEl.textContent = text; }
+  function sync() {
+    roundEl.textContent = String(round || 1);      // there is no round 0 to show anybody
+    bestEl.textContent = String(best);
+    strikesEl.textContent = strict ? 'strict' : (strikes > 0 ? '♥'.repeat(strikes) : '—');
+  }
+
+  function lit(index, ms, wrong) {
+    const bowl = bowls[index];
+    if (!bowl) return;
+    bowl.classList.toggle('wrong', Boolean(wrong));
+    bowl.classList.add('lit');
+    later(() => bowl.classList.remove('lit', 'wrong'), ms);
+  }
+
+  /** Playback speeds up as the recipe grows, but never faster than a tap can follow. */
+  function stepTime() { return Math.max(230, 620 - round * 22); }
+
+  function playSequence() {
+    phase = 'showing';
+    inputAt = 0;
+    say('Watch… ' + sequence.length + ' step' + (sequence.length === 1 ? '' : 's') + '.');
+    const step = stepTime();
+    sequence.forEach((index, i) => {
+      later(() => { lit(index, step * 0.62); tone(index, step * 0.6); }, i * step);
+    });
+    later(() => {
+      phase = 'input';
+      say('Round ' + round + ' — your turn (' + sequence.length + ' bowl' + (sequence.length === 1 ? '' : 's') + ').');
+    }, sequence.length * step + 120);
+  }
+
+  function nextRound() {
+    round += 1;
+    sequence.push((Math.random() * 4) | 0);
+    sync();
+    playSequence();
+  }
+
+  function start() {
+    clearTimers();
+    sequence = []; inputAt = 0; round = 0; strikes = 3; phase = 'idle';
+    bowls.forEach(b => b.classList.remove('lit', 'wrong'));
+    sync();
+    say('Here we go — watch the bowls.');
+    later(nextRound, 520);
+  }
+
+  function finish(reason) {
+    phase = 'over';
+    clearTimers();
+    if (round > best) { best = round; writeBest(); }
+    sync();
+    say(reason + ' You reached round ' + round + '. Press Start for a new recipe.');
+    tone(0, 500);
+    buzz();
+  }
+
+  function press(index) {
+    if (phase === 'over' || phase === 'idle') { start(); return; }
+    // Tapping during playback, or in the beat between rounds, does nothing at all:
+    // an eager finger must not cost a strike or restart the recipe.
+    if (phase !== 'input') return;
+    lit(index, 200);
+    tone(index, 190);
+    if (sequence[inputAt] === index) {
+      inputAt += 1;
+      if (inputAt >= sequence.length) {
+        phase = 'between';
+        say('Yes! Round ' + round + ' complete.');
+        later(nextRound, 700);
+      }
+      return;
+    }
+    // Wrong bowl.
+    bowls[index].classList.add('wrong');
+    later(() => bowls[index].classList.remove('wrong'), 420);
+    if (strict) { finish('One wrong bowl ends it in strict mode.'); return; }
+    strikes -= 1;
+    sync();
+    if (strikes <= 0) { finish('Out of strikes.'); return; }
+    phase = 'idle';
+    say('Not quite — ' + strikes + ' strike' + (strikes === 1 ? '' : 's') + ' left. Watch it once more.');
+    later(playSequence, 850);
+  }
+
+  bowls.forEach(bowl => {
+    const index = Number(bowl.getAttribute('data-i'));
+    bowl.addEventListener('click', () => press(index));
+  });
+
+  const KEYS = { 1: 0, 2: 1, 3: 2, 4: 3, d: 0, f: 1, j: 2, k: 3 };
+  window.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if (k === 'm') { toggleSound(); return; }
+    if (k === 'enter' && (phase === 'idle' || phase === 'over')) { start(); return; }
+    if (Object.prototype.hasOwnProperty.call(KEYS, k)) { e.preventDefault(); press(KEYS[k]); }
+    else if (Object.prototype.hasOwnProperty.call(KEYS, e.key)) { e.preventDefault(); press(KEYS[e.key]); }
+  });
+
+  function toggleSound() {
+    muted = !muted;
+    document.getElementById('sound').textContent = muted ? '🔇' : '🔊';
+    if (!muted) tone(2, 200);
+  }
+  document.getElementById('sound').addEventListener('click', toggleSound);
+  startBtn.addEventListener('click', start);
+  strictBtn.addEventListener('click', () => {
+    strict = !strict;
+    strictBtn.setAttribute('aria-pressed', String(strict));
+    strictBtn.textContent = strict ? '😬 Strict' : '😌 Lenient';
+    say(strict ? 'Strict mode: the first wrong bowl ends the game.' : 'Lenient mode: three strikes, and the recipe replays.');
+    if (!strict) strikes = 3;                        // lenient always starts with three hearts
+    sync();                                          // the readout must follow the mode at once
+  });
+
+  readBest();
+  sync();
+})();
+</script>
+</body>
+</html>

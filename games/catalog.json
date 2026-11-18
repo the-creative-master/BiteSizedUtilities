@@ -10,10 +10,10 @@
     "emoji": "🚀",
     "featured": true,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/2048.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/2048.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -27,11 +27,30 @@
     "emoji": "⚡",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/agar-io-lite.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/agar-io-lite.html",
     "controls": "Keyboard / Mouse / Touch"
+  },
+  {
+    "id": "andromeda-invaders",
+    "title": "Andromeda Invaders",
+    "category": "Action",
+    "tags": [
+      "Action",
+      "Arcade",
+      "Shooter"
+    ],
+    "description": "A 1980s-arcade-style shooter with its own characters: hover ships, tumbling boulders and a laser pulse, all drawn and synthesised live on one canvas.",
+    "emoji": "👾",
+    "featured": false,
+    "origin": "github",
+    "repo": "https://github.com/susam/invaders",
+    "website": "https://susam.net/invaders.html",
+    "license": "MIT (Susam Pal)",
+    "entrypoint": "games/cabinet/invaders/index.html",
+    "controls": "A D / Arrows / Space or P pause / E enter / M mute / F full screen"
   },
   {
     "id": "bit-planes",
@@ -44,10 +63,10 @@
     "emoji": "🕹️",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/bit-planes.htm",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/bit-planes.htm",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -61,10 +80,10 @@
     "emoji": "👤",
     "featured": true,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/bitlife/index.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/bitlife/index.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -78,10 +97,10 @@
     "emoji": "🎈",
     "featured": true,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/bloons-TD.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/bloons-TD.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -95,10 +114,10 @@
     "emoji": "🎈",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/bloons-TD-2.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/bloons-TD-2.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -112,10 +131,10 @@
     "emoji": "🎈",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/bloons-TD-3.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/bloons-TD-3.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -129,10 +148,10 @@
     "emoji": "⭐",
     "featured": true,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/celeste.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/celeste.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -146,10 +165,10 @@
     "emoji": "🎲",
     "featured": true,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/doodle-jump.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/doodle-jump.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -163,10 +182,10 @@
     "emoji": "🎮",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/draw-climber.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/draw-climber.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -181,10 +200,10 @@
     "emoji": "🚙",
     "featured": true,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/drive-mad.htm",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/drive-mad.htm",
     "controls": "Arrow keys / WASD / Mouse (Fancade)"
   },
   {
@@ -198,10 +217,10 @@
     "emoji": "🕹️",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/fluidsimulator.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/fluidsimulator.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -215,10 +234,10 @@
     "emoji": "🏆",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/get-on-top.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/get-on-top.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -232,10 +251,10 @@
     "emoji": "🧩",
     "featured": true,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/google-dino.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/google-dino.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -249,10 +268,10 @@
     "emoji": "🚀",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/idle-breakout.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/idle-breakout.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -266,10 +285,10 @@
     "emoji": "🎯",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/itsrainingboxes.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/itsrainingboxes.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -283,10 +302,10 @@
     "emoji": "👾",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/johnny-trigger.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/johnny-trigger.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -300,11 +319,30 @@
     "emoji": "⚡",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/justoneboss.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/justoneboss.html",
     "controls": "Keyboard / Mouse / Touch"
+  },
+  {
+    "id": "kitchen-snake",
+    "title": "Kitchen Snake",
+    "category": "Casual",
+    "tags": [
+      "Casual",
+      "Arcade",
+      "Grid"
+    ],
+    "description": "Steer a snake around the pantry floor, eat strawberries, and grab the golden waffle before it melts. Walls on or wrap-around, your call.",
+    "emoji": "🐍",
+    "featured": false,
+    "origin": "github",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/kitchen-snake.html",
+    "controls": "Arrows / WASD / Swipe / On-screen pad"
   },
   {
     "id": "level-devil",
@@ -317,10 +355,10 @@
     "emoji": "😈",
     "featured": true,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/level-devil.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/level-devil.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -334,10 +372,10 @@
     "emoji": "🏁",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/minesweeper.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/minesweeper.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -352,10 +390,10 @@
     "emoji": "👾",
     "featured": true,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/monster-match/index.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/monster-match/index.html",
     "controls": "Arrow keys / WASD / Mouse (Fancade)"
   },
   {
@@ -370,10 +408,10 @@
     "emoji": "🧩",
     "featured": true,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/monster-tracks.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/monster-tracks.html",
     "controls": "Arrow keys / WASD / Mouse (Fancade)"
   },
   {
@@ -387,10 +425,10 @@
     "emoji": "🏁",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/mountainmaze.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/mountainmaze.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -404,10 +442,10 @@
     "emoji": "🧩",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/ninjavsevilcorp.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/ninjavsevilcorp.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -421,10 +459,10 @@
     "emoji": "🌈",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/offlineparadise.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/offlineparadise.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -438,10 +476,10 @@
     "emoji": "🎯",
     "featured": true,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/ovo-2.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/ovo-2.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -455,10 +493,10 @@
     "emoji": "🚀",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/paper-io-2.htm",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/paper-io-2.htm",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -472,10 +510,10 @@
     "emoji": "🎯",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/pixel-speedrun.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/pixel-speedrun.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -489,10 +527,10 @@
     "emoji": "👾",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/radiusraid.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/radiusraid.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -507,10 +545,10 @@
     "emoji": "🎯",
     "featured": true,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/recoil/index.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/recoil/index.html",
     "controls": "Arrow keys / WASD / Mouse (Fancade)"
   },
   {
@@ -524,10 +562,10 @@
     "emoji": "🏈",
     "featured": true,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/retro-bowl.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/retro-bowl.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -541,10 +579,10 @@
     "emoji": "🏆",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/rollingforests.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/rollingforests.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -563,7 +601,7 @@
     "repo": "https://github.com/louis141414/playyyy",
     "website": "https://martinmagni.com/fancade",
     "license": "Fancade (Martin Magni)",
-    "entrypoint": "games/schoolgames/roper/index.html",
+    "entrypoint": "games/cabinet/roper/index.html",
     "controls": "Space / Click / Tap to jump & grapple"
   },
   {
@@ -577,10 +615,10 @@
     "emoji": "⭐",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/sand-game.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/sand-game.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -594,11 +632,30 @@
     "emoji": "🏆",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/soccer-random.htm",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/soccer-random.htm",
     "controls": "Keyboard / Mouse / Touch"
+  },
+  {
+    "id": "spacepi",
+    "title": "SpacePi",
+    "category": "Action",
+    "tags": [
+      "Action",
+      "Tower Defense",
+      "Strategy"
+    ],
+    "description": "A mouse-accuracy game about defending 13 bases in deep space: draw lines of energy to block the incoming ones, grow your base to its target radius, and spend coins on upgrades.",
+    "emoji": "🥧",
+    "featured": false,
+    "origin": "github",
+    "repo": "https://github.com/jackrugile/spacepi-js13k",
+    "website": "http://js13kgames.com/entries/spacepi/",
+    "license": "MIT (Jack Rugile)",
+    "entrypoint": "games/cabinet/spacepi/index.html",
+    "controls": "Mouse drag / Touch drag / Space pause"
   },
   {
     "id": "speed-king",
@@ -612,10 +669,10 @@
     "emoji": "🏎️",
     "featured": true,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/speed-king/index.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/speed-king/index.html",
     "controls": "Arrow keys / WASD / Mouse (Fancade)"
   },
   {
@@ -629,10 +686,10 @@
     "emoji": "🎮",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/stack.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/stack.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -647,10 +704,10 @@
     "emoji": "🚀",
     "featured": true,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/stacktris.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/stacktris.html",
     "controls": "Arrow keys / WASD / Mouse (Fancade)"
   },
   {
@@ -664,11 +721,30 @@
     "emoji": "🪝",
     "featured": true,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/stickman-hook.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/stickman-hook.html",
     "controls": "Keyboard / Mouse / Touch"
+  },
+  {
+    "id": "syrup-glide",
+    "title": "Syrup Glide",
+    "category": "Action",
+    "tags": [
+      "Action",
+      "Arcade",
+      "Reflex"
+    ],
+    "description": "Flap a buttered waffle through a tightening pantry of shelves. One tap per flap, and the floor is not forgiving.",
+    "emoji": "🧇",
+    "featured": false,
+    "origin": "github",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/syrup-glide.html",
+    "controls": "Tap / Click / Space / Up arrow"
   },
   {
     "id": "territorial-io",
@@ -681,10 +757,10 @@
     "emoji": "🌈",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/territorial-io.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/territorial-io.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -698,10 +774,10 @@
     "emoji": "❓",
     "featured": true,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/the-impossible-quiz.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/the-impossible-quiz.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -715,11 +791,30 @@
     "emoji": "🎲",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/tic-tac-toe.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/tic-tac-toe.html",
     "controls": "Keyboard / Mouse / Touch"
+  },
+  {
+    "id": "toast-breakout",
+    "title": "Toast Breakout",
+    "category": "Action",
+    "tags": [
+      "Action",
+      "Arcade",
+      "Bricks"
+    ],
+    "description": "Bounce a slice of toast off a butter knife and break every rack of bricks. Catch falling butter and syrup for a wider paddle and a slower ball.",
+    "emoji": "🍞",
+    "featured": false,
+    "origin": "github",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/toast-breakout.html",
+    "controls": "Mouse / Touch drag / Arrows / Space"
   },
   {
     "id": "trap-the-cat",
@@ -732,11 +827,30 @@
     "emoji": "🎯",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/trap-the-cat.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/trap-the-cat.html",
     "controls": "Keyboard / Mouse / Touch"
+  },
+  {
+    "id": "waffle-whisk",
+    "title": "Waffle Whisk",
+    "category": "Puzzle",
+    "tags": [
+      "Puzzle",
+      "Memory",
+      "Sound"
+    ],
+    "description": "Watch the four bowls light up in a recipe, then whisk them back in the same order. Lenient gives three strikes, strict gives none.",
+    "emoji": "🥣",
+    "featured": false,
+    "origin": "github",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/waffle-whisk.html",
+    "controls": "Keys 1-4 / D F J K / Tap a bowl"
   },
   {
     "id": "wordle-unlimited",
@@ -749,10 +863,10 @@
     "emoji": "🏆",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/wordle-unlimited.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/wordle-unlimited.html",
     "controls": "Keyboard / Mouse / Touch"
   },
   {
@@ -766,10 +880,10 @@
     "emoji": "🧩",
     "featured": false,
     "origin": "github",
-    "repo": "https://github.com/the-creative-master/SchoolGames",
-    "website": "https://the-creative-master.github.io/SchoolGames",
-    "license": "SchoolGames (the-creative-master)",
-    "entrypoint": "games/schoolgames/zrist.html",
+    "repo": "https://github.com/the-creative-master/BiteSizedUtilities",
+    "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
+    "license": "BiteSizedUtilities (the-creative-master)",
+    "entrypoint": "games/cabinet/zrist.html",
     "controls": "Keyboard / Mouse / Touch"
   }
 ]

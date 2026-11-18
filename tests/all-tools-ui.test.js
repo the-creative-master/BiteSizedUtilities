@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cupboards, allTools } from '../catalog.js';
+import { cupboards, allTools, betaToolAdditions, resolveTools } from '../catalog.js';
 import { mountMathScience } from '../tools-math-science.js';
 import { mountCode } from '../tools-code.js';
 import { mountTextArt } from '../tools-text-art.js';
@@ -61,12 +61,25 @@ function makeDOMShim() {
       this.attrs[k] = String(v);
       if (k === 'class') this.className = String(v);
       if (k.startsWith('data-')) this.dataset[k.slice(5)] = String(v);
+      // A real canvas or img reflects width/height back as properties, and tools
+      // read them to map pointer coordinates onto the drawing surface.
+      if ((k === 'width' || k === 'height') && /^(CANVAS|IMG)$/.test(this.tagName) && Number.isFinite(Number(v))) this[k] = Number(v);
     }
     getAttribute(k) { return this.attrs[k] ?? null; }
     append(...nodes) {
       for (const n of nodes) {
-        if (n && typeof n === 'object') { n.parentNode = this; this.children.push(n); }
-        else if (n != null) this.children.push({ nodeType: 3, textContent: String(n) });
+        if (n && typeof n === 'object') {
+          // Real append() relocates a node: re-appending a child that is already
+          // in the tree (or in another parent) moves it rather than cloning it.
+          // Layer canvases are re-appended on every sync to keep paint order.
+          if (n.parentNode && n.parentNode !== this && Array.isArray(n.parentNode.children)) {
+            n.parentNode.children = n.parentNode.children.filter(c => c !== n);
+          }
+          const at = this.children.indexOf(n);
+          if (at >= 0) this.children.splice(at, 1);
+          n.parentNode = this;
+          this.children.push(n);
+        } else if (n != null) this.children.push({ nodeType: 3, textContent: String(n) });
       }
     }
     replaceChildren(...nodes) { this.children = []; this._text = ''; this.append(...nodes); }
@@ -164,4 +177,120 @@ test('all 115 utilities across all 8 cupboards render with cozy 2.5D game UI and
     assert.equal(root.querySelectorAll('input[type="checkbox"]').length, 0, `${t.id} must NOT use <input type="checkbox">`);
     assert.equal(root.querySelectorAll('input[type="color"]').length, 0, `${t.id} must NOT use <input type="color">`);
   }
+});
+
+/* ==================== Art Studio (Beta): mounted and driven for real ==================== */
+
+function walk(node, out = []) {
+  for (const c of node.children || []) {
+    if (!c || c.nodeType === 3) continue;
+    out.push(c);
+    walk(c, out);
+  }
+  return out;
+}
+const byClass = (root, cls) => walk(root).filter(n => String(n.className || '').split(/\s+/).includes(cls));
+const byLabel = (root, label) => walk(root).find(n => n.attrs?.['aria-label'] === label) || null;
+const byText = (root, text) => walk(root).find(n => n.textContent === text) || null;
+const click = node => { assert.ok(node, 'the control exists'); node.dispatchEvent(new Event('click')); };
+const pointerEvent = (type, x, y, extra = {}) => ({
+  type, button: 0, pointerId: 1, pointerType: 'pen', pressure: 0.6, clientX: x, clientY: y,
+  preventDefault() {}, ...extra
+});
+
+test('Art Studio (Beta) refuses to mount on the public page and mounts on beta.html', () => {
+  const { FakeElement } = makeDOMShim();
+  const betaId = betaToolAdditions[0].id;
+  assert.equal(betaId, 'art-studio-beta');
+
+  document.documentElement.dataset.beta = '0';
+  const publicRoot = new FakeElement('div');
+  assert.equal(mountTextArt(betaId, publicRoot), false, 'index.html must not be able to open the beta studio');
+
+  document.documentElement.dataset.beta = '1';
+  const root = new FakeElement('div');
+  assert.equal(mountTextArt(betaId, root), true, 'beta.html mounts it');
+  assert.equal(resolveTools(true).some(t => t.id === betaId), true);
+  assert.ok(root.querySelectorAll('.game-panel').length >= 1, 'it uses the shared cozy panel');
+  for (const banned of ['select', 'input[type="range"]', 'input[type="checkbox"]', 'input[type="color"]']) {
+    assert.equal(root.querySelectorAll(banned).length, 0, `no default ${banned}`);
+  }
+  assert.equal(byClass(root, 'beta-stage').length, 1, 'one layer stack');
+  assert.equal(byClass(root, 'beta-layer-row').length, 1, 'it opens with a single layer');
+  assert.equal(byClass(root, 'beta-layer-canvas').length, 1);
+  assert.ok(byClass(root, 'beta-chip').length >= 12, 'every blend mode is offered');
+  assert.ok(byText(root, '↩ Undo') && byText(root, '↪ Redo'), 'undo and redo are on the panel');
+});
+
+test('driving the beta studio: layers, strokes, undo order, merge and flatten', () => {
+  const { FakeElement } = makeDOMShim();
+  document.documentElement.dataset.beta = '1';
+  const root = new FakeElement('div');
+  mountTextArt('art-studio-beta', root);
+  const stage = byClass(root, 'beta-stage')[0];
+  const status = () => byClass(root, 'output')[0].textContent;
+  const rows = () => byClass(root, 'beta-layer-row').length;
+  const canvases = () => byClass(root, 'beta-layer-canvas').length;
+  assert.equal(rows(), 1);
+
+  // A stroke on the empty document is undoable on its own.
+  stage.dispatchEvent(pointerEvent('pointerdown', 20, 20));
+  stage.dispatchEvent(pointerEvent('pointermove', 60, 40));
+  stage.dispatchEvent(pointerEvent('pointermove', 140, 90));
+  stage.dispatchEvent(pointerEvent('pointerup', 140, 90));
+  assert.equal(rows(), 1, 'drawing does not invent layers');
+
+  click(byLabel(root, 'Add a layer above'));
+  assert.equal(rows(), 2);
+  assert.equal(canvases(), 2, 'a new layer gets its own canvas');
+  click(byLabel(root, 'Add a layer above'));
+  assert.equal(rows(), 3);
+  assert.match(status(), /3 layers/, 'every layer op confirms itself and the new count');
+
+  // Undo unwinds the newest action first: the second add, then the first.
+  click(byText(root, '↩ Undo'));
+  assert.equal(rows(), 2);
+  click(byText(root, '↩ Undo'));
+  assert.equal(rows(), 1);
+  assert.match(status(), /Undid/);
+  click(byText(root, '↪ Redo'));
+  assert.equal(rows(), 2, 'redo brings the layer back');
+  click(byText(root, '↪ Redo'));
+  assert.equal(rows(), 3);
+
+  // Hiding a layer flips its own accessible label.
+  click(byLabel(root, 'Hide Layer 3'));
+  assert.ok(byLabel(root, 'Show Layer 3'), 'the eye button now offers to show it again');
+  click(byLabel(root, 'Show Layer 3'));
+
+  // Raising the bottom layer moves it, and the panel still lists three.
+  click(byLabel(root, 'Raise Layer 1'));
+  assert.equal(rows(), 3);
+
+  // A locked layer refuses ink rather than silently swallowing the stroke.
+  click(byText(root, 'Lock active layer'));
+  stage.dispatchEvent(pointerEvent('pointerdown', 30, 30));
+  assert.match(status(), /locked/i);
+  click(byText(root, 'Lock active layer'));
+
+  // Merging and flattening both collapse the stack, and both are undoable.
+  click(byLabel(root, 'Merge the active layer down'));
+  assert.equal(rows(), 2);
+  click(byText(root, '↩ Undo'));
+  assert.equal(rows(), 3, 'undo rebuilds the merged layer');
+  click(byLabel(root, 'Flatten every visible layer'));
+  assert.equal(rows(), 1);
+  assert.equal(canvases(), 1, 'the hidden canvases are released');
+  assert.ok(byClass(root, 'beta-layer-row')[0].textContent.includes('Flattened'));
+  click(byText(root, '↩ Undo'));
+  assert.equal(rows(), 3, 'flattening is not a one-way door');
+
+  // Deleting is allowed down to a single layer, and the last one is protected.
+  click(byLabel(root, 'Delete Layer 3'));
+  assert.equal(rows(), 2);
+  click(byLabel(root, 'Delete Layer 2'));
+  assert.equal(rows(), 1);
+  click(byLabel(root, 'Delete Layer 1'));
+  assert.equal(rows(), 1, 'the last layer survives');
+  assert.match(status(), /last layer cannot be deleted/i, 'and it says why');
 });

@@ -1239,6 +1239,12 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 .calc-result { border: 0; box-shadow: none; padding: 4px 0 0; background: transparent; font-family: var(--display); font-size: 34px; text-align: right; }
 .calc-tape { display: flex; flex-wrap: wrap; gap: 6px; }
 .calc-keypad { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+
+.calc-shell.calc-cols-3 .calc-keypad { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.calc-shell.calc-cols-5 .calc-keypad { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+.calc-shell.calc-cols-6 .calc-keypad { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .calc-key { min-height: 54px; font-size: 20px; border-radius: 16px; }
 .calc-key.key-num { background: #fff9ec; }
 .calc-key.key-op { background: #ffe58f; box-shadow: 0 5px 0 #cca43b; }
@@ -1247,6 +1253,59 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 .calc-key.key-warn { background: #ffd2b8; box-shadow: 0 5px 0 #cf8c6d; }
 .calc-key.key-eq { background: #98d898; box-shadow: 0 5px 0 #5b9a5a; }
 
+/* Eight WAFFLE-CALC chassis: 2500 normal, 2200 slim, 2900 fat, 1900 sideways, each with a -PRO twin. */
+
+/* The switcher sits outside the calculator, on its own cream shelf panel, so it
+   reads as dark ink on cream rather than the pale type the coral body needs. */
+
+.calc-picker { gap: 10px; }
+
+.calc-picker-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; }
+
+.calc-picker-title { font-family: var(--display); font-size: 18px; color: var(--ink); }
+
+.calc-picker-sub { font-family: var(--body); font-size: 12px; color: var(--ink-soft); }
+
+.calc-picker-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+.calc-model-tabs { margin: 0; }
+
+.calc-pro-hint { font-family: var(--body); font-size: 12px; color: var(--ink-soft); }
+
+.calc-model-note { margin: 0; font-family: var(--body); font-size: 12px; line-height: 1.45; color: var(--ink-soft); }
+
+.calc-key.key-sci { background: #d9cdf2; box-shadow: 0 5px 0 #a68fd0; font-size: 16px; }
+
+.calc-slim { max-width: 340px; }
+
+.calc-slim .calc-key { min-height: 46px; font-size: 17px; border-radius: 14px; }
+
+.calc-slim .calc-key.key-sci { font-size: 14px; }
+
+.calc-fat { max-width: 580px; }
+
+.calc-fat .calc-key { min-height: 76px; font-size: 27px; border-radius: 20px; }
+
+.calc-fat .calc-key.key-sci { font-size: 19px; }
+
+.calc-fat .calc-keypad { gap: 12px; }
+
+.calc-fat .calc-result { font-size: 42px; }
+
+.calc-sideways { max-width: 820px; }
+
+.calc-sideways .calc-key { min-height: 50px; font-size: 18px; }
+
+.calc-sideways .calc-key.key-sci { font-size: 15px; }
+
+.calc-sideways .calc-keypad { gap: 8px; }
+
+.calc-sideways .calc-screen { display: flex; align-items: baseline; gap: 14px; }
+
+.calc-sideways .calc-expr-input { flex: 1 1 55%; }
+
+.calc-sideways .calc-result { flex: 1 1 45%; font-size: 30px; padding: 0; }
+
 /* 2. Graphing Calculator */
 .graph-expr-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
 .graph-expr-row .gfield { flex: 1; min-width: 220px; }
@@ -1254,6 +1313,28 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 .graph-canvas { display: block; width: 100%; height: auto; border-radius: 14px; border: var(--outline-thin); touch-action: none; }
 .graph-controls { display: flex; flex-wrap: wrap; gap: 8px; }
 .graph-readout { background: var(--parchment); border: var(--outline-thin); border-radius: 15px; padding: 10px 14px; font-size: 14px; }
+
+/* Graphing calculator: polar/cartesian modes, overlay switches and the analysis report. */
+
+.graph-mode-tabs { margin: 0 0 4px; }
+
+.graph-mode-hint { margin: 0 0 8px; font-family: var(--body); font-size: 13px; line-height: 1.45; color: var(--ink-soft); }
+
+.graph-overlay-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+
+.graph-controls .gfield.graph-bound { flex: 0 1 130px; min-width: 110px; }
+
+.graph-analysis { background: var(--parchment); border: var(--outline-thin); border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+
+.graph-analysis-title { margin: 0 0 4px; font-family: var(--display); font-size: 16px; color: var(--ink); }
+
+.graph-analysis-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: baseline; border-bottom: 2px dashed #e2cda6; padding-bottom: 5px; }
+
+.graph-analysis-label { font-family: var(--body); font-size: 13px; color: var(--ink-soft); }
+
+.graph-analysis-value { font-family: var(--display); font-size: 14px; color: var(--ink); text-align: right; word-break: break-word; }
+
+.graph-analysis-empty { margin: 0; font-family: var(--body); font-size: 14px; color: var(--ink-soft); }
 .gtable { width: 100%; border-collapse: collapse; background: #fffbf2; border-radius: 14px; overflow: hidden; border: var(--outline-thin); }
 .gtable th, .gtable td { padding: 8px 10px; border-bottom: 2px solid #ead8b7; text-align: center; }
 
@@ -1269,6 +1350,8 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 .stat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .stat-box { background: var(--cream); border: 2.5px solid var(--ink); border-radius: 15px; padding: 10px; text-align: center; }
 .stat-box span { display: block; font-size: 12px; color: var(--ink-soft); }
+
+.body-note { margin: 10px 0 0; font-family: var(--body); font-size: 12px; line-height: 1.5; color: var(--ink-soft); }
 .stat-mid { font-family: var(--display); font-size: 17px; margin-top: 2px; }
 
 /* 4. Fraction Calculator */
@@ -1282,6 +1365,20 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 .frac-stacked { display: inline-flex; flex-direction: column; align-items: center; font-family: var(--display); font-size: 28px; min-width: 72px; }
 .frac-stacked i { display: block; width: 100%; height: 4px; border-radius: 4px; background: var(--ink); margin: 4px 0; }
 
+.frac-pie-row { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: center; gap: 14px; }
+
+.frac-pie-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+
+.frac-working { width: 100%; text-align: center; font-family: var(--body); font-size: 13px; color: var(--ink-soft); }
+
+.frac-insights { background: #fffbf2; border: var(--outline-thin); border-radius: 16px; padding: 12px 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 20px; }
+
+.frac-insight-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: space-between; align-items: baseline; border-bottom: 2px dashed #ead8b7; padding-bottom: 4px; }
+
+.frac-insight-label { font-family: var(--body); font-size: 12px; color: var(--ink-soft); }
+
+.frac-insight-value { font-family: var(--display); font-size: 13px; color: var(--ink); text-align: right; word-break: break-word; }
+
 /* 5. Percentage Calculator */
 .pct-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .pct-head p { margin: 2px 0 0; font-size: 13px; color: var(--ink-soft); }
@@ -1290,6 +1387,8 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 .price-tag-val { font-family: var(--display); font-size: 22px; }
 .pct-bar { height: 22px; border-radius: 999px; background: var(--parchment); border: var(--outline-thin); overflow: hidden; box-shadow: inset 0 4px 0 #e6cfa7; }
 .pct-fill { height: 100%; background: var(--sage); border-right: 3px solid var(--ink); transition: width 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+.pct-working { font-family: var(--body); font-size: 13px; color: var(--ink-soft); }
 
 /* 6. Dice Roller */
 .dice-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
@@ -1718,6 +1817,28 @@ body.waffle-modal-open {
   font-size: 15.5px;
   line-height: 1.5;
   color: var(--ink);
+}
+/* The beta-door run has to be visible: ten taps with no feedback reads as a
+ * broken button, and a run that expires reads as a timeout. */
+.waffle-ai-locked-tap-hint {
+  margin: 0;
+  padding: 8px 12px;
+  border: 3px dashed #d39c5d;
+  border-radius: 14px;
+  background: #fff6e0;
+  font-family: var(--body, inherit);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+  color: #5c3312;
+  text-align: center;
+}
+.waffle-ai-locked-tap-hint.is-counting {
+  border-style: solid;
+  border-color: #7fb069;
+  background: #eaf6e2;
+  color: #2f5d24;
+  animation: shelfSlideIn 0.18s ease-out;
 }
 .waffle-ai-locked-list {
   margin: 0;
@@ -2972,3 +3093,131 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ==================== Art Studio (Beta) — layers, brushes, pressure ==================== */
+.beta-note {
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: #eaf7e2;
+  border: 3px solid var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.beta-note strong { font-size: 12px; letter-spacing: .05em; text-transform: uppercase; }
+.beta-brush-hint {
+  margin: 0;
+  padding: 8px 12px;
+  background: var(--parchment);
+  border: var(--outline-thin);
+  border-radius: 13px;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+.beta-pressure-readout { flex: 1 1 180px; font-size: 11.5px; font-weight: 800; color: #6b4632; }
+
+.beta-bezel { padding: 12px; }
+.beta-stage {
+  position: relative;
+  width: 100%;
+  isolation: isolate;
+  overflow: hidden;
+  background: #fff8e8;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: inset 0 3px 10px rgba(79, 47, 35, .18);
+  touch-action: none;
+  cursor: crosshair;
+}
+.beta-stage-paper { position: absolute; inset: 0; pointer-events: none; }
+/* Every layer is its own canvas stacked in the stage; CSS carries opacity and
+   blend mode so drawing only ever touches the active layer. */
+.beta-layer-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
+
+.beta-layer-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: #fff6e2;
+  border: var(--outline-thin);
+  border-radius: 18px;
+}
+.beta-layer-list { display: flex; flex-direction: column; gap: 7px; max-height: 340px; overflow-y: auto; padding: 2px; }
+.beta-layer-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  background: #fffbf2;
+  border: 2.5px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: 0 3px 0 rgba(79, 47, 35, .14);
+}
+.beta-layer-row.is-active { background: #ffeec2; box-shadow: 0 3px 0 #d3a441; }
+.beta-layer-eye {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: #dff0fc;
+  border: 2.5px solid var(--ink);
+  border-radius: 11px;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.beta-layer-eye[aria-pressed="false"] { background: #eadfd6; opacity: .72; }
+.beta-layer-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 2px;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--ink);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.beta-layer-chip {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  background: var(--butter);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+.beta-layer-btns { flex: 0 0 auto; display: flex; gap: 4px; }
+.beta-layer-btn { min-height: 32px; min-width: 32px; padding: 3px 7px; border-radius: 10px; font-size: 13px; }
+.beta-layer-rename { flex: 1 1 auto; min-width: 0; }
+.beta-layer-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 2.5px dashed rgba(79, 47, 35, .28);
+}
+.beta-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.beta-chip {
+  min-height: 32px;
+  padding: 4px 10px;
+  background: var(--parchment);
+  border: 2.5px solid var(--ink);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 3px 0 rgba(79, 47, 35, .18);
+}
+.beta-chip.is-active { background: #8fd47c; box-shadow: 0 3px 0 #5f9a52; }
+.shelf-beta-badge { position: absolute; top: 8px; left: 8px; z-index: 2; padding: 2px 7px; background: #8fd47c; font-size: 9.5px; }

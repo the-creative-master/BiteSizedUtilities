@@ -22,20 +22,20 @@ const LANG_KEY = 'bite-app-language';
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'SVG', 'PATH', 'PRE', 'CODE', 'NOSCRIPT', 'CANVAS', 'IFRAME']);
 
 const COUNT_WORDS = {
-  es: { utilities: 'HERRAMIENTAS', games: 'JUEGOS', schoolgames: 'juegos de SchoolGames', controls: 'Controles' },
-  fr: { utilities: 'OUTILS', games: 'JEUX', schoolgames: 'jeux de SchoolGames', controls: 'Contrôles' },
-  de: { utilities: 'WERKZEUGE', games: 'SPIELE', schoolgames: 'Spiele von SchoolGames', controls: 'Steuerung' },
-  ar: { utilities: 'أداة', games: 'ألعاب', schoolgames: 'لعبة من SchoolGames', controls: 'التحكم' },
-  ja: { utilities: '個のツール', games: '本のゲーム', schoolgames: '本のSchoolGamesゲーム', controls: '操作' },
-  ko: { utilities: '개 도구', games: '개 게임', schoolgames: '개 SchoolGames 게임', controls: '조작법' },
-  'zh-CN': { utilities: '个工具', games: '款游戏', schoolgames: '款 SchoolGames 游戏', controls: '操作方式' },
-  pt: { utilities: 'FERRAMENTAS', games: 'JOGOS', schoolgames: 'jogos do SchoolGames', controls: 'Controles' },
-  it: { utilities: 'STRUMENTI', games: 'GIOCHI', schoolgames: 'giochi da SchoolGames', controls: 'Comandi' },
-  ru: { utilities: 'ИНСТРУМЕНТОВ', games: 'ИГР', schoolgames: 'игр из SchoolGames', controls: 'Управление' },
-  hi: { utilities: 'टूल्स', games: 'गेम्स', schoolgames: 'SchoolGames गेम्स', controls: 'नियंत्रण' },
-  tr: { utilities: 'ARAÇ', games: 'OYUN', schoolgames: 'SchoolGames oyunu', controls: 'Kontroller' },
-  nl: { utilities: 'TOOLS', games: 'SPELLEN', schoolgames: 'spellen van SchoolGames', controls: 'Besturing' },
-  vi: { utilities: 'CÔNG CỤ', games: 'TRÒ CHƠI', schoolgames: 'trò chơi từ SchoolGames', controls: 'Điều khiển' }
+  es: { utilities: 'HERRAMIENTAS', games: 'JUEGOS', offlineGames: 'juegos sin conexión', controls: 'Controles' },
+  fr: { utilities: 'OUTILS', games: 'JEUX', offlineGames: 'jeux hors ligne', controls: 'Contrôles' },
+  de: { utilities: 'WERKZEUGE', games: 'SPIELE', offlineGames: 'Offline-Spiele', controls: 'Steuerung' },
+  ar: { utilities: 'أداة', games: 'ألعاب', offlineGames: 'ألعاب دون اتصال', controls: 'التحكم' },
+  ja: { utilities: '個のツール', games: '本のゲーム', offlineGames: 'オフラインゲーム', controls: '操作' },
+  ko: { utilities: '개 도구', games: '개 게임', offlineGames: '오프라인 게임', controls: '조작법' },
+  'zh-CN': { utilities: '个工具', games: '款游戏', offlineGames: '离线游戏', controls: '操作方式' },
+  pt: { utilities: 'FERRAMENTAS', games: 'JOGOS', offlineGames: 'jogos offline', controls: 'Controles' },
+  it: { utilities: 'STRUMENTI', games: 'GIOCHI', offlineGames: 'giochi offline', controls: 'Comandi' },
+  ru: { utilities: 'ИНСТРУМЕНТОВ', games: 'ИГР', offlineGames: 'офлайн-игр', controls: 'Управление' },
+  hi: { utilities: 'टूल्स', games: 'गेम्स', offlineGames: 'ऑफ़लाइन गेम', controls: 'नियंत्रण' },
+  tr: { utilities: 'ARAÇ', games: 'OYUN', offlineGames: 'çevrimdışı oyun', controls: 'Kontroller' },
+  nl: { utilities: 'TOOLS', games: 'SPELLEN', offlineGames: 'offline games', controls: 'Besturing' },
+  vi: { utilities: 'CÔNG CỤ', games: 'TRÒ CHƠI', offlineGames: 'game ngoại tuyến', controls: 'Điều khiển' }
 };
 
 let currentLang = 'English';
@@ -96,14 +96,14 @@ export function tUI(text, code = getAppLanguageMeta().code) {
   m = trimmed.match(/^(All|Action|Puzzle|Casual|Fancade)\s*·\s*(\d+)$/);
   if (m) return `${exact.get(m[1]) || m[1]} · ${m[2]}`;
 
-  m = trimmed.match(/^(ACTION|PUZZLE|CASUAL|FANCADE)\s*·\s*SCHOOLGAMES$/i);
+  m = trimmed.match(/^(ACTION|PUZZLE|CASUAL|FANCADE)\s*·\s*OFFLINE ARCADE$/i);
   if (m) {
     const cap = m[1][0].toUpperCase() + m[1].slice(1).toLowerCase();
-    return `${(exact.get(cap) || cap).toUpperCase()} · SCHOOLGAMES`;
+    return `${(exact.get(cap) || cap).toUpperCase()} · OFFLINE ARCADE`;
   }
 
-  m = trimmed.match(/^(\d+)\s+games\s+from\s+the-creative-master\/SchoolGames$/i);
-  if (m && words.schoolgames) return `${m[1]} ${words.schoolgames}`;
+  m = trimmed.match(/^(\d+)\s+offline\s+games\s+ready\s+to\s+play$/i);
+  if (m && words.offlineGames) return `${m[1]} ${words.offlineGames}`;
 
   m = trimmed.match(/^Controls:\s*(.+)$/i);
   if (m && words.controls) return `${words.controls}: ${m[1]}`;

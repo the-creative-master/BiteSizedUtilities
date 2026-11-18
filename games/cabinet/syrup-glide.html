@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<script src="../arcade-controls.js"></script>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="color-scheme" content="light">
+<title>Syrup Glide — BiteSizedUtilities</title>
+<style>
+  :root {
+    --ink: #4f2f23; --cream: #fff8e8; --parchment: #fbedcf;
+    --wood: #d6935c; --wood-dark: #b8733d; --honey: #ffe17d;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; min-height: 100%; background: #f3ddb4;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-weight: 700; color: var(--ink); -webkit-tap-highlight-color: transparent;
+  }
+  body { display: flex; align-items: center; justify-content: center; padding: 54px 10px 18px; }
+  .wrap { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 10px; }
+  h1 { margin: 0; font-size: clamp(20px, 5.4vw, 30px); text-align: center; text-shadow: 0 2px 0 #fff6df; }
+  .hud {
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center;
+    background: var(--parchment); border: 3.5px solid var(--ink); border-radius: 16px;
+    padding: 8px 12px; box-shadow: 0 5px 0 #e0c79c;
+  }
+  .hud .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button {
+    font: inherit; color: var(--ink); background: var(--honey);
+    border: 3px solid var(--ink); border-radius: 12px; padding: 6px 11px; cursor: pointer;
+    box-shadow: 0 4px 0 #cca43b;
+  }
+  button:active { transform: translateY(3px); box-shadow: 0 1px 0 #cca43b; }
+  .stage { background: var(--wood); border: 3.5px solid var(--ink); border-radius: 20px; padding: 10px; box-shadow: 0 8px 0 var(--wood-dark); }
+  canvas { display: block; width: 100%; height: auto; border-radius: 14px; border: 3px solid var(--ink); background: #fff3d6; touch-action: none; }
+  .hint { margin: 0; text-align: center; font-size: 13px; line-height: 1.5; color: #6b4530; }
+  kbd { background: var(--cream); border: 2px solid var(--ink); border-bottom-width: 3px; border-radius: 6px; padding: 0 5px; font: inherit; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🧇 Syrup Glide</h1>
+  <div class="hud">
+    <div class="row"><b>Score <span id="score">0</span></b><b>Best <span id="best">0</span></b><b>Speed <span id="speed">1.0</span>×</b></div>
+    <div class="row">
+      <button id="sound" type="button" aria-label="Toggle sound">🔊</button>
+      <button id="restart" type="button" aria-label="Start a new glide">↻</button>
+    </div>
+  </div>
+  <div class="stage"><canvas id="game" width="420" height="620"></canvas></div>
+  <p class="hint">
+    Tap, click, <kbd>Space</kbd> or <kbd>↑</kbd> to flap. The pantry gets tighter and faster the further you glide.<br>
+    Hitting the ceiling only bumps you — the floor and the shelves do not.
+  </p>
+</div>
+<script>
+(function () {
+  'use strict';
+
+  const W = 420, H = 620;
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const INK = '#4f2f23';
+  const BEST_KEY = 'syrup-glide-best';
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const speedEl = document.getElementById('speed');
+
+  const GRAVITY = 1550, FLAP = -452, MAX_FALL = 720;
+  const SIZE = 30, HIT = 25;
+  const SHELF_X = 108;
+
+  let state = 'ready';                 // ready | playing | dead
+  let y, vy, angle, score, best, shelves, particles, scroll, shake;
+  let muted = false, audio = null, last = 0;
+
+  function readBest() {
+    try { const v = Number(localStorage.getItem(BEST_KEY)); best = Number.isFinite(v) ? v : 0; }
+    catch { best = 0; }
+  }
+  function writeBest() { try { localStorage.setItem(BEST_KEY, String(best)); } catch { /* private mode */ } }
+
+  function tone(freq, ms, type, gain) {
+    if (muted) return;
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+      const osc = audio.createOscillator(), vol = audio.createGain();
+      osc.type = type || 'sine'; osc.frequency.value = freq;
+      vol.gain.value = gain === undefined ? 0.05 : gain;
+      osc.connect(vol); vol.connect(audio.destination);
+      const now = audio.currentTime;
+      vol.gain.setValueAtTime(vol.gain.value, now);
+      vol.gain.exponentialRampToValueAtTime(0.0001, now + (ms || 60) / 1000);
+      osc.start(now); osc.stop(now + (ms || 60) / 1000);
+    } catch { /* silence is fine */ }
+  }
+
+  /** The pantry narrows and speeds up, but never past what a person can follow. */
+  function gapSize() { return Math.max(126, 172 - score * 1.6); }
+  function speed() { return Math.min(255, 152 + score * 2.4); }
+
+  function reset() {
+    y = H * 0.42; vy = 0; angle = 0; score = 0;
+    shelves = []; particles = []; scroll = 0; shake = 0;
+    for (let i = 0; i < 4; i++) spawnShelf(W + 90 + i * 232);
+    state = 'ready';
+    sync();
+  }
+
+  function spawnShelf(x) {
+    const gap = gapSize();
+    const margin = 74;
+    const top = margin + Math.random() * (H - gap - margin * 2);
+    shelves.push({ x: x, top: top, gap: gap, passed: false });
+  }
+
+  function flap() {
+    if (state === 'dead') { reset(); return; }
+    if (state === 'ready') state = 'playing';
+    vy = FLAP;
+    angle = -0.5;
+    tone(430, 55, 'triangle', 0.045);
+    if (!reduceMotion) {
+      for (let i = 0; i < 5; i++) {
+        particles.push({ x: SHELF_X - 8, y: y + 12, vx: -40 - Math.random() * 70, vy: 60 + Math.random() * 90, life: 0.5 + Math.random() * 0.3 });
+      }
+    }
+  }
+
+  function die() {
+    state = 'dead';
+    shake = reduceMotion ? 0 : 11;
+    tone(130, 300, 'sawtooth', 0.07);
+    if (score > best) { best = score; writeBest(); }
+    sync();
+  }
+
+  function step(dt) {
+    scroll += speed() * dt * 0.35;
+
+    if (state === 'ready') {
+      // Hover gently until the first flap, so the page does not look frozen.
+      y = H * 0.42 + Math.sin(performance.now() / 420) * 7;
+      angle = Math.sin(performance.now() / 520) * 0.1;
+      return;
+    }
+    if (state !== 'playing') return;
+
+    vy = Math.min(MAX_FALL, vy + GRAVITY * dt);
+    y += vy * dt;
+    angle = Math.max(-0.55, Math.min(0.95, vy / 620));
+
+    if (y < 14) { y = 14; vy = 90; }                     // the ceiling bumps you down
+    if (y + SIZE / 2 > H - 16) { y = H - 16 - SIZE / 2; die(); return; }
+
+    for (let i = shelves.length - 1; i >= 0; i--) {
+      const s = shelves[i];
+      s.x -= speed() * dt;
+      if (s.x < -80) { shelves.splice(i, 1); continue; }
+      if (!s.passed && s.x + 58 < SHELF_X - HIT / 2) {
+        s.passed = true;
+        score += 1;
+        tone(620 + Math.min(300, score * 6), 70, 'triangle', 0.05);
+        sync();
+      }
+      // Collision, with a box a little smaller than the drawn waffle.
+      if (s.x < SHELF_X + HIT / 2 && s.x + 58 > SHELF_X - HIT / 2) {
+        if (y - HIT / 2 < s.top || y + HIT / 2 > s.top + s.gap) { die(); return; }
+      }
+    }
+    const lastShelf = shelves[shelves.length - 1];
+    if (!lastShelf || lastShelf.x < W - 232) spawnShelf((lastShelf ? lastShelf.x : W) + 232);
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.life -= dt;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
+      p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 260 * dt;
+    }
+  }
+
+  function roundRect(x, yy, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, yy);
+    ctx.arcTo(x + w, yy, x + w, yy + h, r);
+    ctx.arcTo(x + w, yy + h, x, yy + h, r);
+    ctx.arcTo(x, yy + h, x, yy, r);
+    ctx.arcTo(x, yy, x + w, yy, r);
+    ctx.closePath();
+  }
+
+  function draw() {
+    ctx.save();
+    if (shake > 0.4) {
+      ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+      shake *= 0.86;
+    }
+    ctx.clearRect(-14, -14, W + 28, H + 28);
+    ctx.fillStyle = '#fff3d6';
+    ctx.fillRect(-14, -14, W + 28, H + 28);
+
+    // Pantry tiles sliding past.
+    ctx.fillStyle = '#f7e6c2';
+    const off = scroll % 60;
+    for (let ty = -60; ty < H + 60; ty += 60) {
+      for (let tx = -60 - off; tx < W + 60; tx += 60) ctx.fillRect(tx + 4, ty + 4, 52, 52);
+    }
+
+    for (const s of shelves) {
+      drawShelf(s.x, 0, s.top);
+      drawShelf(s.x, s.top + s.gap, H - 16 - (s.top + s.gap));
+    }
+
+    // The floor: a wooden worktop.
+    ctx.fillStyle = '#d6935c';
+    ctx.fillRect(0, H - 16, W, 16);
+    ctx.strokeStyle = INK; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(0, H - 16); ctx.lineTo(W, H - 16); ctx.stroke();
+
+    if (!reduceMotion) {
+      for (const p of particles) {
+        ctx.globalAlpha = Math.max(0, Math.min(1, p.life * 1.8));
+        ctx.fillStyle = '#c98550';
+        ctx.beginPath(); ctx.arc(p.x, p.y, 3.4, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    drawWaffle(SHELF_X, y, angle);
+
+    if (state !== 'playing') {
+      ctx.fillStyle = 'rgba(255, 248, 234, 0.93)';
+      roundRect(W / 2 - 160, H / 2 - 62, 320, 124, 18);
+      ctx.fill();
+      ctx.strokeStyle = INK; ctx.lineWidth = 3.5;
+      roundRect(W / 2 - 160, H / 2 - 62, 320, 124, 18);
+      ctx.stroke();
+      ctx.fillStyle = INK;
+      ctx.textAlign = 'center';
+      ctx.font = '800 24px system-ui, sans-serif';
+      ctx.fillText(state === 'dead' ? 'Splat!' : 'Syrup Glide', W / 2, H / 2 - 14);
+      ctx.font = '700 15px system-ui, sans-serif';
+      ctx.fillText(state === 'dead' ? 'Score ' + score + '  •  best ' + Math.max(best, score) : 'Tap or press Space to flap', W / 2, H / 2 + 14);
+      ctx.font = '700 13px system-ui, sans-serif';
+      ctx.fillText(state === 'dead' ? 'Tap again for another glide' : 'Mind the shelves — and the worktop', W / 2, H / 2 + 38);
+    }
+    ctx.restore();
+  }
+
+  function drawShelf(x, top, height) {
+    if (height <= 0) return;
+    ctx.fillStyle = '#e0a86a';
+    ctx.fillRect(x, top, 58, height);
+    ctx.strokeStyle = INK; ctx.lineWidth = 3.2;
+    ctx.strokeRect(x, top, 58, height);
+    // Shelf lip and a couple of jars, so it reads as a pantry rather than a pipe.
+    const lipY = top > H / 2 ? top : top + height - 12;
+    ctx.fillStyle = '#c98550';
+    ctx.fillRect(x - 5, lipY, 68, 12);
+    ctx.strokeStyle = INK; ctx.lineWidth = 3;
+    ctx.strokeRect(x - 5, lipY, 68, 12);
+    ctx.fillStyle = 'rgba(255, 248, 234, 0.5)';
+    for (let j = 0; j < 2; j++) {
+      const jy = top > H / 2 ? top + 22 + j * 34 : top + height - 46 - j * 34;
+      if (jy < top + 6 || jy + 20 > top + height - 6) continue;
+      roundRect(x + 12, jy, 34, 20, 5);
+      ctx.fill();
+    }
+  }
+
+  function drawWaffle(x, cy, rot) {
+    ctx.save();
+    ctx.translate(x, cy);
+    ctx.rotate(rot);
+    ctx.fillStyle = '#e0a86a';
+    roundRect(-SIZE / 2, -SIZE / 2, SIZE, SIZE, 6);
+    ctx.fill();
+    ctx.strokeStyle = INK; ctx.lineWidth = 3;
+    roundRect(-SIZE / 2, -SIZE / 2, SIZE, SIZE, 6);
+    ctx.stroke();
+    ctx.strokeStyle = '#c98550'; ctx.lineWidth = 2;
+    for (let i = 1; i < 3; i++) {
+      ctx.beginPath(); ctx.moveTo(-SIZE / 2 + (SIZE / 3) * i, -SIZE / 2 + 3); ctx.lineTo(-SIZE / 2 + (SIZE / 3) * i, SIZE / 2 - 3); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-SIZE / 2 + 3, -SIZE / 2 + (SIZE / 3) * i); ctx.lineTo(SIZE / 2 - 3, -SIZE / 2 + (SIZE / 3) * i); ctx.stroke();
+    }
+    // A pat of butter riding along.
+    ctx.fillStyle = '#ffe17d';
+    roundRect(-6, -SIZE / 2 - 7, 13, 9, 3);
+    ctx.fill();
+    ctx.strokeStyle = INK; ctx.lineWidth = 2.4;
+    roundRect(-6, -SIZE / 2 - 7, 13, 9, 3);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function sync() {
+    scoreEl.textContent = String(score);
+    bestEl.textContent = String(Math.max(best, score));
+    speedEl.textContent = (speed() / 152).toFixed(1);
+  }
+
+  function frame(now) {
+    const dt = Math.min(0.032, (now - (last || now)) / 1000);
+    last = now;
+    step(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  canvas.addEventListener('pointerdown', e => { e.preventDefault(); flap(); });
+  window.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if (k === ' ' || k === 'arrowup' || k === 'w' || k === 'enter') { e.preventDefault(); flap(); }
+    else if (k === 'm') {
+      muted = !muted;
+      document.getElementById('sound').textContent = muted ? '🔇' : '🔊';
+    } else if (k === 'r') reset();
+  });
+  document.getElementById('sound').addEventListener('click', () => {
+    muted = !muted;
+    document.getElementById('sound').textContent = muted ? '🔇' : '🔊';
+    if (!muted) tone(520, 80, 'triangle', 0.05);
+  });
+  document.getElementById('restart').addEventListener('click', () => { reset(); tone(480, 90, 'triangle', 0.05); });
+
+  readBest();
+  reset();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 import './style.css';
-import { cupboards, allTools } from './catalog.js';
+import { cupboards, resolveTools, cupboardToolCount } from './catalog.js';
 import { waffleMascotSVG, cupboardIconSVG, toolPropSVG, uiIconSVG } from './icons-25d.js';
 import { isMuted, toggleMute, playPop, playBoing, playCupboardOpen, playSquish, playSparkle } from './sfx.js';
 import { mountMathScience } from './tools-math-science.js';
@@ -85,13 +85,20 @@ const CUPBOARD_THEME = {
   english: { color: '#f3be72', trim: '#b87d32', doodles: ['Aa', '文'], tagline: 'ENGLISH & LANGUAGES.' },
   music:   { color: '#f3b07c', trim: '#ba6e3a', doodles: ['♪', '♫'], tagline: 'COMPOSE. PLAY. GROOVE.' },
   video:   { color: '#84b4eb', trim: '#4b78b3', doodles: ['🎬', '✦'], tagline: 'EDIT. GRADE. RENDER.' },
-  games:   { color: '#d7b5eb', trim: '#9875b4', doodles: ['★', '♧'], tagline: '45 GAMES + ROPER FANCADE' }
+  games:   { color: '#d7b5eb', trim: '#9875b4', doodles: ['★', '♧'], tagline: '51 GAMES + ROPER FANCADE' }
 };
 
 const ALL_CUPBOARDS = [
   ...cupboards,
-  { id: 'games', name: 'Games & Fun', short: '45 SchoolGames & Fancade hits', icon: '♧', color: '#d7b5eb', trim: '#9875b4', star: 'games', tools: [] }
+  { id: 'games', name: 'Games & Fun', short: '51 offline arcade & Fancade hits, four of them drawn in-house', icon: '♧', color: '#d7b5eb', trim: '#9875b4', star: 'games', tools: [] }
 ];
+
+// Beta-only utilities (see `betaToolAdditions` in catalog.js). The public
+// kitchen resolves to the identical 115-tool array it always used; only
+// beta.html asks for the extras, which are spliced in beside the tool each one
+// experiments on.
+const BETA_BUILD = isBetaTesting();
+const TOOLS = resolveTools(BETA_BUILD);
 
 const app = $('#app');
 const aiLocked = isWaffleAiLocked();
@@ -354,6 +361,12 @@ function registerWaffleTap() {
   if (isBetaTesting()) { betaTaps = []; return; }
   const now = Date.now();
   betaTaps = betaTaps.filter(t => now - t <= BETA_TAP_WINDOW_MS).concat(now);
+  // Broadcast the run so it is visible. Ten taps with no feedback feels broken,
+  // and a run that quietly expires feels like a timeout — the paused-AI dialog
+  // listens for this and shows "n / 10".
+  window.dispatchEvent(new CustomEvent('waffle-beta-progress', {
+    detail: { count: betaTaps.length, target: BETA_TAP_TARGET }
+  }));
   if (betaTaps.length < BETA_TAP_TARGET) return;
   betaTaps = [];
   openBetaTesting();
@@ -404,7 +417,7 @@ function woodenSignboardHTML({ kicker, title, leftDoodle = '', rightDoodle = '',
 
 function cupboardCard(c) {
   const theme = CUPBOARD_THEME[c.id] || { color: c.color, trim: c.trim };
-  const countText = c.id === 'games' ? '45 GAMES' : `${c.tools.length} UTILITIES`;
+  const countText = c.id === 'games' ? '51 GAMES' : `${cupboardToolCount(c.id, BETA_BUILD)} UTILITIES`;
   return `
     <article class="cupboard-card" style="--cup:${theme.color};--trim:${theme.trim}" data-cupboard="${c.id}">
       <div class="cupboard-crown" aria-hidden="true"></div>
@@ -436,6 +449,7 @@ function shelfItemCard(t) {
         ${uiIconSVG('heart')}
       </button>
       <button type="button" class="shelf-object" data-tool="${t.id}" style="--cup:${t.color}">
+        ${t.beta ? '<span class="gbadge shelf-beta-badge" data-no-i18n aria-hidden="true">\u{1F9EA} BETA</span>' : ''}
         <span class="object-tile">${toolPropSVG(t.id)}</span>
         <span class="object-label">${esc(t.name)}</span>
       </button>
@@ -461,7 +475,7 @@ function renderSearchMatches() {
     gridHost.hidden = false;
     return;
   }
-  const hits = allTools.filter(t => `${t.name} ${t.description} ${t.id}`.toLowerCase().includes(q));
+  const hits = TOOLS.filter(t => `${t.name} ${t.description} ${t.id}`.toLowerCase().includes(q));
   gridHost.hidden = true;
   host.hidden = false;
   const perShelf = window.innerWidth <= 640 ? 2 : 4;
@@ -516,7 +530,7 @@ function home() {
     renderSearchMatches();
   });
   $('#surprise-tool-btn')?.addEventListener('click', () => {
-    const pick = allTools[Math.floor(Math.random() * allTools.length)];
+    const pick = TOOLS[Math.floor(Math.random() * TOOLS.length)];
     if (!pick) return;
     playSparkle();
     toast(`🎲 ${pick.name}!`);
@@ -557,7 +571,7 @@ async function collection(id) {
         <div class="cabinet-bookcase arcade-bookcase">
           <div class="cabinet-crown" aria-hidden="true"></div>
           <div class="cabinet-interior" id="game-root">
-            <p class="empty-msg">Loading 45 Arcade & Fancade games…</p>
+            <p class="empty-msg">Loading 51 Arcade & Fancade games…</p>
           </div>
         </div>
       </section>
@@ -579,10 +593,10 @@ async function collection(id) {
   const title = c ? c.name : id === 'favorites' ? 'Saved Toys' : 'Recently Played';
   const tagline = c ? theme.tagline : id === 'favorites' ? 'YOUR FAVORITE OBJECTS' : 'PICK UP WHERE YOU LEFT OFF';
   const tools = c
-    ? allTools.filter(t => t.cupboard === id)
+    ? TOOLS.filter(t => t.cupboard === id)
     : id === 'favorites'
-      ? allTools.filter(t => favorites.has(t.id))
-      : recent.map(rid => allTools.find(t => t.id === rid)).filter(Boolean);
+      ? TOOLS.filter(t => favorites.has(t.id))
+      : recent.map(rid => TOOLS.find(t => t.id === rid)).filter(Boolean);
 
   // 2 per shelf on mobile & Math (clean 5-shelf wooden cabinet!), 3 per shelf on wider 15-tool cupboards
   const perShelf = (window.innerWidth <= 640 || id === 'math') ? 2 : 3;
@@ -617,7 +631,7 @@ async function collection(id) {
 }
 
 function openTool(id) {
-  const t = allTools.find(x => x.id === id);
+  const t = TOOLS.find(x => x.id === id);
   if (!t) return;
   toolCleanup?.();
   toolCleanup = null;
@@ -639,7 +653,7 @@ function openTool(id) {
             <div class="window-title-group">
               <span class="window-tool-icon">${toolPropSVG(t.id)}</span>
               <div>
-                <span class="window-kicker">${esc((cup?.name || t.cupboard).toUpperCase())}</span>
+                <span class="window-kicker">${esc((cup?.name || t.cupboard).toUpperCase())}${t.beta ? ' <span class="gbadge beta-banner-badge" data-no-i18n>\u{1F9EA} BETA</span>' : ''}</span>
                 <h1>${esc(t.name)}</h1>
               </div>
             </div>

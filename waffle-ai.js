@@ -12,7 +12,9 @@ import {
   getSmartPromptEnabled,
   getAiTemperature,
   detectDeviceDiagnostics,
-  AI_DISCLAIMER_TEXT
+  AI_DISCLAIMER_TEXT,
+  classifyAiFailure,
+  summarizeAiFailures
 } from './waffle-browser-ai.js';
 import { IMAGE_MODELS, detectImageCapabilities, generateWaffleImage } from './waffle-image-gen.js';
 
@@ -51,6 +53,14 @@ let attachments = [];
 let isGenerating = false;
 let activeAbort = null;
 let modelState = { preCached: false, loaded: false, loading: false, serverReachable: null, available: [] };
+
+/**
+ * The local llama.cpp server only hosts the models in SERVER_MODELS, so when a
+ * browser-only model is selected and the chain wants a server attempt, this is
+ * what it asks for. Named once because the swap is worth being explicit about:
+ * `report()` flags it via `swapped`, so a reply can say which model answered.
+ */
+const SERVER_FALLBACK_ID = 'qwen2.5-1.5b';
 let codeArtifacts = [];
 let imageMode = false;
 let webSearchMode = false;
@@ -391,7 +401,7 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     if (!m.hfGgufRepo && !m.ggufFile) return;
     attempts.push({ kind: 'wllama', gguf: m.ggufFile, hfRepo: m.hfGgufRepo, hfQuant: m.hfGgufQuant, webgpu, label: m.label });
   };
-  const pushServer = (id = cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b') => {
+  const pushServer = (id = cfg.kind === 'server' ? cfg.id : SERVER_FALLBACK_ID) => {
     attempts.push({ kind: 'server', id, label: cfg.label });
   };
   const pushChromiumSafetyNet = () => {
@@ -406,7 +416,7 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     if (gpuOk) attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'webgpu', vision: true });
     attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'wasm', vision: true });
   } else if (mode === 'server') {
-    if (canTryServer) pushServer(cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b');
+    if (canTryServer) pushServer(cfg.kind === 'server' ? cfg.id : SERVER_FALLBACK_ID);
     if (gpuOk) pushBrowser('webgpu');
     pushWllama(true);
     pushWllama(false);
@@ -445,14 +455,14 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
       pushWllama(true);
       pushWllama(false);
       pushBrowser('wasm');
-      if (modelState.serverReachable !== false) pushServer(cfg.id);
+      if (canTryServer) pushServer(cfg.id);
       pushChromiumSafetyNet();
     } else {
       if (gpuOk) pushBrowser('webgpu');
       pushWllama(true);
       pushWllama(false);
       pushBrowser('wasm');
-      if (canTryServer) pushServer('qwen2.5-1.5b');
+      if (canTryServer) pushServer(SERVER_FALLBACK_ID);
       pushChromiumSafetyNet();
     }
   }
@@ -501,18 +511,36 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
       return report(step, 'ONNX Runtime Web', await streamBrowserChat({ modelId: step.id, messages: msgList, imageUrls: step.vision ? imageUrls : [], systemPrompt, maxTokens, temperature, preferredDevice: step.dev, signal, onStatus, onToken }));
     } catch (err) {
       if (err.name === 'AbortError' || signal?.aborted) throw err;
-      failures.push({ step: stepLabel, message: String(err?.message || err).slice(0, 300) });
+      failures.push({
+        step: stepLabel,
+        message: String(err?.message || err).slice(0, 300),
+        cls: classifyAiFailure(err)
+      });
     }
   }
   if (hasImages) {
     throw new Error(`Image vision requires Qwen 3.5 0.8B Vision in the browser (${failures.at(-1)?.message || 'vision model unavailable'}). Text-only fallback is disabled for images so the AI won’t guess.`);
   }
-  const diagHint = !gpuOk && !canTryServer
+
+  // Lead with the *cause*. A chain where all six runtimes died with the same
+  // "Failed to fetch" is one network problem, not six model problems, and the
+  // old wording buried that under a list of engine names.
+  const headline = summarizeAiFailures(failures.map(f => f.cls).filter(Boolean));
+  const isHostProblem = headline && (headline.kind === 'network' || headline.kind === 'offline');
+  // Only mention device/server limits when the device is actually the problem.
+  const diagHint = !isHostProblem && !gpuOk && !canTryServer
     ? ' This host has no local llama.cpp server and this browser has no usable WebGPU, so only small CPU models can run — pre-cache one in Settings → AI Models.'
     : '';
-  throw new Error(failures.length
-    ? `Could not run ${cfg.label}.${diagHint}\n\n${failures.map(f => `• ${f.step} → ${f.message}`).join('\n')}`
-    : `All AI runtimes failed on this device.${diagHint}`);
+
+  if (headline) {
+    const detail = headline.uniform
+      ? `All ${headline.count} runtimes failed the same way.`
+      : `${headline.count} runtimes failed, with different causes.`;
+    throw new Error(
+      `${headline.title}. ${headline.hint}\n\n${detail}\n\n${failures.map(f => `• ${f.step} → ${f.message}`).join('\n')}`
+    );
+  }
+  throw new Error(`Could not run ${cfg.label}.${diagHint}`);
 }
 
 async function fetchStatus() {
@@ -537,6 +565,12 @@ async function fetchStatus() {
 export async function warmupWaffleAI() {
   // No background AI work while the feature is paused.
   if (isWaffleAiLocked()) return;
+  // A static host (GitHub Pages) has no llama.cpp server, so this POST is a
+  // guaranteed failure on every page load for every visitor. The status probe is
+  // answered locally by the service worker, so check reachability through that
+  // first and skip the warmup entirely when there is nothing to warm.
+  if (modelState.serverReachable === null) await fetchStatus();
+  if (modelState.serverReachable === false) return;
   try {
     const r = await fetch('./api/waffle-ai/warmup', { method: 'POST' });
     if (r.ok) {
@@ -1147,6 +1181,7 @@ function buildLockedOverlay() {
                 aria-label="Sir Waffle" title="Sir Waffle">
           ${waffleMascotSVG('waffle-locked-svg')}
         </button>
+        <p class="waffle-ai-locked-tap-hint" id="waffle-ai-locked-tap-hint" aria-live="polite">Tap anywhere here ten times in three seconds to open the beta build.</p>
         <p class="waffle-ai-locked-copy">${esc(WAFFLE_AI_LOCK_MESSAGE)}</p>
         <ul class="waffle-ai-locked-list">
           <li>The chat, CodeHub&rsquo;s AI Error Diagnostics, and the AI writing helpers in English &amp; Languages are all paused together.</li>
@@ -1158,9 +1193,28 @@ function buildLockedOverlay() {
     </div>
   `;
 
-  wrap.addEventListener('click', e => {
-    if (e.target === wrap) closeWaffleAI();
-  });
+  // No backdrop-dismiss here, on purpose. This dialog opens on the *first* tap
+  // of the beta-door run and covers the whole viewport (z-index 90) including
+  // the corner mascot (45), so a second tap in the same place used to land on
+  // the backdrop and close it without counting. The run then alternated
+  // open/close forever and could never reach ten — which reads exactly like a
+  // timeout. The whole overlay is the tap target instead, and dismissal stays
+  // one click away via ✕, the button, or Escape.
+  // Reflects to data-waffle-tap, which closest('[data-waffle-tap]') matches.
+  wrap.dataset.waffleTap = '';
+  const hint = wrap.querySelector('#waffle-ai-locked-tap-hint');
+  const onProgress = e => {
+    if (!hint) return;
+    const { count = 0, target = 10 } = e.detail || {};
+    if (!count) {
+      hint.textContent = 'Tap anywhere here ten times in three seconds to open the beta build.';
+      hint.classList.remove('is-counting');
+      return;
+    }
+    hint.textContent = `Beta door: ${count} / ${target} taps — keep going!`;
+    hint.classList.add('is-counting');
+  };
+  window.addEventListener('waffle-beta-progress', onProgress);
   wrap.querySelector('#waffle-ai-locked-close')?.addEventListener('click', () => { playPop(460); closeWaffleAI(); });
   wrap.querySelector('#waffle-ai-locked-done')?.addEventListener('click', () => { playPop(460); closeWaffleAI(); });
   document.addEventListener('keydown', e => {

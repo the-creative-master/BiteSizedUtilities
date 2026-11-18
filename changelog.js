@@ -2,15 +2,70 @@ import { uiIconSVG } from './icons-25d.js';
 
 /**
  * The kitchen's release notes. Newest first — `openChangelog()` renders them
- * top to bottom exactly in this order, so 1.0.1 sits above 1.0.
+ * top to bottom exactly in this order, so 1.1 sits above 1.0.1 above 1.0.
  *
  * This lives in the app rather than a README.md on purpose: the project's test
  * suite requires that no README.md exists, and visitors on GitHub Pages never
  * see repo files anyway.
  */
-export const APP_VERSION = '1.0.1';
+export const APP_VERSION = '1.1';
 
 export const CHANGELOG = [
+  {
+    version: '1.1',
+    date: 'November 18, 2026',
+    title: 'The calculator, graphing and games update',
+    groups: [
+      {
+        label: '\u{1F9EE} Eight calculators in one',
+        items: [
+          'The Calculator is now a family of chassis you pick from a shelf above the device, so the calculator face itself stays just a calculator: WAFFLE-CALC-2500 Normal, 2200 Slim, 2900 Fat and 1900 Sideways, each of them also available as a -PRO model with the full scientific keypad. Your pick is remembered on this device.',
+          'Every chassis shares one honest maths engine, so -PRO is a keypad change and not a different calculator: sin, cos, tan, logs, roots, powers, factorial, memory and answer recall all evaluate the same way in all eight.',
+          'The badge on the tool names the model you are holding, and a stored model that no longer exists falls back to the 2500 Normal rather than leaving a broken layout behind.'
+        ]
+      },
+      {
+        label: '\u{1F4C8} A graphing calculator that analyses what it draws',
+        items: [
+          'Plot five curves at once in Cartesian or polar mode, with one to eight polar turns and a radians or degrees switch.',
+          'Overlays for the derivative, the shaded area under a curve, roots drawn as rings, turning points as diamonds, and crossings between two curves as X marks.',
+          'The Analyse report gives the numbers behind the picture \u2014 definite integral, average value, minimum, maximum, end slopes, concavity, curvature, arc length and swept polar area \u2014 all computed locally with Simpson and bisection rules, with no server involved.',
+          'Fifteen Cartesian presets and ten polar presets, your own bounds, and a Use window button that fits the curves to the screen.'
+        ]
+      },
+      {
+        label: '\u{1F373} More kitchen maths',
+        items: [
+          'The bodily calculator gained a fifth tab, Two-a-days, and with it Navy body-fat tape, Devine lean mass, Mosteller body surface area, waist-to-hip ratio, BMI prime, ponderal index, daily water, a protein target and Harris-Benedict energy.',
+          'The fraction calculator covers eight operations with twelve insight labels and three drawn pie models, and its mixed-number output now keeps the sign on the whole number where it belongs.',
+          'The percentage calculator has nine modes and twelve everyday coin examples, and it answers a nonsense input with a readable message instead of printing Infinity.'
+        ]
+      },
+      {
+        label: '\u{1F3AE} Six new games in the cabinet',
+        items: [
+          'Four originals drawn for this kitchen: Toast Breakout, Kitchen Snake, Syrup Glide and Waffle Whisk, each with its own 2.5D shelf logo, sound you can mute, and a best score kept on your own device.',
+          'Two guests taken from GitHub with their MIT licences shipped beside them: Andromeda Invaders by Susam Pal, and SpacePi by Jack Rugile, a thirteen-level tower defence where you draw the defence lines with your mouse.',
+          'The cabinet now holds 51 games, and every one of them still runs from files inside this repository with no network calls once the page is open.'
+        ]
+      },
+      {
+        label: '\u{1F3A8} Art Studio (Beta)',
+        items: [
+          'A pressure-aware painting studio with eighteen brushes in four groups, sixteen layers, six symmetry modes, twelve blend modes, stamps, photo import, and project files you can save and reopen later.',
+          'Undo works per layer and is capped by both step count and memory, so a long painting session cannot eat the tab.',
+          'It is labelled Beta on purpose and only appears in beta builds, next to the AI tools that are still being fixed.'
+        ]
+      },
+      {
+        label: '\u{1F916} Waffle AI is still paused in this build',
+        items: [
+          'Nothing about the pause changed in 1.1: the public kitchen still tells you the truth rather than showing an assistant that guesses.',
+          'The beta door still opens it \u2014 ten taps on Sir Waffle within three seconds \u2014 and beta builds carry the reliability fixes from 1.0.1 together with the small models that can answer offline.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.0.1',
     date: 'November 17, 2026',
@@ -75,7 +130,7 @@ export const CHANGELOG = [
       {
         label: '🎮 Games cabinet',
         items: [
-          '45 offline games including Roper and the whole SchoolGames cabinet \u2014 all playable with no connection at all, embedded straight into the kitchen.'
+          '45 offline games including Roper and the whole offline arcade cabinet \u2014 all playable with no connection at all, embedded straight into the kitchen.'
         ]
       },
       {

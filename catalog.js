@@ -68,3 +68,51 @@ export const cupboards = [
 ]}
 ];
 export const allTools=cupboards.flatMap(c=>c.tools.map(([id,name,description])=>({id,name,description,cupboard:c.id,star:id===c.star,icon:c.icon,color:c.color})));
+
+/**
+ * Beta-only utilities.
+ *
+ * These are NOT part of `cupboards` or `allTools`, so the public kitchen stays
+ * exactly 115 utilities and every count, icon and dispatch invariant that
+ * tests/catalog.test.js pins keeps holding. `resolveTools(true)` splices them
+ * into their cupboard, and only `beta.html` (data-beta="1") ever asks for that.
+ *
+ * Each entry names the shipped tool it sits next to, so the experiment appears
+ * right after the thing it is an upgrade of instead of at the end of a shelf.
+ */
+export const betaToolAdditions=[
+  {cupboard:'art',after:'art-studio',id:'art-studio-beta',name:'Art Studio (Beta)',description:'Layers, 18 brushes (10 pressure-aware) & a 4096px canvas'}
+];
+
+function toolObject(c,id,name,description,beta){
+  return {id,name,description,cupboard:c.id,star:beta?false:id===c.star,icon:c.icon,color:c.color,beta:Boolean(beta)};
+}
+
+function additionsFor(cupboardId){
+  return betaToolAdditions.filter(b=>b.cupboard===cupboardId);
+}
+
+/** How many utilities a cupboard door should advertise, beta extras included. */
+export function cupboardToolCount(cupboardId,includeBeta=false){
+  const c=cupboards.find(x=>x.id===cupboardId);
+  if(!c) return 0;
+  return c.tools.length+(includeBeta?additionsFor(cupboardId).length:0);
+}
+
+/**
+ * The tool list to render. `includeBeta` false returns the shipped 115
+ * untouched (the same array identity as `allTools`); true returns a new array
+ * with each beta tool inserted directly after the tool it experiments on.
+ */
+export function resolveTools(includeBeta=false){
+  if(!includeBeta) return allTools;
+  const out=[];
+  for(const c of cupboards){
+    const adds=additionsFor(c.id);
+    for(const [id,name,description] of c.tools){
+      out.push(toolObject(c,id,name,description,false));
+      for(const b of adds.filter(x=>x.after===id)) out.push(toolObject(c,b.id,b.name,b.description,true));
+    }
+  }
+  return out;
+}

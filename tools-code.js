@@ -1,7 +1,7 @@
 /** Cozy 2.5D Developer Utilities — zero default HTML select/checkbox/range/color inputs */
 import { gEl, gameBtn, gameTabs, gameToggle, gameSlider, gameColorPicker, gameField, statBox, copyToClipboard } from './ui-kit.js';
 import { playPop, playSparkle } from './sfx.js';
-import { streamWaffleChat, formatWaffleMarkdown } from './waffle-ai.js';
+import { streamWaffleChat, formatWaffleMarkdown, isWaffleAiLocked, waffleAiLockedNoticeHTML } from './waffle-ai.js';
 import { getAppLanguage } from './i18n.js';
 
 const runtimeBase = () => new URL('runtimes/', document.baseURI);
@@ -236,10 +236,18 @@ export function mountCode(id, root) {
         : editor.value;
       if (!source.trim()) return;
 
-      // Diagnostics deliberately keep the dedicated coder model rather than
-      // whatever chat model is selected: a small general model cannot read a
-      // stack trace usefully. `streamWaffleChat` honours an explicit modelId
-      // even when the Settings picker does not offer that model.
+      // Waffle AI is paused, so diagnostics say so plainly instead of spinning
+      // up a model that cannot answer.
+      if (isWaffleAiLocked()) {
+        aiAbort?.abort();
+        aiAbort = null;
+        lastFixedCode = '';
+        applyFixBtn.hidden = true;
+        aiBox.hidden = false;
+        aiBody.innerHTML = waffleAiLockedNoticeHTML();
+        return;
+      }
+
       aiAbort?.abort();
       const ac = new AbortController();
       aiAbort = ac;

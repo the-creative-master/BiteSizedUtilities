@@ -14,43 +14,38 @@ export const CHANGELOG = [
   {
     version: '1.0.1',
     date: 'November 17, 2026',
-    title: 'Small models, big honesty',
+    title: 'The honest update',
     groups: [
       {
-        label: '🤖 Waffle AI runs on the small models',
+        label: '🔒 Waffle AI is paused',
         items: [
-          'Waffle AI is live again, on the models under 1B parameters: SmolLM2 135M, SmolLM2 360M, Qwen 2.5 0.5B, Qwen 3 0.6B and Qwen 3.5 0.8B. Those are the ones that reliably start and answer on real devices.',
-          'SmolLM2 135M is the new default at about 70 MB, so a first conversation no longer waits on a 700 MB download that a phone tab often cannot hold.',
-          'Photos and file attachments now need Qwen 3.5 0.8B, the only model here with a vision encoder. The paperclip greys out on a text-only model and tells you which one to pick, instead of accepting an upload it cannot read.',
-          'Tool badges name the model that will actually answer, and follow along when you switch models in Settings.',
-          'The AI panel is back in Settings for everyone: model pickers, image picker, fallback runtime mode, quantization, on-device pre-cache, and temperature.'
+          'I apologize for the inconvenience but WaffleAI isn\u2019t available due to countless bugs with open-source AI models. We will make it available in a later update.',
+          'Sir Waffle\u2019s chat, CodeHub\u2019s AI Error Diagnostics, and the AI writing helpers in English & Languages are paused together, so nothing half-works or quietly guesses.',
+          'The AI model picker, image model picker, fallback runtime mode, quantization, and on-device pre-cache panels have been taken out of Settings until the feature returns.'
         ]
       },
       {
-        label: '🧪 Beta testing unlocks the big ones',
+        label: '🧪 Want it back early? Beta testing',
         items: [
-          'Llama 3.2 1B, DeepSeek R1 1.5B and the two 1.5B Qwen models moved to BiteSizedUtilities Beta Testing. Tap Sir Waffle ten times within three seconds and the kitchen takes you there, with all nine models selectable.',
-          'Settings says so too — the note under the model picker is a button straight to the beta door.',
-          'Beta builds are unfinished on purpose. The large models still fail on some devices and browsers, and finding out exactly which is what we need testers for.'
+          'Sir Waffle is hiding a door. Tap him ten times within three seconds and the kitchen takes you to BiteSizedUtilities Beta Testing, where Waffle AI and every AI control are switched back on.',
+          'Beta builds are unfinished on purpose. Models still fail on some devices and browsers \u2014 that is exactly what we need testers to find.'
         ]
       },
       {
-        label: '📝 New in the kitchen',
+        label: '🧾 New in the kitchen',
         items: [
-          'This changelog. Open it any time from What’s New in the kitchen header.',
-          'CodeHub’s AI Error Diagnostics keeps its dedicated Qwen 2.5 Coder 1.5B model. A small general model cannot read a stack trace usefully, so this one stays big on purpose.',
+          'This changelog. Open it any time from What\u2019s New in the kitchen header.',
           'The header no longer claims a model is pre-cached and running on a server that does not exist on this host.'
         ]
       },
       {
-        label: '🛠 Under the hood',
+        label: '🛠 Under the hood (fixed, still paused)',
         items: [
           'Matched the ONNX Runtime WASM build to the one Transformers.js actually ships. This was the real reason models downloaded perfectly and then refused to answer: two different runtime builds were being mixed.',
-          'Models can now be pre-cached on-device through Wllama’s own ModelManager, so a cached model starts with no network at all.',
-          'WebGPU is only requested when the adapter genuinely supports it, so Chromium’s shader-f16 abort no longer takes the whole runtime down with it.',
+          'Models can now be pre-cached on-device through Wllama\u2019s own ModelManager, so a cached model starts with no network at all.',
+          'WebGPU is only requested when the adapter genuinely supports it, so Chromium\u2019s shader-f16 abort no longer takes the whole runtime down with it.',
           'Every reply names the engine that answered it, and a fallback lists which runtimes failed and why instead of collapsing into one vague error.',
           'Several models shared a single GGUF filename, which could silently load the wrong weights. Each model now resolves its own file, and a missing one is skipped rather than guessed.',
-          'The automatic fallback chain can no longer quietly reach for a model this build does not offer.',
           'The service worker is sub-path aware, installs even when one shell file is missing, answers API calls honestly on static hosts, and no longer caches multi-hundred-megabyte assets.'
         ]
       }
@@ -58,7 +53,7 @@ export const CHANGELOG = [
   },
   {
     version: '1.0',
-    date: 'November 16, 2026',
+    date: 'November 2026',
     title: 'Grand opening',
     groups: [
       {
@@ -84,9 +79,9 @@ export const CHANGELOG = [
         ]
       },
       {
-        label: '🤖 Waffle AI',
+        label: '🤖 Waffle AI (now paused in 1.0.1)',
         items: [
-          'An on-device chat assistant over nine open-source models, from SmolLM2 135M up to DeepSeek R1 1.5B (1.0.1 narrowed the public picker to the models under 1B and moved the rest to beta testing).',
+          'An on-device chat assistant over nine open-source models, from SmolLM2 135M up to DeepSeek R1 1.5B.',
           'Image generation with SDXS-512 and SD-Turbo, vision for attached photos, and a web search mode.',
           'Reads DOCX, PPTX, XLSX, and PDF payloads, and streams replies with live code boxes and downloadable file cards.'
         ]

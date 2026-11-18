@@ -1,6 +1,6 @@
 import { gEl, gameBtn, gameTabs, gameToggle, gameField, gameFilePill, copyToClipboard } from './ui-kit.js';
 import { playPop, playSparkle, playBoing } from './sfx.js';
-import { streamWaffleChat, formatWaffleMarkdown, waffleAiModelBadge } from './waffle-ai.js';
+import { streamWaffleChat, formatWaffleMarkdown, isWaffleAiLocked, waffleAiLockedNoticeHTML } from './waffle-ai.js';
 import { createDocxBlob, extractTextFromUpload, triggerFileDownload } from './file-tools-client.js';
 import { getAppLanguage } from './i18n.js';
 
@@ -84,6 +84,19 @@ function createRunner(form) {
   outBox.append(outBody, outActions);
 
   async function ask({ systemPrompt, userPrompt, temperature = 0.45, maxTokens = 560, skipSpeakHint = false, onDone }) {
+    // Waffle AI is paused, so every English tool that writes, corrects or
+    // translates through a model shows the same honest notice instead of
+    // pretending to think.
+    if (isWaffleAiLocked()) {
+      if (activeReq) activeReq.abort();
+      activeReq = null;
+      lastText = '';
+      outBox.hidden = false;
+      outActions.hidden = true;
+      outBody.innerHTML = waffleAiLockedNoticeHTML();
+      return;
+    }
+
     if (activeReq) activeReq.abort();
     const ac = new AbortController();
     activeReq = ac;
@@ -145,10 +158,10 @@ function attachUpload(areaEl, label = '📎 Load .docx / .txt / .md') {
 function mountTranslate(form, run) {
   const srcLang = gameTabs(['Auto Detect', 'English', 'Spanish', 'French', 'German', 'Japanese', 'Korean', 'Mandarin Chinese', 'Arabic', 'Vietnamese'], 'Auto Detect', null, 'From Language');
   const dstLang = gameTabs(LANGUAGES, 'Spanish', null, 'Translate To');
-  // Google Translate needs no local model; the strict engine runs whichever
-  // small model the kitchen is currently configured with.
+  // Google Translate needs no local model, so it keeps working everywhere. The
+  // strict-AI engine is only offered in the beta build.
   const engineTabs = gameTabs(
-    ['Google Translate', 'Waffle AI (Strict)'],
+    isWaffleAiLocked() ? ['Google Translate'] : ['Google Translate', 'Waffle AI (Strict)'],
     'Google Translate',
     null,
     'Engine'
@@ -278,6 +291,10 @@ function mountTranslate(form, run) {
       playSparkle();
     } catch (err) {
       if (err.name === 'AbortError') return;
+      if (isWaffleAiLocked()) {
+        gMeta.textContent = '⚠ Google Translate is unreachable, and the on-device AI fallback is paused.';
+        return;
+      }
       // Seamless fallback to strict translation-only AI if Google Translate is offline/blocked
       runStrictAI(text, 'Offline fallback · Waffle AI (Strict)');
     } finally {
@@ -428,19 +445,11 @@ export function mountEnglish(id, root) {
   const form = gEl('section', { class: 'game-panel tool-form' });
   const badgeText = id === 'waffle-translate'
     ? '🌐 Powered by Google Translate API'
-    : waffleAiModelBadge();
-  const badgeLabel = gEl('span', { class: 'gbadge' }, badgeText);
-  const badge = gEl('div', { class: 'eng-ai-banner' }, badgeLabel);
+    : (isWaffleAiLocked() ? '🔒 AI writing helpers are paused' : '✨ Powered by Qwen 2.5 1.5B');
+  const badge = gEl('div', { class: 'eng-ai-banner' },
+    gEl('span', { class: 'gbadge' }, badgeText)
+  );
   form.append(badge);
-  // AI tools name the model that will actually answer, so keep that honest when
-  // the visitor switches models in Settings instead of hardcoding one name.
-  if (id !== 'waffle-translate') {
-    const syncBadge = () => { badgeLabel.textContent = waffleAiModelBadge(); };
-    window.addEventListener('bite-ai-settings-changed', syncBadge);
-    form.addEventListener('tool-dispose', () => {
-      window.removeEventListener('bite-ai-settings-changed', syncBadge);
-    });
-  }
   root.append(form);
 
   const run = createRunner(form);

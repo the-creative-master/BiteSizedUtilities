@@ -4,6 +4,7 @@
 export const TEXT_MODELS = [
   {
     id: 'qwen2.5-1.5b',
+    params: 1.5,
     label: 'Qwen 2.5 1.5B',
     badge: 'Balanced · Q3_K_L / q4',
     kind: 'server',
@@ -18,6 +19,7 @@ export const TEXT_MODELS = [
   },
   {
     id: 'qwen2.5-coder-1.5b',
+    params: 1.5,
     label: 'Qwen 2.5 Coder 1.5B',
     badge: 'Coding · Q3_K_L / q4',
     kind: 'server',
@@ -32,6 +34,7 @@ export const TEXT_MODELS = [
   },
   {
     id: 'qwen3-0.6b',
+    params: 0.6,
     label: 'Qwen 3 0.6B',
     badge: 'Light · ~300 MB',
     kind: 'server',
@@ -46,6 +49,7 @@ export const TEXT_MODELS = [
   },
   {
     id: 'smollm2-135m',
+    params: 0.135,
     label: 'SmolLM2 135M',
     badge: 'Chromium Safe · ~70 MB',
     kind: 'browser',
@@ -60,6 +64,7 @@ export const TEXT_MODELS = [
   },
   {
     id: 'smollm2-360m',
+    params: 0.36,
     label: 'SmolLM2 360M',
     badge: 'Browser · ~170 MB',
     kind: 'browser',
@@ -74,6 +79,7 @@ export const TEXT_MODELS = [
   },
   {
     id: 'qwen2.5-0.5b',
+    params: 0.5,
     label: 'Qwen 2.5 0.5B',
     badge: 'Browser · ~250 MB',
     kind: 'browser',
@@ -88,6 +94,7 @@ export const TEXT_MODELS = [
   },
   {
     id: 'qwen3.5-0.8b',
+    params: 0.8,
     label: 'Qwen 3.5 0.8B',
     badge: 'Browser · Vision + Chat',
     kind: 'browser',
@@ -103,6 +110,7 @@ export const TEXT_MODELS = [
   },
   {
     id: 'llama3.2-1b',
+    params: 1.0,
     label: 'Llama 3.2 1B',
     badge: 'Browser · ~500 MB',
     kind: 'browser',
@@ -117,6 +125,7 @@ export const TEXT_MODELS = [
   },
   {
     id: 'deepseek-r1-1.5b',
+    params: 1.5,
     label: 'DeepSeek R1 1.5B',
     badge: 'Browser · Reasoning',
     kind: 'browser',
@@ -186,12 +195,53 @@ function writePref(key, val) {
   }
 }
 
+/**
+ * Which models this build may offer.
+ *
+ * The public kitchen ships the small end of the catalogue only. Bigger models
+ * were the ones that kept failing in the wild — a 700 MB download that OOMs a
+ * phone tab, or a WebGPU adapter that aborts the whole runtime — while
+ * SmolLM2 135M reliably answered. So the public picker is capped at under 1B
+ * parameters and everything larger stays in `beta.html`, where testers opt in
+ * knowing the model may not start on their device.
+ *
+ * `beta.html` sets `data-beta="1"` on <html>. The flag is page-scoped on
+ * purpose: nothing is stored, so a beta session can never leak big models back
+ * into the public kitchen (they share localStorage).
+ */
+export const SMALL_MODEL_MAX_PARAMS = 1; // billions — strictly *under* 1B
+export const DEFAULT_TEXT_MODEL = 'smollm2-135m';
+export const VISION_TEXT_MODEL = 'qwen3.5-0.8b';
+
+export function isBetaTesting() {
+  if (typeof document === 'undefined') return false;
+  return document.documentElement?.dataset?.beta === '1';
+}
+
+export function isModelUnlockedInThisBuild(model) {
+  if (!model) return false;
+  if (isBetaTesting()) return true;
+  return Number(model.params || 0) < SMALL_MODEL_MAX_PARAMS;
+}
+
+/** The models the Settings picker may show in this build. */
+export function getAvailableTextModels() {
+  return TEXT_MODELS.filter(isModelUnlockedInThisBuild);
+}
+
+export function isVisionModel(model) {
+  return Boolean(model) && (model.id === VISION_TEXT_MODEL || model.loader === 'qwen3_5');
+}
+
 export function getSelectedTextModel() {
-  const saved = readPref(KEY_TEXT, 'qwen2.5-1.5b');
-  return TEXT_MODELS.some(m => m.id === saved) ? saved : 'qwen2.5-1.5b';
+  const saved = readPref(KEY_TEXT, DEFAULT_TEXT_MODEL);
+  // Clamp to what this build offers. Beta and public share localStorage, so a
+  // model picked in beta must not carry over into the public kitchen.
+  return getAvailableTextModels().some(m => m.id === saved) ? saved : DEFAULT_TEXT_MODEL;
 }
 export function setSelectedTextModel(id) {
-  if (TEXT_MODELS.some(m => m.id === id)) writePref(KEY_TEXT, id);
+  const cfg = TEXT_MODELS.find(m => m.id === id);
+  if (cfg && isModelUnlockedInThisBuild(cfg)) writePref(KEY_TEXT, id);
 }
 
 export function getSelectedImageModel() {

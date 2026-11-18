@@ -12,7 +12,12 @@ import {
   getSmartPromptEnabled,
   getAiTemperature,
   detectDeviceDiagnostics,
-  AI_DISCLAIMER_TEXT
+  AI_DISCLAIMER_TEXT,
+  isBetaTesting,
+  isModelUnlockedInThisBuild,
+  getAvailableTextModels,
+  isVisionModel,
+  VISION_TEXT_MODEL
 } from './waffle-browser-ai.js';
 import { IMAGE_MODELS, detectImageCapabilities, generateWaffleImage } from './waffle-image-gen.js';
 
@@ -45,7 +50,6 @@ const LANG_EXT = {
 };
 
 let overlayEl = null;
-let lockedEl = null;
 let messages = [WELCOME_MSG];
 let attachments = [];
 let isGenerating = false;
@@ -58,50 +62,20 @@ let imageCaps = { hasWebGPU: false, hasF16: false };
 let deviceDiag = { hasWebGPU: false, isOldIOS: false, hasRisk: true, summaryLabel: 'Checking device…' };
 
 /**
- * Waffle AI is paused in the public build.
+ * Which models this build may offer.
  *
- * Open-source models in the browser turned into an endless stream of device,
- * driver, memory and runtime bugs: models that download perfectly and then
- * refuse to build a session, WebGPU adapters that abort the whole runtime,
- * hosts with no cross-origin isolation. Rather than ship a feature that works
- * on one machine in ten, every AI surface is switched off behind this one flag
- * — the Sir Waffle chat, CodeHub's AI Error Diagnostics, and the AI writing
- * helpers in English & Languages. Nothing half-works and nothing quietly
- * guesses.
+ * Waffle AI is live again, but the public kitchen ships the small end of the
+ * catalogue only: everything under 1B parameters, because those are the models
+ * that reliably started and answered on real devices. The larger ones stay in
+ * `beta.html`, which testers reach by tapping Sir Waffle ten times in three
+ * seconds and where all nine models are selectable.
  *
- * `beta.html` puts `data-beta="1"` on <html>, which turns all of it back on for
- * beta testers (reachable by tapping Sir Waffle ten times in three seconds).
- * The gate is deliberately page-scoped rather than a stored preference, so the
- * public kitchen can never leak AI back in from a stale localStorage value.
+ * The gate lives in `waffle-browser-ai.js` next to the catalogue so
+ * `getSelectedTextModel()` can clamp a preference saved in beta — the two builds
+ * share localStorage. It is re-exported here because the kitchen, CodeHub and
+ * the English tools all import their AI surface from this module.
  */
-export const WAFFLE_AI_LOCK_MESSAGE = 'I apologize for the inconvenience but WaffleAI isn\u2019t available due to countless bugs with open-source AI models. We will make it available in a later update.';
-
-export function isBetaTesting() {
-  if (typeof document === 'undefined') return false;
-  return document.documentElement?.dataset?.beta === '1';
-}
-
-export function isWaffleAiLocked() {
-  return !isBetaTesting();
-}
-
-/** Thrown by every AI entry point while paused, so callers can tell "locked" apart from "failed". */
-export class WaffleAiLockedError extends Error {
-  constructor(message = WAFFLE_AI_LOCK_MESSAGE) {
-    super(message);
-    this.name = 'WaffleAiLocked';
-  }
-}
-
-/** The one notice every locked AI surface shows. */
-export function waffleAiLockedNoticeHTML() {
-  return `
-    <div class="waffle-ai-locked-note">
-      <span class="waffle-ai-locked-icon" aria-hidden="true">🔒</span>
-      <p class="waffle-ai-locked-copy">${esc(WAFFLE_AI_LOCK_MESSAGE)}</p>
-    </div>
-  `;
-}
+export { isBetaTesting, isModelUnlockedInThisBuild, getAvailableTextModels, VISION_TEXT_MODEL };
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -349,10 +323,9 @@ async function streamServerChat({ modelId, messages: msgList, systemPrompt, maxT
 }
 
 export async function streamWaffleChat({ modelId, messages: msgList, imageUrls = [], systemPrompt, maxTokens = 520, temperature = 0.7, signal, onStatus, onToken, onRuntime }) {
-  // One gate for every caller: the Sir Waffle chat, CodeHub's AI Error
-  // Diagnostics and the English tools' AI writing all come through here, so
-  // pausing the feature cannot leave a tool half-working.
-  if (isWaffleAiLocked()) throw new WaffleAiLockedError();
+  // No build gate here: `getSelectedTextModel()` already clamps to what this
+  // build offers, and an explicit `modelId` (CodeHub's AI Error Diagnostics asks
+  // for the coder model) is a caller decision that must be honoured as-is.
   const chosenId = modelId || getSelectedTextModel();
   const cfg = TEXT_MODELS.find(m => m.id === chosenId) || TEXT_MODELS[0];
   const mode = getSelectedExecutionMode();
@@ -391,7 +364,12 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     if (!m.hfGgufRepo && !m.ggufFile) return;
     attempts.push({ kind: 'wllama', gguf: m.ggufFile, hfRepo: m.hfGgufRepo, hfQuant: m.hfGgufQuant, webgpu, label: m.label });
   };
-  const pushServer = (id = cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b') => {
+  const pushServer = (id = cfg.kind === 'server' ? cfg.id : SERVER_FALLBACK_ID) => {
+    // Never let a fallback escape this build's model budget: on a static host the
+    // server is unreachable anyway, and silently reaching for a 1.5B model would
+    // undo the small-models-only picker.
+    const m = TEXT_MODELS.find(x => x.id === id);
+    if (!m || !isModelUnlockedInThisBuild(m)) return;
     attempts.push({ kind: 'server', id, label: cfg.label });
   };
   const pushChromiumSafetyNet = () => {
@@ -406,7 +384,7 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     if (gpuOk) attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'webgpu', vision: true });
     attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'wasm', vision: true });
   } else if (mode === 'server') {
-    if (canTryServer) pushServer(cfg.kind === 'server' ? cfg.id : 'qwen2.5-1.5b');
+    if (canTryServer) pushServer(cfg.kind === 'server' ? cfg.id : SERVER_FALLBACK_ID);
     if (gpuOk) pushBrowser('webgpu');
     pushWllama(true);
     pushWllama(false);
@@ -516,9 +494,9 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
 }
 
 async function fetchStatus() {
-  // While paused there is nothing to report, and probing the API on a static
-  // host only produces a confusing 404/501 in the network log.
-  if (isWaffleAiLocked()) return;
+  // A static host answers 404/501 here; that is handled below by clearing
+  // serverReachable rather than by skipping the probe, so browser-only models
+  // still work and the badge can say which engine actually answered.
   try {
     const r = await fetch('./api/waffle-ai/status', { cache: 'no-store' });
     const ct = r.headers.get('content-type') || '';
@@ -535,8 +513,6 @@ async function fetchStatus() {
 }
 
 export async function warmupWaffleAI() {
-  // No background AI work while the feature is paused.
-  if (isWaffleAiLocked()) return;
   try {
     const r = await fetch('./api/waffle-ai/warmup', { method: 'POST' });
     if (r.ok) {
@@ -546,9 +522,29 @@ export async function warmupWaffleAI() {
   } catch {}
 }
 
+/** The server-side model the automatic fallback chain may reach for. */
+const SERVER_FALLBACK_ID = 'qwen3-0.6b';
+
 function activeTextCfg() {
   const id = getSelectedTextModel();
-  return TEXT_MODELS.find(m => m.id === id) || TEXT_MODELS[0];
+  return TEXT_MODELS.find(m => m.id === id) || getAvailableTextModels()[0] || TEXT_MODELS[0];
+}
+
+/**
+ * Attachments — photos *and* files — need the one multimodal model in the
+ * catalogue. Image payloads are refused outright by a text-only model, and a
+ * file read that has to describe a scanned page needs the same vision encoder,
+ * so the whole attach path is gated on Qwen 3.5 0.8B rather than half of it.
+ */
+export function canAttachFiles() {
+  return isVisionModel(activeTextCfg());
+}
+
+export const ATTACH_NEEDS_VISION = 'Attachments need Qwen 3.5 0.8B, the only model here with a vision encoder. Switch to it in Settings → AI Models and the paperclip comes back.';
+
+/** One line naming the model that will actually answer, for tool badges. */
+export function waffleAiModelBadge() {
+  return `✨ Powered by ${activeTextCfg().label}`;
 }
 
 function activeImageCfg() {
@@ -815,6 +811,15 @@ function syncComposerState() {
     webToggle.classList.toggle('selected', webSearchMode);
     webToggle.setAttribute('aria-pressed', String(webSearchMode));
   }
+  const attachBtn = overlayEl.querySelector('#waffle-ai-attach');
+  if (attachBtn) {
+    const visionOk = canAttachFiles();
+    attachBtn.disabled = !visionOk;
+    attachBtn.classList.toggle('is-locked-out', !visionOk);
+    attachBtn.title = visionOk
+      ? 'Attach .docx, .pdf, .pptx, .xlsx, .txt, .md, .csv, or code file'
+      : ATTACH_NEEDS_VISION;
+  }
   if (input) {
     input.placeholder = imageMode
       ? `Describe an image for ${activeImageCfg().name}…`
@@ -826,6 +831,14 @@ function syncComposerState() {
 }
 
 async function handleFilesSelected(fileList) {
+  if (!canAttachFiles()) {
+    // Reached by the paperclip and by drag-and-drop, so guard it here rather
+    // than only disabling the button.
+    playSquish();
+    messages.push({ role: 'assistant', authorLabel: 'Sir Waffle', content: `📎 ${ATTACH_NEEDS_VISION}` });
+    renderMessages();
+    return;
+  }
   for (const file of [...fileList].slice(0, 4)) {
     try {
       const payload = await extractFilePayload(file);
@@ -1107,75 +1120,10 @@ async function sendMessage(rawText) {
 }
 
 export function closeWaffleAI() {
-  const closing = overlayEl || lockedEl;
-  if (!closing) return;
+  if (!overlayEl) return;
   if (activeAbort) activeAbort.abort();
-  if (overlayEl) overlayEl.hidden = true;
-  if (lockedEl) lockedEl.hidden = true;
+  overlayEl.hidden = true;
   document.body.classList.remove('waffle-modal-open');
-}
-
-/**
- * The paused-AI notice. It reuses the `waffle-ai-overlay` id so i18n keeps
- * skipping it and the kitchen's click-through guard still recognises it, and it
- * keeps Sir Waffle on screen — tapping him is also how beta testers get in.
- */
-function buildLockedOverlay() {
-  const wrap = document.createElement('div');
-  wrap.id = 'waffle-ai-overlay';
-  wrap.className = 'waffle-ai-overlay is-locked';
-  wrap.hidden = true;
-  wrap.innerHTML = `
-    <div class="waffle-ai-dialog waffle-ai-locked-dialog" role="dialog" aria-modal="true" aria-labelledby="waffle-ai-locked-title">
-      <div class="waffle-ai-header">
-        <div class="window-grab-pill" aria-hidden="true"></div>
-        <div class="waffle-ai-head-row">
-          <div class="waffle-ai-title-wrap">
-            <span class="waffle-ai-avatar" aria-hidden="true">${waffleMascotSVG('waffle-header-svg')}</span>
-            <div>
-              <h2 id="waffle-ai-locked-title" class="waffle-ai-title">Waffle AI is taking a break</h2>
-              <span class="waffle-ai-badge">Paused &middot; back in a later update</span>
-            </div>
-          </div>
-          <div class="waffle-ai-actions">
-            <button type="button" class="window-close-x" id="waffle-ai-locked-close" aria-label="Close">✕</button>
-          </div>
-        </div>
-      </div>
-      <div class="waffle-ai-locked-body">
-        <button type="button" class="waffle-ai-locked-mascot" id="waffle-ai-locked-mascot" data-waffle-tap
-                aria-label="Sir Waffle" title="Sir Waffle">
-          ${waffleMascotSVG('waffle-locked-svg')}
-        </button>
-        <p class="waffle-ai-locked-copy">${esc(WAFFLE_AI_LOCK_MESSAGE)}</p>
-        <ul class="waffle-ai-locked-list">
-          <li>The chat, CodeHub&rsquo;s AI Error Diagnostics, and the AI writing helpers in English &amp; Languages are all paused together.</li>
-          <li>Everything else in the kitchen &mdash; all 115 utilities and all 45 games &mdash; works exactly as before, on your device, with no account.</li>
-          <li>Nothing was deleted. The models and runtimes stay in the build so they can be switched back on when they behave.</li>
-        </ul>
-        <button type="button" class="gbtn gbtn-primary" id="waffle-ai-locked-done">Back to the Kitchen</button>
-      </div>
-    </div>
-  `;
-
-  wrap.addEventListener('click', e => {
-    if (e.target === wrap) closeWaffleAI();
-  });
-  wrap.querySelector('#waffle-ai-locked-close')?.addEventListener('click', () => { playPop(460); closeWaffleAI(); });
-  wrap.querySelector('#waffle-ai-locked-done')?.addEventListener('click', () => { playPop(460); closeWaffleAI(); });
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && lockedEl && !lockedEl.hidden) closeWaffleAI();
-  });
-
-  document.body.append(wrap);
-  return wrap;
-}
-
-export function openLockedWaffleAI() {
-  if (!lockedEl) lockedEl = buildLockedOverlay();
-  lockedEl.hidden = false;
-  document.body.classList.add('waffle-modal-open');
-  setTimeout(() => lockedEl?.querySelector('#waffle-ai-locked-done')?.focus(), 40);
 }
 
 function buildOverlay() {
@@ -1329,8 +1277,6 @@ function buildOverlay() {
 }
 
 export function openWaffleAI() {
-  // Paused: show the notice instead of a chat that cannot answer.
-  if (isWaffleAiLocked()) { openLockedWaffleAI(); return; }
   if (!overlayEl) overlayEl = buildOverlay();
   overlayEl.hidden = false;
   document.body.classList.add('waffle-modal-open');

@@ -354,6 +354,12 @@ function registerWaffleTap() {
   if (isBetaTesting()) { betaTaps = []; return; }
   const now = Date.now();
   betaTaps = betaTaps.filter(t => now - t <= BETA_TAP_WINDOW_MS).concat(now);
+  // Broadcast the run so it is visible. Ten taps with no feedback feels broken,
+  // and a run that quietly expires feels like a timeout — the paused-AI dialog
+  // listens for this and shows "n / 10".
+  window.dispatchEvent(new CustomEvent('waffle-beta-progress', {
+    detail: { count: betaTaps.length, target: BETA_TAP_TARGET }
+  }));
   if (betaTaps.length < BETA_TAP_TARGET) return;
   betaTaps = [];
   openBetaTesting();

@@ -1181,6 +1181,7 @@ function buildLockedOverlay() {
                 aria-label="Sir Waffle" title="Sir Waffle">
           ${waffleMascotSVG('waffle-locked-svg')}
         </button>
+        <p class="waffle-ai-locked-tap-hint" id="waffle-ai-locked-tap-hint" aria-live="polite">Tap anywhere here ten times in three seconds to open the beta build.</p>
         <p class="waffle-ai-locked-copy">${esc(WAFFLE_AI_LOCK_MESSAGE)}</p>
         <ul class="waffle-ai-locked-list">
           <li>The chat, CodeHub&rsquo;s AI Error Diagnostics, and the AI writing helpers in English &amp; Languages are all paused together.</li>
@@ -1192,9 +1193,28 @@ function buildLockedOverlay() {
     </div>
   `;
 
-  wrap.addEventListener('click', e => {
-    if (e.target === wrap) closeWaffleAI();
-  });
+  // No backdrop-dismiss here, on purpose. This dialog opens on the *first* tap
+  // of the beta-door run and covers the whole viewport (z-index 90) including
+  // the corner mascot (45), so a second tap in the same place used to land on
+  // the backdrop and close it without counting. The run then alternated
+  // open/close forever and could never reach ten — which reads exactly like a
+  // timeout. The whole overlay is the tap target instead, and dismissal stays
+  // one click away via ✕, the button, or Escape.
+  // Reflects to data-waffle-tap, which closest('[data-waffle-tap]') matches.
+  wrap.dataset.waffleTap = '';
+  const hint = wrap.querySelector('#waffle-ai-locked-tap-hint');
+  const onProgress = e => {
+    if (!hint) return;
+    const { count = 0, target = 10 } = e.detail || {};
+    if (!count) {
+      hint.textContent = 'Tap anywhere here ten times in three seconds to open the beta build.';
+      hint.classList.remove('is-counting');
+      return;
+    }
+    hint.textContent = `Beta door: ${count} / ${target} taps — keep going!`;
+    hint.classList.add('is-counting');
+  };
+  window.addEventListener('waffle-beta-progress', onProgress);
   wrap.querySelector('#waffle-ai-locked-close')?.addEventListener('click', () => { playPop(460); closeWaffleAI(); });
   wrap.querySelector('#waffle-ai-locked-done')?.addEventListener('click', () => { playPop(460); closeWaffleAI(); });
   document.addEventListener('keydown', e => {

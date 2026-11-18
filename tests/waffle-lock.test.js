@@ -149,6 +149,39 @@ test('ten taps on Sir Waffle in three seconds open beta testing', () => {
   assert.match(appSrc, /if \(isBetaTesting\(\)\) \{ betaTaps = \[\]; return; \}/, 'beta page does not redirect to itself');
 });
 
+test('the paused dialog cannot swallow the taps meant for the beta door', () => {
+  // Regression: the dialog opens on the FIRST tap and covers the whole viewport
+  // (position fixed, inset 0, z-index 90) including the corner mascot (45). A
+  // second tap in the same place landed on the backdrop, which closed the dialog
+  // without counting, so the run alternated open/close and could never reach ten
+  // — reported as "beta mode times out".
+  const aiSrc = fs.readFileSync('waffle-ai.js', 'utf8');
+  const lockedFn = aiSrc.slice(aiSrc.indexOf('function buildLockedOverlay()'), aiSrc.indexOf('export function openLockedWaffleAI()'));
+
+  assert.match(lockedFn, /wrap\.dataset\.waffleTap = ''/,
+    'the whole dialog is a tap target, so a tap anywhere in it counts');
+  assert.ok(!/if \(e\.target === wrap\) closeWaffleAI\(\)/.test(lockedFn),
+    'the backdrop no longer closes the dialog mid-run');
+  // Dismissal must still be reachable, or the dialog becomes a trap.
+  assert.match(lockedFn, /#waffle-ai-locked-close/, 'the ✕ still closes it');
+  assert.match(lockedFn, /#waffle-ai-locked-done/, 'the button still closes it');
+  assert.match(lockedFn, /e\.key === 'Escape'/, 'and so does Escape');
+
+  // The run has to be visible: ten taps with no feedback reads as a broken
+  // button, and a run that expires reads as a timeout.
+  const appSrc = fs.readFileSync('app.js', 'utf8');
+  assert.match(appSrc, /window\.dispatchEvent\(new CustomEvent\('waffle-beta-progress'/,
+    'each counted tap is broadcast');
+  assert.match(appSrc, /detail: \{ count: betaTaps\.length, target: BETA_TAP_TARGET \}/,
+    'with the current count and the target');
+  assert.match(lockedFn, /addEventListener\('waffle-beta-progress'/, 'the dialog listens');
+  assert.match(lockedFn, /\$\{count\} \/ \$\{target\} taps/, 'and shows progress');
+
+  const css = fs.readFileSync('style.css', 'utf8');
+  assert.match(css, /\.waffle-ai-locked-tap-hint \{/, 'the hint is styled');
+  assert.match(css, /\.waffle-ai-locked-tap-hint\.is-counting \{/, 'and changes while counting');
+});
+
 test('the changelog puts 1.0.1 above the original 1.0 release', () => {
   assert.equal(APP_VERSION, '1.0.1');
   assert.equal(CHANGELOG.length, 2, 'exactly two releases are documented');

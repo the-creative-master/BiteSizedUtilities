@@ -1719,6 +1719,28 @@ body.waffle-modal-open {
   line-height: 1.5;
   color: var(--ink);
 }
+/* The beta-door run has to be visible: ten taps with no feedback reads as a
+ * broken button, and a run that expires reads as a timeout. */
+.waffle-ai-locked-tap-hint {
+  margin: 0;
+  padding: 8px 12px;
+  border: 3px dashed #d39c5d;
+  border-radius: 14px;
+  background: #fff6e0;
+  font-family: var(--body, inherit);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+  color: #5c3312;
+  text-align: center;
+}
+.waffle-ai-locked-tap-hint.is-counting {
+  border-style: solid;
+  border-color: #7fb069;
+  background: #eaf6e2;
+  color: #2f5d24;
+  animation: shelfSlideIn 0.18s ease-out;
+}
 .waffle-ai-locked-list {
   margin: 0;
   padding: 0 0 0 18px;

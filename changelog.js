@@ -80,6 +80,17 @@ export const TVAR_LOG = [
         ]
       },
       {
+        label: '\u{1F50D} What the next failure report taught it',
+        items: [
+          'The improved report came back from a real device and immediately showed two more of its own gaps. It said the ONNX repository was refused with HTTP 401 \u2014 but that was the repository in the model table, not the one the loader used. The loader walks a list of candidates and quietly falls through to the first that really holds .onnx weights, so the report was describing a repository nobody had asked for.',
+          'It now walks the same list in the same order, prints each candidate with its HTTP status, and names the one the loader would settle on \u2014 and it probes the files of *that* repository, not the configured one.',
+          'It also could not tell two very different blockages apart, because both look like "Failed to fetch". The loaders ask for model files with a Range header, and Range is not a CORS-simple header, so the browser has to preflight the request with an OPTIONS call before any byte is sent. A proxy, firewall or privacy extension that drops preflights therefore breaks every model download while leaving the plain API calls working.',
+          'So a failed download is now retried once as a plain, header-free request. If that gets through, the report says the host is reachable and the *ranged* request is what is being stopped, and the fix names OPTIONS, the CDN hosts and the extension \u2014 instead of telling the visitor their network is down.',
+          'It now says whether this browser already holds the model on *this origin*. Pre-cached copies belong to one origin, so the same model can be ready on the live site and missing on a preview host, a localhost port or a fresh deploy \u2014 which is the usual reason "it worked yesterday" stops being true.',
+          'And it caught a second wrong number in the model table: SmolLM2 135M was listed and badged at about 70 MB, while the file it actually loads measures 93.0 MB. Both figures are corrected, because that number is what the "will this fit on this device?" check is computed from.'
+        ]
+      },
+      {
         label: '\u{26A0}\u{FE0F} Known rough edges',
         items: [
           'A wedged WASM or WebGPU worker cannot be revived from inside the tab. The kitchen recovers by discarding it and starting the next attempt clean, but if one model wedges every single time, reloading the page is still the real fix.',

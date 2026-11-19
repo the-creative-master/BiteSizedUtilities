@@ -664,3 +664,163 @@ test('the model table carries the size the live report measured, not a guess', (
   assert.ok(!qwen.desc.includes('700'), 'and not the old guess');
   assert.equal(qwen.hfGgufRepo, 'Qwen/Qwen2.5-1.5B-Instruct-GGUF');
 });
+
+/* ========= which request is blocked: the host, or the preflighted download ========= */
+
+/**
+ * A precache index in localStorage, the way the app writes it. Only the
+ * precache key answers, so the other prefs the module reads keep their defaults.
+ */
+async function withPrecache(index, run) {
+  const prev = globalThis.localStorage;
+  globalThis.localStorage = {
+    getItem: key => (String(key).endsWith('precached-gguf') ? JSON.stringify(index) : null),
+    setItem: () => {},
+    removeItem: () => {}
+  };
+  try {
+    // Awaited *inside* the try: the shim has to still be installed when the
+    // diagnostics read it, not only when the call was made.
+    return await run();
+  } finally {
+    if (prev === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = prev;
+  }
+}
+
+const preflightRoutes = () => [
+  ['/tree/main', () => treeOf([['SmolLM2-135M-Instruct-Q3_K_L.gguf', 134, Math.round(93 * MB)]])],
+  ['/api/models/bartowski', () => metaOf({})],
+  ['/api/models/HuggingFaceTB', () => metaOf({ siblings: [{ rfilename: 'onnx/model_q4.onnx' }] })],
+  // The loaders' ranged GET never comes back; a plain HEAD does.
+  ['resolve/main', (url, init) => (init?.method === 'HEAD'
+    ? downloadResponse(Math.round(93 * MB), { status: 200 })
+    : (() => { throw new TypeError('Failed to fetch'); })())],
+  localMissing
+];
+
+test('a plain request that succeeds proves the host is reachable and the preflight is the problem', async () => {
+  const { facts, lines } = await diagnose(preflightRoutes());
+
+  assert.equal(facts.gguf.status, 'ok', 'the repo is fine');
+  assert.equal(facts.download.status, 'unreachable', 'the ranged download the loaders send is not');
+  assert.equal(facts.download.plainStatus, 'ok', 'but a header-free HEAD got through');
+  assert.equal(facts.download.plainHttp, 200);
+  assert.equal(facts.download.plainHost, 'cdn-lfs-us-1.hf.co', 'and it names the CDN that answered');
+
+  const text = lines.join('\n');
+  assert.match(text, /A plain request for that same file — a HEAD, with no Range header and therefore no CORS preflight — did succeed: HTTP 200, from cdn-lfs-us-1\.hf\.co/);
+  assert.match(text, /what is being stopped is the \*ranged\* download/);
+  assert.match(text, /preflight with an OPTIONS request/);
+
+  const cause = reconcileAiFailureWithFacts(NETWORK_HEADLINE, facts);
+  assert.equal(cause.kind, 'blocked-preflight');
+  assert.match(cause.title, /the ranged download request is what is being blocked/);
+  assert.match(cause.hint, /neither huggingface\.co nor its CDN is blocked/);
+  assert.match(cause.hint, /allow OPTIONS requests to huggingface\.co and its CDN hosts \(cdn-lfs\*\.hf\.co\)/);
+  assert.match(cause.hint, /privacy extension/, 'and it names the usual suspect');
+  assert.equal(cause.count, NETWORK_HEADLINE.count, 'the chain facts survive');
+
+  const fix = modelSourceFixAdvice(facts, cause);
+  assert.match(fix, /the block is on the preflighted ranged download/);
+  assert.match(fix, /scripts\/fetch-model\.mjs/, 'with the self-hosting escape hatch');
+});
+
+test('when the plain request fails too, the report does not pretend it knows which header was the problem', async () => {
+  const { facts, lines } = await diagnose([
+    ['/tree/main', () => treeOf([['SmolLM2-135M-Instruct-Q3_K_L.gguf', 134, Math.round(93 * MB)]])],
+    ['/api/models/bartowski', () => metaOf({})],
+    ['/api/models/HuggingFaceTB', () => metaOf({})],
+    ['resolve/main', () => { throw new TypeError('Failed to fetch'); }],
+    localMissing
+  ]);
+
+  assert.equal(facts.download.status, 'unreachable');
+  assert.equal(facts.download.plainStatus, 'unreachable', 'both probes were tried and both failed');
+  const text = lines.join('\n');
+  assert.match(text, /A plain request for that same file failed too/);
+  assert.match(text, /so this is not only about the Range header/);
+  assert.equal(reconcileAiFailureWithFacts(NETWORK_HEADLINE, facts).kind, 'blocked-download',
+    'so it stays the broader diagnosis instead of guessing at preflights');
+});
+
+test('a healthy download is only probed once', async () => {
+  const { facts, calls } = await diagnose(healthyRoutes());
+  assert.equal(facts.download.status, 'ok');
+  assert.equal(facts.download.plainStatus, null, 'no second request when the first one worked');
+  assert.equal(calls.filter(c => c.url.includes('resolve/main/SmolLM2')).length, 1);
+});
+
+/* ============================== the ONNX candidate walk ============================== */
+
+test('the ONNX report follows the fallback chain the loader really walks', async () => {
+  const { facts, calls, lines } = await diagnose([
+    ['/tree/main', () => treeOf([['SmolLM2-135M-Instruct-Q3_K_L.gguf', 134, Math.round(93 * MB)]])],
+    ['/api/models/bartowski', () => metaOf({})],
+    // The configured repo refuses; the first fallback has the weights.
+    ['/api/models/HuggingFaceTB', () => jsonResponse({ error: 'You must be logged in' }, 401)],
+    ['/api/models/onnx-community', () => metaOf({ siblings: [{ rfilename: 'onnx/model_q4.onnx' }, { rfilename: 'onnx/model_q4.onnx_data' }] })],
+    localMissing
+  ]);
+
+  assert.equal(facts.onnx.configured, 'HuggingFaceTB/SmolLM2-135M-Instruct-ONNX');
+  assert.equal(facts.onnx.resolved, 'onnx-community/SmolLM2-135M-Instruct', 'the loader would use the fallback');
+  assert.equal(facts.onnx.repo, 'onnx-community/SmolLM2-135M-Instruct', 'and the report describes that one');
+  assert.equal(facts.onnx.status, 'ok');
+  assert.equal(facts.onnx.weightFile, 'onnx/model_q4.onnx');
+  assert.deepEqual(facts.onnx.checked.map(c => [c.repo, c.http]), [
+    ['HuggingFaceTB/SmolLM2-135M-Instruct-ONNX', 401],
+    ['onnx-community/SmolLM2-135M-Instruct', 200]
+  ], 'it stops at the first repo that can prove it holds weights');
+
+  const text = lines.join('\n');
+  assert.match(text, /ONNX repos this build tries, in order: HuggingFaceTB\/SmolLM2-135M-Instruct-ONNX → HTTP 401, refused[\s\S]*?; onnx-community\/SmolLM2-135M-Instruct → HTTP 200, reachable, with \.onnx weights/);
+  assert.match(text, /The loader would use onnx-community\/SmolLM2-135M-Instruct — the first of those that really holds \.onnx weights, not the configured HuggingFaceTB\/SmolLM2-135M-Instruct-ONNX/);
+  assert.ok(calls.some(c => c.url.includes('onnx-community/SmolLM2-135M-Instruct/resolve/main/onnx/model_q4.onnx')),
+    'so the file probe targets the repo that will actually be used');
+});
+
+test('when no ONNX candidate can prove it has weights, the report says the loader is guessing', async () => {
+  const { facts, lines } = await diagnose([
+    ['/tree/main', () => treeOf([['SmolLM2-135M-Instruct-Q3_K_L.gguf', 134, Math.round(93 * MB)]])],
+    ['/api/models/bartowski', () => metaOf({})],
+    ['/api/models/', () => metaOf({ siblings: [{ rfilename: 'README.md' }] })],
+    localMissing
+  ]);
+  assert.equal(facts.onnx.resolved, null);
+  assert.equal(facts.onnx.repo, CFG.hfId, 'it falls back to the first candidate, exactly like the loader does');
+  assert.equal(facts.onnx.hasOnnxWeights, false);
+  assert.equal(facts.onnxDownload, null, 'with no weight file there is nothing to probe');
+  assert.match(lines.join('\n'), /None of them could prove it holds \.onnx weights, so the loader would try HuggingFaceTB\/SmolLM2-135M-Instruct-ONNX anyway/);
+});
+
+/* ============================== the per-origin precache ============================== */
+
+test('the report says whether this origin already holds the model, because browser caches are per origin', async () => {
+  const cached = await withPrecache(
+    { 'bartowski/SmolLM2-135M-Instruct-GGUF': { url: 'https://huggingface.co/x.gguf', quant: 'Q3_K_L', sizeBytes: Math.round(93 * MB), preset: 'compact', at: Date.now() } },
+    () => diagnose(healthyRoutes())
+  );
+  assert.equal(cached.facts.deviceCache.present, true);
+  assert.equal(cached.facts.deviceCache.quant, 'Q3_K_L');
+  assert.equal(cached.facts.deviceCache.sizeBytes, Math.round(93 * MB));
+  const text = cached.lines.join('\n');
+  assert.match(text, /This browser has that GGUF pre-cached on \*this origin\* \(93\.0 MB, Q3_K_L\)/);
+  assert.match(text, /can be ready on the live site and missing on a preview host/, 'which is the "it worked yesterday" explanation');
+
+  const empty = await diagnose(healthyRoutes());
+  assert.equal(empty.facts.deviceCache.present, false);
+  assert.match(empty.lines.join('\n'), /This origin holds no pre-cached copy of that GGUF, so every load from here has to download it/);
+});
+
+test('the smallest model in the table carries the size this report measured', () => {
+  const tiny = TEXT_MODELS.find(m => m.id === 'smollm2-135m');
+  assert.ok(tiny);
+  // SmolLM2-135M-Instruct-Q3_K_L.gguf measured 93.0 MB in
+  // bartowski/SmolLM2-135M-Instruct-GGUF; the table claimed 70 MB, and the
+  // badge in the model picker quoted the same wrong figure.
+  assert.equal(tiny.ggufMB, 93);
+  assert.match(tiny.badge, /~93 MB/);
+  assert.match(tiny.desc, /~93 MB/);
+  assert.ok(!`${tiny.badge} ${tiny.desc}`.includes('70'), 'the old guess is gone from the picker copy too');
+});

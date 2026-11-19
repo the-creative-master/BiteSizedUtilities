@@ -51,7 +51,7 @@ export const TEXT_MODELS = [
   {
     id: 'smollm2-135m',
     label: 'SmolLM2 135M',
-    badge: 'Chromium Safe · ~70 MB',
+    badge: 'Chromium Safe · ~93 MB',
     kind: 'browser',
     hfId: 'HuggingFaceTB/SmolLM2-135M-Instruct-ONNX',
     hfIdAlts: ['onnx-community/SmolLM2-135M-Instruct', 'HuggingFaceTB/SmolLM2-135M-Instruct'],
@@ -59,8 +59,11 @@ export const TEXT_MODELS = [
     hfGgufRepo: 'bartowski/SmolLM2-135M-Instruct-GGUF',
     hfGgufQuant: 'Q3_K_L',
     ggufFile: 'smollm2-135m.gguf',
-    ggufMB: 70,
-    desc: 'Ultra-compact ~70 MB model safe for low-RAM Chromium & mobile browsers'
+    // Measured by the source report: SmolLM2-135M-Instruct-Q3_K_L.gguf is
+    // 93.0 MB in bartowski/SmolLM2-135M-Instruct-GGUF. The table said 70 MB,
+    // and this figure is what the "will it fit?" check is computed from.
+    ggufMB: 93,
+    desc: 'Ultra-compact ~93 MB model safe for low-RAM Chromium & mobile browsers'
   },
   {
     id: 'smollm2-360m',
@@ -697,6 +700,19 @@ export function reconcileAiFailureWithFacts(headline, facts) {
   // fetched, and none of them succeeded. Anything less and the original
   // headline is the more honest one.
   if (!apiAnswered || !fileFailed || fileWorked) return headline;
+
+  // A plain HEAD got through where the ranged GET did not. That separates two
+  // completely different fixes: a network that blocks the CDN host, and one
+  // that only blocks the preflight a Range header forces the browser to send.
+  if (probes.some(d => d.plainStatus === 'ok')) {
+    return {
+      ...headline,
+      kind: 'blocked-preflight',
+      title: 'The model host is reachable — the ranged download request is what is being blocked',
+      hint: 'The repository API answered HTTP 200 and a plain, header-free request for the model file succeeded from this same browser, so neither huggingface.co nor its CDN is blocked. The loaders ask for the file with a Range header, and because Range is not a CORS-simple header the browser has to preflight it with an OPTIONS request — and that request is what never came back. A proxy, firewall or privacy extension that drops preflights looks exactly like this: metadata fine, weights never start. Fix: allow OPTIONS requests to huggingface.co and its CDN hosts (cdn-lfs*.hf.co), turn off privacy extensions for this site, or serve the weights from this site with `node scripts/fetch-model.mjs`.'
+    };
+  }
+
   return {
     ...headline,
     kind: 'blocked-download',
@@ -916,6 +932,26 @@ export async function fetchModelSourceFacts(modelCfg, opts = {}) {
       : null
   ]);
 
+  // What this browser already holds for this model *on this origin*. Browser
+  // caches are per origin, so a model that is pre-cached on the live site has
+  // to download from scratch on a preview host, a localhost port or a new
+  // deploy — which is exactly when "it worked yesterday" stops being true.
+  let deviceCache = null;
+  try {
+    const entry = cfg.hfGgufRepo ? readPrecacheIndex()[cfg.hfGgufRepo] : null;
+    deviceCache = entry
+      ? {
+        present: true,
+        repo: cfg.hfGgufRepo,
+        url: entry.url || null,
+        quant: entry.quant || null,
+        sizeBytes: Number.isFinite(entry.sizeBytes) && entry.sizeBytes > 0 ? entry.sizeBytes : null,
+        preset: entry.preset || null,
+        at: Number.isFinite(entry.at) ? entry.at : null
+      }
+      : { present: false, repo: cfg.hfGgufRepo || null };
+  } catch { deviceCache = null; }
+
   const facts = {
     id: cfg.id || null,
     label: cfg.label || cfg.id || 'the selected model',
@@ -925,6 +961,7 @@ export async function fetchModelSourceFacts(modelCfg, opts = {}) {
     onnx,
     download,
     onnxDownload,
+    deviceCache,
     selfHosted: local
   };
   const broken = [gguf, onnx, local, download, onnxDownload]
@@ -945,7 +982,20 @@ export async function fetchModelSourceFacts(modelCfg, opts = {}) {
  * the CDN it was redirected to when it works.
  */
 async function probeDownloadUrl(url, path, { fetchImpl, timeoutMs, signal }) {
-  const out = { path: path || null, url, status: 'no-source', http: null, finalUrl: null, host: null, bytes: null, error: null };
+  const out = {
+    path: path || null,
+    url,
+    status: 'no-source',
+    http: null,
+    finalUrl: null,
+    host: null,
+    bytes: null,
+    error: null,
+    // The second probe, only run when the first one failed.
+    plainStatus: null,
+    plainHttp: null,
+    plainHost: null
+  };
   if (!url) return out;
   const res = await diagRequest(url, {
     fetchImpl,
@@ -966,6 +1016,19 @@ async function probeDownloadUrl(url, path, { fetchImpl, timeoutMs, signal }) {
     if (Number.isFinite(len) && len > 0) out.bytes = len;
   }
   out.status = res.http === 200 || res.http === 206 ? 'ok' : sourceStatus(res.http, res.thrown);
+  if (out.status === 'ok') return out;
+
+  // The loaders ask for a byte range, and `Range` is not a CORS-simple header,
+  // so the browser preflights it with an OPTIONS request. A proxy, firewall or
+  // privacy extension that drops preflights therefore breaks every model
+  // download while leaving plain API calls working — which is indistinguishable
+  // from a blocked CDN right up to here. A HEAD with no custom headers is a
+  // simple request: no preflight, no body. If that gets through, the host is
+  // reachable and the *ranged* request is what is being stopped.
+  const plain = await diagRequest(url, { fetchImpl, timeoutMs, signal, init: { method: 'HEAD' }, parse: 'none' });
+  out.plainHttp = plain.http;
+  try { out.plainHost = plain.finalUrl ? new URL(plain.finalUrl).host : null; } catch { out.plainHost = null; }
+  out.plainStatus = plain.http === 200 || plain.http === 206 ? 'ok' : sourceStatus(plain.http, plain.thrown);
   return out;
 }
 
@@ -1045,30 +1108,79 @@ async function inspectGgufRepo(cfg, preferred, { fetchImpl, timeoutMs, signal, b
   return out;
 }
 
-/** The ONNX side, which the browser path uses instead of GGUF. */
+/**
+ * The ONNX side, which the browser path uses instead of GGUF.
+ *
+ * Walks the candidate repositories in the same order `resolveOnnxRepo` does and
+ * stops at the first one that really holds .onnx weights, because reporting on
+ * the configured repo while the loader quietly used a fallback is how a report
+ * ends up describing a repository nobody asked for.
+ */
 async function inspectOnnxRepo(cfg, { fetchImpl, timeoutMs, signal }) {
-  const out = { repo: cfg.hfId || null, alts: (cfg.hfIdAlts || []).slice(), status: 'no-source', http: null, error: null, fileCount: null, hasOnnxWeights: null, weightFile: null, lastModified: null };
-  if (!out.repo) return out;
-  const meta = await diagRequest(`${HF_BASE}/api/models/${out.repo}`, { fetchImpl, timeoutMs, signal });
-  out.http = meta.http;
-  out.status = sourceStatus(meta.http, meta.thrown);
-  if (meta.error) out.error = meta.error;
-  const data = meta.data && typeof meta.data === 'object' ? meta.data : null;
-  if (data) {
-    out.lastModified = data.lastModified || null;
-    out.fileCount = Array.isArray(data.siblings) ? data.siblings.length : null;
-    out.gated = data.gated === true || data.gated === 'auto' || data.gated === 'manual';
-    // Only a real file list can prove the weights are missing; an empty one
-    // proves nothing, so leave it unknown rather than reporting a false absence.
-    if (Array.isArray(data.siblings) && data.siblings.length) {
-      const weights = data.siblings
-        .map(f => String(f?.rfilename || ''))
-        .filter(f => /\.onnx$/i.test(f) && !/\.onnx_data$/i.test(f));
-      out.hasOnnxWeights = weights.length > 0;
-      out.weightFile = weights[0] || null;
+  const candidates = [...new Set([cfg?.hfId, ...(cfg?.hfIdAlts || [])].filter(Boolean))];
+  const out = {
+    repo: null,
+    configured: cfg?.hfId || null,
+    alts: (cfg?.hfIdAlts || []).slice(),
+    resolved: null,
+    checked: [],
+    status: 'no-source',
+    http: null,
+    error: null,
+    fileCount: null,
+    hasOnnxWeights: null,
+    weightFile: null,
+    lastModified: null,
+    gated: false
+  };
+  if (!candidates.length) return out;
+
+  for (const repo of candidates) {
+    const meta = await diagRequest(`${HF_BASE}/api/models/${repo}`, { fetchImpl, timeoutMs, signal });
+    const entry = {
+      repo,
+      http: meta.http,
+      status: sourceStatus(meta.http, meta.thrown),
+      hasWeights: null,
+      weightFile: null,
+      error: meta.error || null
+    };
+    const data = meta.data && typeof meta.data === 'object' ? meta.data : null;
+    if (data) {
+      entry.lastModified = data.lastModified || null;
+      entry.fileCount = Array.isArray(data.siblings) ? data.siblings.length : null;
+      entry.gated = data.gated === true || data.gated === 'auto' || data.gated === 'manual';
+      // Only a real file list can prove the weights are missing; an empty one
+      // proves nothing, so leave it unknown rather than reporting a false absence.
+      if (Array.isArray(data.siblings) && data.siblings.length) {
+        const weights = data.siblings
+          .map(f => String(f?.rfilename || ''))
+          .filter(f => /\.onnx$/i.test(f) && !/\.onnx_data$/i.test(f));
+        entry.hasWeights = weights.length > 0;
+        entry.weightFile = weights[0] || null;
+      }
+    }
+    if (meta.thrown === 'bad-json') entry.status = 'bad-json';
+    out.checked.push(entry);
+    if (entry.status === 'ok' && entry.hasWeights === true) {
+      out.resolved = repo;
+      break;
     }
   }
-  if (meta.thrown === 'bad-json') out.status = 'bad-json';
+
+  // `resolveOnnxRepo` falls back to the first candidate when none of them can
+  // prove they hold weights, so the report describes the same repository the
+  // loader would actually try.
+  const chosen = out.resolved ? out.checked.find(c => c.repo === out.resolved) : out.checked[0];
+  out.repo = chosen.repo;
+  out.http = chosen.http;
+  out.status = chosen.status;
+  out.error = chosen.error;
+  out.fileCount = chosen.fileCount ?? null;
+  out.hasOnnxWeights = chosen.hasWeights;
+  out.weightFile = chosen.weightFile;
+  out.lastModified = chosen.lastModified ?? null;
+  out.gated = Boolean(chosen.gated);
   return out;
 }
 
@@ -1151,9 +1263,22 @@ export function describeModelSourceFacts(facts) {
 
   const o = facts.onnx;
   if (o && o.repo) {
-    const copy = SOURCE_STATUS_COPY[o.status] || o.status;
-    lines.push(`ONNX repo ${o.repo} — HTTP ${o.http ?? 'none'}, ${copy}${o.fileCount !== null ? `, ${o.fileCount} file(s)` : ''}${o.hasOnnxWeights === false ? ', and not one .onnx weight among them' : o.hasOnnxWeights === true ? ', with .onnx weights present' : ''}.`);
-    if (o.alts?.length) lines.push(`Fallback ONNX repos this build would try next: ${o.alts.join(', ')}.`);
+    const chain = (o.checked || []).filter(c => c && c.repo);
+    if (chain.length > 1) {
+      // More than one candidate was really asked, so show the walk. A 401 on the
+      // configured repo is not a dead end when a fallback answered, and the repo
+      // the loader settles on is the one whose files get probed.
+      lines.push(`ONNX repos this build tries, in order: ${chain.map(c =>
+        `${c.repo} → HTTP ${c.http ?? 'none'}, ${SOURCE_STATUS_COPY[c.status] || c.status}${c.hasWeights === true ? ', with .onnx weights' : c.hasWeights === false ? ', and not one .onnx weight among them' : ''}`
+      ).join('; ')}.`);
+      lines.push(o.resolved
+        ? `The loader would use ${o.resolved} — the first of those that really holds .onnx weights${o.configured && o.configured !== o.resolved ? `, not the configured ${o.configured}` : ''}.`
+        : `None of them could prove it holds .onnx weights, so the loader would try ${o.repo} anyway and report whatever it finds there.`);
+    } else {
+      const copy = SOURCE_STATUS_COPY[o.status] || o.status;
+      lines.push(`ONNX repo ${o.repo} — HTTP ${o.http ?? 'none'}, ${copy}${o.fileCount !== null ? `, ${o.fileCount} file(s)` : ''}${o.hasOnnxWeights === false ? ', and not one .onnx weight among them' : o.hasOnnxWeights === true ? ', with .onnx weights present' : ''}.`);
+      if (o.alts?.length) lines.push(`Fallback ONNX repos this build would try next: ${o.alts.join(', ')}.`);
+    }
   }
 
   // The file itself is a different request from the metadata above, and on a
@@ -1163,6 +1288,7 @@ export function describeModelSourceFacts(facts) {
     { what: 'The ONNX weight the browser path would download', d: facts.onnxDownload }
   ].filter(x => x.d && x.d.status !== 'no-source');
   let contradicted = false;
+  let plainWorked = false;
   for (const { what, d } of probes) {
     const name = d.path ? `${what} — ${d.path} —` : `${what} —`;
     if (d.status === 'ok') {
@@ -1170,10 +1296,26 @@ export function describeModelSourceFacts(facts) {
       continue;
     }
     lines.push(`${name} could not be fetched: HTTP ${d.http ?? 'none'}, ${SOURCE_STATUS_COPY[d.status] || d.status}${d.error ? ` (${String(d.error).slice(0, 140)})` : ''}.`);
+    if (d.plainStatus === 'ok') {
+      plainWorked = true;
+      lines.push(`A plain request for that same file — a HEAD, with no Range header and therefore no CORS preflight — did succeed: HTTP ${d.plainHttp}${d.plainHost ? `, from ${d.plainHost}` : ''}. The file host is reachable, so what is being stopped is the *ranged* download the loaders send, which a browser must preflight with an OPTIONS request first.`);
+    } else if (d.plainStatus) {
+      lines.push(`A plain request for that same file failed too (HTTP ${d.plainHttp ?? 'none'}, ${SOURCE_STATUS_COPY[d.plainStatus] || d.plainStatus}), so this is not only about the Range header.`);
+    }
     if ([g, facts.onnx].some(r => r && (r.http === 200 || r.http === 206))) contradicted = true;
   }
   if (contradicted) {
     lines.push('That is not a dead network: the repository API on huggingface.co answered HTTP 200 from this same browser moments earlier. Hugging Face serves metadata from huggingface.co and the weights from its LFS CDN after a redirect, so what is blocked, filtered or timing out is the *file* host — most often a firewall, proxy or privacy extension that allows the API but not large binaries.');
+  }
+
+  const dc = facts.deviceCache;
+  if (dc && dc.repo) {
+    if (dc.present) {
+      const detail = [dc.sizeBytes ? fmtBytes(dc.sizeBytes) : null, dc.quant || null].filter(Boolean).join(', ');
+      lines.push(`This browser has that GGUF pre-cached on *this origin*${detail ? ` (${detail})` : ''}, so the WLlama path can start it with no download at all. Pre-cached copies belong to one origin: the same model can be ready on the live site and missing on a preview host or a new port.`);
+    } else {
+      lines.push(`This origin holds no pre-cached copy of that GGUF, so every load from here has to download it. Pre-caches are per origin, which is why a model that already ran on the live site can still fail from scratch on a different host or port.`);
+    }
   }
 
   const l = facts.selfHosted;
@@ -1203,6 +1345,7 @@ export function modelSourceFixAdvice(facts, classified) {
     return `Set hfGgufQuant to ${quant || 'a quant that exists in that repo'} in ${where} — the quant in the table is not published there.`;
   }
   if (g.status === 'no-gguf') return `That repo publishes no GGUF. Change hfGgufRepo in ${where} to a repo that does, or drop the WLlama attempt for this model.`;
+  if (classified?.kind === 'blocked-preflight') return 'A plain request for the file succeeded, so the host is reachable and the block is on the preflighted ranged download: allow OPTIONS to huggingface.co and cdn-lfs*.hf.co (or disable privacy extensions for this site), or self-host with `node scripts/fetch-model.mjs` and skip the CDN entirely.';
   if (classified?.kind === 'blocked-download') return 'The repository is reachable and the file exists, so the block is on the download itself: self-host it with `node scripts/fetch-model.mjs`, which serves the weights from this origin and takes the CDN redirect out of the path, or retry from a network that allows large downloads.';
   if (g.status === 'timeout' || g.status === 'unreachable') return 'The diagnostic call itself could not reach huggingface.co, so treat the network as the suspect before the model: blocked DNS, a firewall, a privacy extension, or no CORS from this origin.';
   if (g.status === 'ok' && g.wouldLoad && g.budgetBytes > 0 && g.wouldLoad.bytes > g.budgetBytes) {

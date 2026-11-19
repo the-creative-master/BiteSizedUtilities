@@ -494,6 +494,9 @@ export function runBrowserInference(label, task, opts = {}) {
     let settled = false;
     // No longer queued behind somebody else: it is the one running now.
     inferenceWaiting = Math.max(0, inferenceWaiting - 1);
+    // A background pre-cache must never compete with a real prompt for the
+    // single inference slot, the network or the visitor's patience.
+    stopAutoPrecache('a chat started');
     inferenceBusy = true;
     inferenceBeat = Date.now();
     inferenceSawToken = false;
@@ -768,6 +771,7 @@ const SOURCE_STATUS_COPY = {
   ok: 'reachable',
   restricted: 'refused (401/403 — gated, private, or needs a token a browser cannot carry)',
   'not-found': 'does not exist (404 — renamed, made private, or deleted)',
+  'not-a-model': 'answered with something that is not a model file',
   'rate-limited': 'rate-limited this IP (429)',
   'server-error': 'server error on their side (5xx)',
   timeout: 'the request timed out',
@@ -1184,27 +1188,44 @@ async function inspectOnnxRepo(cfg, { fetchImpl, timeoutMs, signal }) {
   return out;
 }
 
+/**
+ * Does a successful response actually carry a model, or is it the host's own
+ * index page? A static host with no such file answers 200 text/html — the dev
+ * server's SPA fallback does exactly that — and calling that "present" would
+ * send the loader after a few kilobytes of HTML instead of a GGUF.
+ */
+function servedLooksLikeModel(headers, bytes) {
+  const ct = String(headers?.get?.('content-type') || '').toLowerCase();
+  if (ct.includes('text/html')) return false;
+  if (Number(bytes) > MIN_SERVED_GGUF_BYTES) return true;
+  // No usable length: trust an explicit binary/model type, reject the rest.
+  return ct.includes('octet-stream') || ct.includes('gguf');
+}
+
 /** Is this site serving the model itself, or is every load a download? */
 async function inspectSelfHostedCopy(cfg, { fetchImpl, timeoutMs, signal }) {
   let url = null;
   try { url = resolveAssetUrl(`api/waffle-ai/gguf/${cfg.ggufFile}`); } catch { return null; }
-  const out = { file: cfg.ggufFile, url, status: 'unknown', http: null, bytes: null };
+  const out = { file: cfg.ggufFile, url, status: 'unknown', http: null, bytes: null, contentType: null };
   const head = await diagRequest(url, { fetchImpl, timeoutMs, signal, init: { method: 'HEAD' }, parse: 'none' });
   out.http = head.http;
+  out.contentType = String(head.headers?.get?.('content-type') || '') || null;
   if (head.http === 405 || head.http === 501) {
     // Some static hosts refuse HEAD; a one-byte ranged GET asks the same thing.
     const ranged = await diagRequest(url, { fetchImpl, timeoutMs, signal, init: { method: 'GET', headers: { Range: 'bytes=0-0' } }, parse: 'none' });
     out.http = ranged.http;
+    out.contentType = String(ranged.headers?.get?.('content-type') || '') || out.contentType;
     const range = ranged.headers?.get?.('content-range') || '';
     const total = Number(String(range).split('/')[1]);
     if (Number.isFinite(total) && total > 0) out.bytes = total;
-    out.status = ranged.http === 200 || ranged.http === 206 ? 'present' : sourceStatus(ranged.http, ranged.thrown);
+    if (ranged.http !== 200 && ranged.http !== 206) out.status = sourceStatus(ranged.http, ranged.thrown);
+    else out.status = servedLooksLikeModel(ranged.headers, out.bytes) ? 'present' : 'not-a-model';
     return out;
   }
   if (head.http === 200 || head.http === 206) {
     const len = Number(head.headers?.get?.('content-length'));
     out.bytes = Number.isFinite(len) && len > 0 ? len : null;
-    out.status = 'present';
+    out.status = servedLooksLikeModel(head.headers, out.bytes) ? 'present' : 'not-a-model';
     return out;
   }
   out.status = sourceStatus(head.http, head.thrown);
@@ -1320,8 +1341,13 @@ export function describeModelSourceFacts(facts) {
 
   const l = facts.selfHosted;
   if (l) {
-    if (l.status === 'present') lines.push(`This site is serving the model itself: ${l.file} is present locally${l.bytes ? ` (${fmtBytes(l.bytes)})` : ''}, so no download was needed for the WLlama path.`);
-    else if (l.status === 'not-found') lines.push(`This site is not serving the model itself — ${l.file} is absent locally (HTTP ${l.http}), so every load has to reach the network. Running \`node scripts/fetch-model.mjs\` once would put it here.`);
+    if (l.status === 'present') {
+      lines.push(`This site is serving the model itself: ${l.file} is present on this origin${l.bytes ? ` (${fmtBytes(l.bytes)})` : ''}. The WLlama path loads that copy *first* — same origin, so no CORS preflight and no third-party host to block — and keeps it on this device afterwards. Only the ONNX runtimes still have to reach Hugging Face.`);
+    } else if (l.status === 'not-a-model') {
+      lines.push(`This origin answered ${l.file} with ${l.contentType ? `${l.contentType}` : 'a page'}${l.bytes ? ` of ${fmtBytes(l.bytes)}` : ''}, not a model — a static host with no such file usually serves its own index page, so it counts as absent. Every load still has to reach huggingface.co.`);
+    } else if (l.status === 'not-found') {
+      lines.push(`This site is not serving the model itself — ${l.file} is absent on this origin (HTTP ${l.http}), so every load has to reach huggingface.co. \`node scripts/fetch-model.mjs\` (or \`npm run models\`) puts it here; a deploy that runs it serves the weights from its own origin and the browser pre-caches them by itself.`);
+    }
     else lines.push(`The self-hosted copy at ${l.url} reported ${SOURCE_STATUS_COPY[l.status] || l.status}.`);
   }
 
@@ -1345,8 +1371,14 @@ export function modelSourceFixAdvice(facts, classified) {
     return `Set hfGgufQuant to ${quant || 'a quant that exists in that repo'} in ${where} — the quant in the table is not published there.`;
   }
   if (g.status === 'no-gguf') return `That repo publishes no GGUF. Change hfGgufRepo in ${where} to a repo that does, or drop the WLlama attempt for this model.`;
-  if (classified?.kind === 'blocked-preflight') return 'A plain request for the file succeeded, so the host is reachable and the block is on the preflighted ranged download: allow OPTIONS to huggingface.co and cdn-lfs*.hf.co (or disable privacy extensions for this site), or self-host with `node scripts/fetch-model.mjs` and skip the CDN entirely.';
-  if (classified?.kind === 'blocked-download') return 'The repository is reachable and the file exists, so the block is on the download itself: self-host it with `node scripts/fetch-model.mjs`, which serves the weights from this origin and takes the CDN redirect out of the path, or retry from a network that allows large downloads.';
+  const served = facts.selfHosted;
+  const downloadBlocked = classified?.kind === 'blocked-download' || classified?.kind === 'blocked-preflight';
+  if (downloadBlocked && served?.status === 'present') {
+    const what = classified.kind === 'blocked-preflight' ? 'a blocked preflight' : 'a blocked download';
+    return `Hugging Face is out of the WLlama path already: this site serves ${served.file} from its own origin${served.bytes ? ` (${fmtBytes(served.bytes)})` : ''} and that copy is tried first, so ${what} on the CDN should not have stopped it. If WLlama still failed, look at this origin instead — the file being answered as text/html, truncated, or blocked here too. The ONNX runtimes have no same-origin copy and will keep failing until the network allows huggingface.co.`;
+  }
+  if (classified?.kind === 'blocked-preflight') return 'A plain request for the file succeeded, so the host is reachable and the block is on the preflighted ranged download: allow OPTIONS to huggingface.co and cdn-lfs*.hf.co (or disable privacy extensions for this site) — or take the CDN out of the path entirely by serving the weights from this origin with `node scripts/fetch-model.mjs`, after which the browser pre-caches them itself.';
+  if (classified?.kind === 'blocked-download') return 'The repository is reachable and the file exists, so the block is on the download itself: serve it from this origin with `node scripts/fetch-model.mjs` (a deploy that runs it does this automatically), which removes the CDN redirect and the cross-origin preflight, or retry from a network that allows large downloads.';
   if (g.status === 'timeout' || g.status === 'unreachable') return 'The diagnostic call itself could not reach huggingface.co, so treat the network as the suspect before the model: blocked DNS, a firewall, a privacy extension, or no CORS from this origin.';
   if (g.status === 'ok' && g.wouldLoad && g.budgetBytes > 0 && g.wouldLoad.bytes > g.budgetBytes) {
     return `Raise ggufMB for this model in ${where} (the real file is ${fmtBytes(g.wouldLoad.bytes)}), or pick a lighter quant — the budget in the table is what the warnings and the WASM heap check are computed from.`;
@@ -2060,6 +2092,191 @@ export async function listPrecachedModels() {
   }).sort((a, b) => (b.cachedAt || 0) - (a.cachedAt || 0));
 }
 
+/**
+ * Anything smaller than this is not a model: a static host that has no such
+ * file answers 200 with its own index page, and loading that as a GGUF would
+ * fail in a way that looks like a corrupt download.
+ */
+const MIN_SERVED_GGUF_BYTES = 1_000_000;
+
+/**
+ * The label recorded for a copy this origin serves. Its quant lives in
+ * `.cache/waffle-ai/models.json`, which the browser never sees, so claiming one
+ * would be inventing evidence — the preset is recorded instead, which is what
+ * the loader actually validates against.
+ */
+const LOCAL_QUANT_LABEL = 'served here';
+
+const KEY_AUTO_PRECACHE = 'bite-ai-auto-precache';
+
+/** How long an automatic pre-cache waits before it would consider running again. */
+export const AUTO_PRECACHE_COOLDOWN_MS = 12 * 60 * 60 * 1000;
+
+let autoPrecacheController = null;
+
+/**
+ * Cancel the background pre-cache, if one is running. Called by the inference
+ * queue the moment a real prompt starts, and by anything that needs the device
+ * copy slot or the network for itself.
+ */
+export function stopAutoPrecache(reason = 'interrupted') {
+  const controller = autoPrecacheController;
+  autoPrecacheController = null;
+  if (controller) {
+    try { controller.abort(reason); } catch { controller.abort(); }
+  }
+  return Boolean(controller);
+}
+
+export function isAutoPrecacheRunning() {
+  return Boolean(autoPrecacheController);
+}
+
+/** What this origin serves itself, per model id. Same-origin HEADs only. */
+export async function probeServedModels({ fetchImpl = fetch, signal = null } = {}) {
+  const out = {};
+  for (const m of TEXT_MODELS.filter(x => x.ggufFile)) {
+    try {
+      out[m.id] = await inspectSelfHostedCopy(m, { fetchImpl, timeoutMs: HF_DIAG_TIMEOUT_MS, signal });
+    } catch {
+      out[m.id] = null;
+    }
+  }
+  return out;
+}
+
+/**
+ * Decide what an idle browser should pre-cache — pure, so the rules can be
+ * tested without a network or an OPFS.
+ *
+ * Only files this origin already serves qualify. The site shipped them, so
+ * keeping a device copy costs no third-party request, trips no CORS preflight
+ * and works on exactly the networks that block huggingface.co.
+ */
+export function planAutoPrecache({
+  models,
+  served = {},
+  cached = {},
+  now = Date.now(),
+  lastRunAt = 0,
+  cooldownMs = AUTO_PRECACHE_COOLDOWN_MS,
+  storageOk = true,
+  saveData = false,
+  busy = false,
+  force = false
+}) {
+  if (busy) return { run: false, reason: 'a chat is running', ids: [] };
+  if (!storageOk) return { run: false, reason: 'this browser exposes no on-device storage', ids: [] };
+  if (saveData) return { run: false, reason: 'the browser asked to save data', ids: [] };
+  const eligible = models.filter(m => {
+    if (!m.hfGgufRepo || !m.ggufFile) return false;
+    const local = served[m.id];
+    if (local?.status !== 'present' || (local.bytes || 0) <= MIN_SERVED_GGUF_BYTES) return false;
+    return !cached[m.hfGgufRepo]?.present;
+  });
+  if (!eligible.length) {
+    return { run: false, reason: 'this origin serves no model that is not already on the device', ids: [] };
+  }
+  if (!force && now - lastRunAt < cooldownMs) {
+    return { run: false, reason: 'it already ran within the last 12 hours', ids: [] };
+  }
+  return { run: true, reason: '', ids: eligible.map(m => m.id) };
+}
+
+/**
+ * Pre-cache one model from *this origin's* copy — never from Hugging Face.
+ */
+export async function precacheFromThisOrigin(modelId, { onProgress, signal, fetchImpl = fetch } = {}) {
+  const cfg = TEXT_MODELS.find(m => m.id === modelId);
+  if (!cfg?.ggufFile) throw new Error(`${modelId} has no GGUF file name to look for on this origin.`);
+  const served = await inspectSelfHostedCopy(cfg, { fetchImpl, timeoutMs: HF_DIAG_TIMEOUT_MS, signal });
+  if (!served || served.status !== 'present' || (served.bytes || 0) <= MIN_SERVED_GGUF_BYTES) {
+    throw new Error(`This site is not serving ${cfg.ggufFile}${served?.http ? ` (HTTP ${served.http})` : ''}, so there is nothing here to pre-cache.`);
+  }
+  const diag = await detectDeviceDiagnostics().catch(() => null);
+  if (diag && !diag.hasOPFS) {
+    throw new Error('This browser exposes no on-device storage (OPFS), so models cannot be pre-cached.');
+  }
+  onProgress?.({
+    state: 'downloading',
+    detail: `Pre-caching ${cfg.label} from this site (${fmtMB(served.bytes)})…`,
+    loaded: 0,
+    total: served.bytes
+  });
+  const mm = await getModelManager();
+  const model = await mm.downloadModel({ url: served.url }, {
+    signal,
+    progressCallback: pr => onProgress?.({
+      state: 'downloading',
+      detail: `Pre-caching ${cfg.label} from this site: ${pr.total > 0 ? Math.round((pr.loaded / pr.total) * 100) : 0}%`,
+      loaded: pr.loaded,
+      total: pr.total
+    })
+  });
+  const sizeBytes = model?.size > 0 ? model.size : served.bytes;
+  if (cfg.hfGgufRepo) {
+    rememberPrecachedGguf(cfg.hfGgufRepo, {
+      url: served.url,
+      quant: LOCAL_QUANT_LABEL,
+      sizeBytes,
+      preset: null
+    });
+  }
+  return { modelId, url: served.url, sizeBytes, source: 'this origin' };
+}
+
+/**
+ * Pre-cache whatever this origin serves, in the background, at most once every
+ * `AUTO_PRECACHE_COOLDOWN_MS`. Quiet by design: it reports through `onProgress`
+ * only, and it cancels itself the moment a chat starts.
+ */
+export async function autoPrecacheServedModels({ onProgress, signal, fetchImpl = fetch, now = Date.now(), force = false } = {}) {
+  if (autoPrecacheController) return { run: false, reason: 'a pre-cache is already running', done: [] };
+  const controller = new AbortController();
+  const onOuterAbort = () => { try { controller.abort('interrupted'); } catch {} };
+  signal?.addEventListener?.('abort', onOuterAbort, { once: true });
+  autoPrecacheController = controller;
+  const done = [];
+  try {
+    const models = TEXT_MODELS.filter(m => m.hfGgufRepo && m.ggufFile);
+    const served = await probeServedModels({ fetchImpl, signal: controller.signal });
+    const cached = {};
+    for (const e of await listPrecachedModels().catch(() => [])) cached[e.repo] = { present: Boolean(e.usable) };
+    const conn = typeof navigator !== 'undefined' ? navigator.connection || null : null;
+    const diag = await detectDeviceDiagnostics().catch(() => null);
+    const plan = planAutoPrecache({
+      models,
+      served,
+      cached,
+      now,
+      lastRunAt: Number(readCachePref(KEY_AUTO_PRECACHE, {})?.at) || 0,
+      storageOk: diag ? Boolean(diag.hasOPFS) : true,
+      saveData: Boolean(conn?.saveData) || ['slow-2g', '2g'].includes(conn?.effectiveType),
+      busy: getInferenceQueueState().busy,
+      force
+    });
+    if (controller.signal.aborted) return { run: false, reason: 'cancelled before it started', done };
+    if (!plan.run) return { run: false, reason: plan.reason, done };
+
+    writeCachePref(KEY_AUTO_PRECACHE, { at: now, ids: plan.ids });
+    for (const id of plan.ids) {
+      if (controller.signal.aborted) break;
+      if (getInferenceQueueState().busy) { stopAutoPrecache('a chat started'); break; }
+      try {
+        const result = await precacheFromThisOrigin(id, { signal: controller.signal, onProgress });
+        done.push({ id, sizeBytes: result.sizeBytes });
+      } catch (err) {
+        if (err?.name === 'AbortError' || controller.signal.aborted) break;
+        onProgress?.({ state: 'error', id, detail: `${id}: ${err?.message || err}`, loaded: 0, total: 0 });
+      }
+    }
+    return { run: true, reason: '', done };
+  } finally {
+    if (autoPrecacheController === controller) autoPrecacheController = null;
+    signal?.removeEventListener?.('abort', onOuterAbort);
+  }
+}
+
 export async function removePrecachedModel(key) {
   const index = readPrecacheIndex();
   const entry = index[key];
@@ -2269,9 +2486,14 @@ export async function streamWllamaChat({
     // preset was recorded fall back to the quant-name check, and an unrecognised
     // quant ('smallest') is still accepted — re-resolving it would mean another
     // trip to the network to arrive at the same file.
-    const cacheUsable = cachedEntry?.preset
-      ? cachedEntry.preset === preset.id
-      : (quantList.includes(cachedEntry?.quant) || cachedEntry?.quant === 'smallest');
+    // A copy of what this origin serves is one fixed file, not a promise about
+    // a quant, so it stays usable whatever preset is selected — and its label
+    // says 'served here' rather than naming a quant nobody verified.
+    const cacheUsable = cachedEntry?.quant === LOCAL_QUANT_LABEL
+      ? true
+      : cachedEntry?.preset
+        ? cachedEntry.preset === preset.id
+        : (quantList.includes(cachedEntry?.quant) || cachedEntry?.quant === 'smallest');
     if (cachedEntry?.url && cacheUsable) {
       try {
         const mm = await getModelManager();
@@ -2291,7 +2513,56 @@ export async function streamWllamaChat({
       }
     }
 
-    // 2) HuggingFace → downloaded straight into on-device storage.
+    // 2) A GGUF this origin serves itself. Same origin means no CORS
+    //    preflight, no redirect to an LFS CDN and no third-party host for a
+    //    firewall or a privacy extension to block — which is the failure this
+    //    app keeps meeting in the wild. It is copied into on-device storage on
+    //    the way, so the next start needs no network at all.
+    if (localGgufUrl) {
+      let served = null;
+      try { served = await inspectSelfHostedCopy({ ggufFile }, { timeoutMs: HF_DIAG_TIMEOUT_MS, signal }); } catch {}
+      if (served?.status === 'present' && (served.bytes || 0) > MIN_SERVED_GGUF_BYTES) {
+        const sizeNote = served.bytes ? ` (${fmtMB(served.bytes)})` : '';
+        quantLabel = LOCAL_QUANT_LABEL;
+        onStatus?.({
+          state: 'loading',
+          detail: `Loading ${ggufFile} from this site${sizeNote} via WLlama (${gpu ? 'WebGPU' : 'CPU WASM'})…`
+        });
+        try {
+          const mm = await getModelManager();
+          const model = await mm.downloadModel({ url: localGgufUrl }, {
+            signal,
+            progressCallback: pr => {
+              if (pr.total > 0) {
+                onStatus?.({
+                  state: 'loading',
+                  detail: `Keeping this site's copy of ${ggufFile} on your device (${Math.round((pr.loaded / pr.total) * 100)}%)…`
+                });
+              }
+            }
+          });
+          await inst.loadModel(model, loadParams);
+          if (hfRepo) {
+            rememberPrecachedGguf(hfRepo, {
+              url: localGgufUrl,
+              quant: quantLabel,
+              sizeBytes: model?.size > 0 ? model.size : served.bytes,
+              preset: null
+            });
+          }
+          return { source: 'local', quant: quantLabel, sizeBytes: served.bytes };
+        } catch (err) {
+          if (err?.name === 'AbortError' || signal?.aborted) throw err;
+          // No on-device storage, or the copy failed. Streaming the same-origin
+          // file still beats a third-party download, so do that instead.
+          pushNativeLog('warn', [`could not keep ${ggufFile} on device: ${err?.message || err}`]);
+          await inst.loadModelFromUrl(localGgufUrl, loadParams);
+          return { source: 'local', quant: quantLabel, sizeBytes: served.bytes };
+        }
+      }
+    }
+
+    // 3) HuggingFace → downloaded straight into on-device storage.
     if (hfRepo) {
       const picked = await resolveBestHFGguf(hfRepo, quantList, signal, budget);
       quantLabel = picked.quant;
@@ -2313,27 +2584,11 @@ export async function streamWllamaChat({
       return { source: 'hf', quant: quantLabel, sizeBytes: picked.sizeBytes };
     }
 
-    // 3) A GGUF served by this host (the dev server's .cache/waffle-ai).
-    let hasLocalGguf = false;
-    if (localGgufUrl) {
-      try {
-        const probe = await fetch(localGgufUrl, { method: 'HEAD', signal });
-        const ct = probe.headers.get('content-type') || '';
-        const len = Number(probe.headers.get('content-length') || '0');
-        hasLocalGguf = probe.ok && !ct.includes('text/html') && len > 1_000_000;
-      } catch {}
-    }
-    if (!hasLocalGguf) {
-      throw new Error(ggufFile
-        ? `Local GGUF (${ggufFile}) is not served by this host and no HuggingFace GGUF repo is configured.`
-        : 'No HuggingFace GGUF repo is configured for this model and this host serves no local GGUF.');
-    }
-    onStatus?.({
-      state: 'loading',
-      detail: `Loading ${ggufFile} via WLlama (${gpu ? 'WebGPU' : 'CPU WASM'})…`
-    });
-    await inst.loadModelFromUrl(localGgufUrl, loadParams);
-    return { source: 'local', quant: quantLabel };
+    // 4) Nothing on this device, nothing served by this origin, and no
+    //    HuggingFace repo configured to fall back on.
+    throw new Error(ggufFile
+      ? `Local GGUF (${ggufFile}) is not served by this host and no HuggingFace GGUF repo is configured.`
+      : 'No HuggingFace GGUF repo is configured for this model and this host serves no local GGUF.');
   };
 
   let loadedHere = false;

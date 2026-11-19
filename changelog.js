@@ -91,6 +91,19 @@ export const TVAR_LOG = [
         ]
       },
       {
+        label: '\u{1F9CA} Pre-caching now happens by itself',
+        items: [
+          'The model weights can now ship with the site. A deploy pre-caches the small models onto its own origin before it builds, so they are served from the same place as everything else \u2014 no third-party host, no CDN redirect, no cross-origin request for a firewall or a privacy extension to refuse.',
+          'And the loader was quietly ignoring them. A file this site served was step three of the WLlama load order: it was only reached when no Hugging Face repository was configured, and every model has one. So a site could be carrying the model and still send the visitor to a CDN that was blocked. The same-origin copy is now tried *first*, and the browser keeps it on the device on the way, so the next start needs no network at all.',
+          'A deployed site would have served them into a wall. The offline service worker answered *every* path under `api/` with a 501 \u2014 \u201Cno llama.cpp server on this static host\u201D \u2014 and the model files the build ships live under `api/`. So a site carrying the weights looked like it carried nothing, and every load went back to Hugging Face anyway. Those paths are passed through now; the chat API is still answered at once.',
+          'What the site carries, the kitchen now copies by itself. Once the page has settled it pre-caches those files in the background \u2014 same-origin only, at most once every twelve hours, skipped on a data-saver connection, and cancelled the instant a chat starts so the two never compete. Settings \u2192 AI Models shows it happening, and has a Stop button.',
+          'Those rows are marked \u{1F3E0} Served by this site with their real size, and pre-caching one takes the local file rather than asking Hugging Face for it.',
+          'An HTML page is no longer mistaken for a model. A static host with no such file answers 200 with its own index page, which the old probe counted as present \u2014 it would have tried to load four kilobytes of markup as a GGUF and reported a corrupt download. A served file now has to be a real one, and the error report says so when it is not.',
+          '`npm run precache` does what a deploy does (every model under 1B parameters, smallest first, up to a 160 MB budget so the published site stays well under the 1 GB Pages cap). `--max-mb` and `WAFFLE_SELF_HOST_MB` set that budget for the fetch and the build.',
+          'The error report follows: when this origin serves the file it says the WLlama path never needed Hugging Face, and when a blocked download is diagnosed on a site that carries the model, the advice points at this origin instead of the visitor\u2019s network.'
+        ]
+      },
+      {
         label: '\u{26A0}\u{FE0F} Known rough edges',
         items: [
           'A wedged WASM or WebGPU worker cannot be revived from inside the tab. The kitchen recovers by discarding it and starting the next attempt clean, but if one model wedges every single time, reloading the page is still the real fix.',

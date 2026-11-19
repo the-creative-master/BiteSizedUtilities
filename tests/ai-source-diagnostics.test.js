@@ -604,7 +604,7 @@ test('the report refuses to blame the network when the host answered and only th
 
   const fix = modelSourceFixAdvice(facts, cause);
   assert.match(fix, /the block is on the download itself/);
-  assert.match(fix, /takes the CDN redirect out of the path/);
+  assert.match(fix, /removes the CDN redirect and the cross-origin preflight/);
   assert.ok(!fix.includes('treat the network as the suspect'),
     'the old advice — check your firewall and DNS — is exactly what sent this report down the wrong road');
 });

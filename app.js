@@ -34,6 +34,11 @@ import {
   setTempUnlocked,
   detectDeviceDiagnostics,
   precacheTextModel,
+  precacheFromThisOrigin,
+  autoPrecacheServedModels,
+  isAutoPrecacheRunning,
+  stopAutoPrecache,
+  probeServedModels,
   listPrecachedModels,
   removePrecachedModel,
   clearPrecachedModels,
@@ -779,19 +784,26 @@ let settingsImageCaps = { hasWebGPU: false, hasF16: false };
  * Pre-cache panel — download a model's GGUF into on-device storage
  * (OPFS) once, so later chats start instantly and work with no server.
  * ------------------------------------------------------------------ */
-let precacheState = { entries: [], storage: null, busy: null, busyDetail: '', error: '' };
+let precacheState = { entries: [], storage: null, served: {}, busy: null, busyDetail: '', auto: '', error: '' };
 let precacheAbort = null;
+
+/** Which models this origin carries itself (same-origin HEADs, no downloads). */
+function servedHere(m) {
+  const info = precacheState.served[m.id];
+  return Boolean(info && info.status === 'present' && (info.bytes || 0) > 1_000_000);
+}
 
 async function refreshPrecacheState() {
   // The panel only exists in the backup build; without it there is nothing to
   // refresh and no reason to open OPFS or wake the model manager.
   if (!$('#settings-ai-precache')) return;
   try {
-    const [entries, storageInfo] = await Promise.all([
+    const [entries, storageInfo, served] = await Promise.all([
       listPrecachedModels().catch(() => []),
-      estimateModelStorage().catch(() => null)
+      estimateModelStorage().catch(() => null),
+      probeServedModels().catch(() => ({}))
     ]);
-    precacheState = { ...precacheState, entries, storage: storageInfo };
+    precacheState = { ...precacheState, entries, storage: storageInfo, served: served || {} };
   } catch {}
   if (!$('#settings-overlay')?.hidden) renderPrecachePanel();
 }
@@ -813,7 +825,9 @@ function renderPrecachePanel() {
         ? `✅ On device · ${mb(entry.sizeBytes)} · ${entry.quant || 'GGUF'}`
         : entry?.onDisk
           ? '⚠ Cached but incomplete — re-cache it'
-          : `⬇ Not cached · ~${m.ggufMB || '?'} MB`;
+          : servedHere(m)
+            ? `🏠 Served by this site · ${mb(precacheState.served[m.id].bytes)} · copied onto this device by itself when you are idle`
+            : `⬇ Not cached · ~${m.ggufMB || '?'} MB · streamed from Hugging Face on first use`;
     return `
       <div class="waffle-precache-row ${busy ? 'is-busy' : ''}">
         <div class="waffle-precache-info">
@@ -822,7 +836,7 @@ function renderPrecachePanel() {
         </div>
         <div class="waffle-precache-actions">
           ${busy ? '<button type="button" class="gbtn waffle-mini-btn" data-precache-stop>Stop</button>' : ''}
-          <button type="button" class="gbtn waffle-mini-btn" data-precache="${m.id}" ${busy ? 'disabled' : ''}>${cached ? '↻ Re-cache' : '⬇ Pre-cache'}</button>
+          <button type="button" class="gbtn waffle-mini-btn" data-precache="${m.id}" ${busy ? 'disabled' : ''}>${cached ? '↻ Re-cache' : servedHere(m) ? '🏠 Pre-cache from this site' : '⬇ Pre-cache'}</button>
           ${cached ? `<button type="button" class="gbtn waffle-mini-btn" data-precache-rm="${entry.key}" title="Delete this cached model">🗑</button>` : ''}
         </div>
       </div>`;
@@ -830,10 +844,12 @@ function renderPrecachePanel() {
 
   box.innerHTML = `
     <p class="waffle-precache-copy">
-      Static hosts like GitHub Pages have no llama.cpp server, so models are streamed from
-      Hugging Face on first use. Pre-cache them here and they are stored on this device
-      (OPFS) — later chats start instantly and keep working offline.
+      A model this site carries itself (🏠) needs no third-party download: the kitchen copies it
+      onto this device in the background while you are idle, and chats then start with no network
+      at all. Anything it does not carry is streamed from Hugging Face on first use — pre-cache
+      that here and it is stored on this device (OPFS) too, so it keeps working offline.
     </p>
+    ${precacheState.auto ? `<p class="waffle-precache-auto">${precacheState.auto} <button type="button" class="gbtn waffle-mini-btn" id="precache-auto-stop">Stop</button></p>` : ''}
     ${precacheState.error ? `<p class="waffle-precache-error">${precacheState.error}</p>` : ''}
     ${rows}
     <div class="waffle-precache-foot">
@@ -850,6 +866,11 @@ function renderPrecachePanel() {
   });
   box.querySelector('[data-precache-stop]')?.addEventListener('click', () => {
     precacheAbort?.abort();
+  });
+  box.querySelector('#precache-auto-stop')?.addEventListener('click', () => {
+    stopAutoPrecache('the visitor stopped it');
+    precacheState = { ...precacheState, auto: '' };
+    renderPrecachePanel();
   });
   box.querySelectorAll('[data-precache-rm]').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -873,18 +894,36 @@ function renderPrecachePanel() {
 async function startPrecache(modelId) {
   if (precacheState.busy) return;
   playPop(620);
+  // A deliberate click outranks the background copy: two downloads of the same
+  // file would only compete for bandwidth and for the on-device slot.
+  stopAutoPrecache('the visitor pre-cached a model by hand');
   precacheAbort = new AbortController();
-  precacheState = { ...precacheState, busy: modelId, busyDetail: 'Resolving the best quant…', error: '' };
+  const cfg = TEXT_MODELS.find(m => m.id === modelId);
+  const fromHere = Boolean(cfg && servedHere(cfg));
+  precacheState = {
+    ...precacheState,
+    busy: modelId,
+    busyDetail: fromHere ? 'Copying this site’s file onto your device…' : 'Resolving the best quant…',
+    auto: '',
+    error: ''
+  };
   renderPrecachePanel();
   try {
-    await precacheTextModel(modelId, {
+    await (fromHere ? precacheFromThisOrigin(modelId, {
       signal: precacheAbort.signal,
       onProgress: p => {
         precacheState.busyDetail = p.detail || '';
         const row = document.querySelector('.waffle-precache-row.is-busy .waffle-precache-info small');
         if (row) row.textContent = precacheState.busyDetail;
       }
-    });
+    }) : precacheTextModel(modelId, {
+      signal: precacheAbort.signal,
+      onProgress: p => {
+        precacheState.busyDetail = p.detail || '';
+        const row = document.querySelector('.waffle-precache-row.is-busy .waffle-precache-info small');
+        if (row) row.textContent = precacheState.busyDetail;
+      }
+    }));
     precacheState.error = '';
   } catch (err) {
     if (err?.name !== 'AbortError') precacheState.error = String(err?.message || err);
@@ -1165,6 +1204,34 @@ try { route(); } catch (e) { console.error(e); home(); }
 try { initAppI18n(); } catch (e) { console.error(e); }
 
 setTimeout(() => { try { warmupWaffleAI(); } catch {} }, 800);
+
+/* Pre-cache whatever this site carries itself, once, in the background.
+ * Same-origin files only: the site already shipped them, so this costs no
+ * third-party request, trips no CORS preflight and works on the networks that
+ * block huggingface.co — the failure every AI error report keeps meeting.
+ * It waits for idle, skips data-saver connections, runs at most once every
+ * twelve hours, and cancels itself the instant a chat starts. */
+const kickAutoPrecache = () => {
+  if (isAutoPrecacheRunning()) return;
+  autoPrecacheServedModels({
+    onProgress: p => {
+      precacheState = { ...precacheState, auto: p?.state === 'error' ? '' : (p?.detail || '') };
+      const line = document.querySelector('#settings-ai-precache .waffle-precache-auto');
+      if (line?.firstChild) line.firstChild.textContent = `${precacheState.auto} `;
+    }
+  }).then(result => {
+    precacheState = { ...precacheState, auto: '' };
+    if (result?.run) refreshPrecacheState().catch(() => {});
+  }).catch(() => { precacheState = { ...precacheState, auto: '' }; });
+};
+
+setTimeout(() => {
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(kickAutoPrecache, { timeout: 90_000 });
+  } else {
+    kickAutoPrecache();
+  }
+}, 20_000);
 
 try {
   if ('serviceWorker' in navigator && navigator.serviceWorker) {

@@ -301,15 +301,19 @@ export default defineConfig({
       // at /api/waffle-ai/gguf/, and this makes the *production* build serve the
       // same path, so a deployed site can run AI without touching huggingface.co.
       //
-      // Absent folder is normal and silent: weights are never committed, so CI
-      // builds without them and the browser downloads from HF as it always has.
+      // Absent folder is normal and silent: weights are never committed. A
+      // deploy that pre-caches them (`node scripts/fetch-model.mjs --max-mb=…`,
+      // which the Pages workflow runs) ships them from its own origin, and then
+      // the browser loads that copy first and never asks Hugging Face for it.
       const ggufSrc = path.resolve('.cache/waffle-ai');
       if (fs.existsSync(ggufSrc)) {
         // GitHub Pages has a ~1 GB soft cap per site and this build already ships
         // ~340 MB, so cap what we add rather than quietly pushing a deploy over
         // it. Smallest first: a tight budget should still yield a working model
         // instead of one huge file and nothing else.
-        const SELF_HOST_TOTAL_MAX = 400 * 1024 ** 2;
+        const SELF_HOST_TOTAL_MAX = (Number(process.env.WAFFLE_SELF_HOST_MB) > 0
+          ? Number(process.env.WAFFLE_SELF_HOST_MB)
+          : 400) * 1024 ** 2;
         const ggufOut = path.resolve('dist/api/waffle-ai/gguf');
         const files = fs.readdirSync(ggufSrc)
           .filter(f => f.endsWith('.gguf'))
@@ -428,9 +432,15 @@ self.addEventListener('fetch', e => {
   try { u = new URL(req.url); } catch { return; }
   if (u.origin !== self.location.origin) return;
 
-  // The API only exists on the dev/preview server; on a static host answer at
-  // once so Waffle AI switches to the browser runtimes without a 404 round trip.
-  if (u.href.startsWith(SCOPE + 'api/')) {
+  // The chat API only exists on the dev/preview server; on a static host answer
+  // at once so Waffle AI switches to the browser runtimes without a 404 round
+  // trip. Two paths under it are *not* that API: the build can ship real model
+  // files there. Answering those with a 501 would make a site that carries the
+  // weights look like it carries nothing, and every load would go back to
+  // Hugging Face \u2014 the exact thing self-hosting is for.
+  const SERVED_STATIC = ['api/waffle-ai/gguf/', 'api/waffle-ai/sd-models/'];
+  const isServedStatic = SERVED_STATIC.some(prefix => u.href.startsWith(SCOPE + prefix));
+  if (!isServedStatic && u.href.startsWith(SCOPE + 'api/')) {
     e.respondWith(staticHostAnswer());
     return;
   }

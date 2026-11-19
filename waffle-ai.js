@@ -18,6 +18,7 @@ import {
   fetchModelSourceFacts,
   describeModelSourceFacts,
   modelSourceFixAdvice,
+  reconcileAiFailureWithFacts,
   HF_DIAG_TIMEOUT_MS,
   runBrowserInference,
   markInferenceBeat,
@@ -378,22 +379,31 @@ async function streamServerChat({ modelId, messages: msgList, systemPrompt, maxT
  * them and prints them under the error. Bounded and swallowed whole: a
  * diagnostic that hangs or throws must never replace the failure it explains.
  */
-async function modelSourceReport(cfg, classified, signal) {
+/**
+ * Facts first, prose second — because the facts also get to overrule the
+ * headline the engines produced. Never throws: a diagnostic that fails must not
+ * take the error it was called to explain down with it.
+ */
+async function modelSourceFactsFor(cfg, signal) {
   try {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return '';
-    if (!cfg?.hfGgufRepo && !cfg?.hfId) return '';
-    const facts = await fetchModelSourceFacts(cfg, { signal, timeoutMs: HF_DIAG_TIMEOUT_MS });
-    const lines = describeModelSourceFacts(facts);
-    if (!lines.length) return '';
-    const fix = modelSourceFixAdvice(facts, classified);
-    const stamp = new Date(facts.fetchedAt);
-    const when = Number.isNaN(stamp.getTime()) ? 'just now' : stamp.toUTCString().replace('GMT', 'UTC');
-    return `\n\n**Where this model was supposed to come from** (checked live against Hugging Face, ${when}):\n` +
-      lines.map(l => `- ${l}`).join('\n') +
-      (fix ? `\n- **Fix:** ${fix}` : '');
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return null;
+    if (!cfg?.hfGgufRepo && !cfg?.hfId) return null;
+    return await fetchModelSourceFacts(cfg, { signal, timeoutMs: HF_DIAG_TIMEOUT_MS });
   } catch {
-    return '';
+    return null;
   }
+}
+
+function renderModelSourceReport(facts, classified) {
+  if (!facts) return '';
+  const lines = describeModelSourceFacts(facts);
+  if (!lines.length) return '';
+  const fix = modelSourceFixAdvice(facts, classified);
+  const stamp = new Date(facts.fetchedAt);
+  const when = Number.isNaN(stamp.getTime()) ? 'just now' : stamp.toUTCString().replace('GMT', 'UTC');
+  return `\n\n**Where this model was supposed to come from** (checked live against Hugging Face, ${when}):\n` +
+    lines.map(l => `- ${l}`).join('\n') +
+    (fix ? `\n- **Fix:** ${fix}` : '');
 }
 
 export async function streamWaffleChat({ modelId, messages: msgList, imageUrls = [], systemPrompt, maxTokens = 520, temperature = 0.7, signal, onStatus, onToken, onRuntime }) {
@@ -582,14 +592,19 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
   // Ask the real source what it has, so the failure carries evidence and not
   // only engine names. Skipped when the device is offline: there is nothing to
   // ask, and the attempt would only add a second confusing network error.
-  const sourceReport = headline?.kind === 'offline' ? '' : await modelSourceReport(cfg, headline, signal);
+  const facts = headline?.kind === 'offline' ? null : await modelSourceFactsFor(cfg, signal);
+  // Five engines reporting "Failed to fetch" is not evidence that the network is
+  // down when the host answered their metadata calls with HTTP 200 and only the
+  // file download failed. The facts get the last word on the headline.
+  const cause = reconcileAiFailureWithFacts(headline, facts);
+  const sourceReport = renderModelSourceReport(facts, cause);
 
-  if (headline) {
-    const detail = headline.uniform
-      ? `All ${headline.count} runtimes failed the same way.`
-      : `${headline.count} runtimes failed, with different causes.`;
+  if (cause) {
+    const detail = cause.uniform
+      ? `All ${cause.count} runtimes failed the same way.`
+      : `${cause.count} runtimes failed, with different causes.`;
     throw new Error(
-      `${headline.title}. ${headline.hint}\n\n${detail}\n\n${failures.map(f => `• ${f.step} → ${f.message}`).join('\n')}${sourceReport}`
+      `${cause.title}. ${cause.hint}\n\n${detail}\n\n${failures.map(f => `• ${f.step} → ${f.message}`).join('\n')}${sourceReport}`
     );
   }
   throw new Error(`Could not run ${cfg.label}.${diagHint}${sourceReport}`);

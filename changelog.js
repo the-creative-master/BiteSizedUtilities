@@ -44,7 +44,7 @@ export const TVAR_LOG = [
     // itself when the counter moves.
     version: `${APP_VERSION} TVAR 2`,
     date: 'November 19, 2026',
-    title: 'The one that stops freezing on the second question',
+    title: 'The one that stops freezing, and stops blaming your network',
     tvar: true,
     groups: [
       {
@@ -66,6 +66,17 @@ export const TVAR_LOG = [
           'When the watchdog fires it says so in the reply \u2014 which runtime went quiet, for how long, and that it was discarded \u2014 and the next runtime in the fallback chain takes over. A permanent freeze became a message and a retry.',
           'Pressing Stop while a runtime is wedged frees the input after five seconds instead of never. ONNX generation cannot be interrupted at all, so the page simply stops waiting for it.',
           'A stall is classified as its own kind of failure, so a wedged runtime is never reported as a network problem or a broken model file, and it gets its own fix line.'
+        ]
+      },
+      {
+        label: '\u{1F50E} What the new error report caught in itself',
+        items: [
+          'A real failure came back from a real device: five runtimes, every one of them "Failed to fetch", and the kitchen concluded that huggingface.co was unreachable \u2014 blocked network, firewall, DNS, a privacy extension. Then the same report printed the evidence that this was wrong: the repository API had answered HTTP 200 from that browser moments earlier.',
+          'Metadata and weights are not the same request. Hugging Face serves the repository information from huggingface.co and redirects the file itself to its LFS CDN, so a firewall, proxy or extension can allow one and block the other. An engine only ever sees "Failed to fetch", which cannot tell those apart \u2014 and the report was not checking either.',
+          'It now asks for one byte of the file the loaders really download: the GGUF for the WLlama path and the .onnx weight for the browser path. It prints what came back \u2014 the HTTP status, the total size from the range answer, and the CDN host the request was redirected to. One byte, because a diagnostic has no business downloading 880 MB to make a point.',
+          'When the metadata answered and no file could be fetched, the headline is overruled: "Hugging Face answered, but the model file could not be downloaded", with the fix that actually applies \u2014 serve the weights from this site with `node scripts/fetch-model.mjs`, which takes the CDN redirect out of the path entirely.',
+          'It only overrules on a clean contradiction. If the file downloaded fine, or the metadata failed too, the original headline stands: a diagnosis that argues with its own evidence is worse than none.',
+          'The same report caught a wrong number in the model table. Qwen 2.5 1.5B was listed at about 700 MB; the file it would really load is 881.6 MB, so the "will this fit on this device?" check was being computed from a figure 26% too small. The table now carries the measured size, and says where it came from.'
         ]
       },
       {

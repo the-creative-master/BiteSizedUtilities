@@ -13,8 +13,12 @@ export const TEXT_MODELS = [
     hfGgufRepo: 'Qwen/Qwen2.5-1.5B-Instruct-GGUF',
     hfGgufQuant: 'Q3_K_L',
     ggufFile: 'qwen2.5-1.5b.gguf',
-    ggufMB: 700,
-    desc: 'Qwen 2.5 1.5B via local llama.cpp when cached, or Q3_K_L / q4 in browser (~700 MB)'
+    // Measured, not guessed: the source report for this entry came back with
+    // qwen2.5-1.5b-instruct-q3_k_m.gguf at 881.6 MB (Q3_K_L is not published in
+    // that repo, so the loader falls through to Q3_K_M). The table said 700 MB,
+    // which is what the "will this fit?" check and the warnings are built from.
+    ggufMB: 882,
+    desc: 'Qwen 2.5 1.5B via local llama.cpp when cached, or Q3_K_M / q4 in browser (~882 MB)'
   },
   {
     id: 'qwen2.5-coder-1.5b',
@@ -674,6 +678,33 @@ export function summarizeAiFailures(classified) {
   return { ...hit, uniform: false, count: classified.length };
 }
 
+/**
+ * A headline is only as good as the evidence behind it, and the engines can
+ * only ever report "Failed to fetch". When the source facts contradict the
+ * headline — every runtime said the host was unreachable, while the host
+ * answered HTTP 200 for the metadata and failed only on the file — the facts
+ * win. Blaming the visitor's network for a blocked CDN redirect sends them off
+ * to check their wifi instead of the thing that is actually broken.
+ */
+export function reconcileAiFailureWithFacts(headline, facts) {
+  if (!headline || !facts || headline.kind !== 'network') return headline;
+  const probes = [facts.download, facts.onnxDownload].filter(Boolean);
+  if (!probes.length) return headline;
+  const apiAnswered = [facts.gguf, facts.onnx].some(r => r && (r.http === 200 || r.http === 206));
+  const fileFailed = probes.some(d => d.status !== 'ok' && d.status !== 'no-source');
+  const fileWorked = probes.some(d => d.status === 'ok');
+  // Only overrule on a clean contradiction: the API answered, no file could be
+  // fetched, and none of them succeeded. Anything less and the original
+  // headline is the more honest one.
+  if (!apiAnswered || !fileFailed || fileWorked) return headline;
+  return {
+    ...headline,
+    kind: 'blocked-download',
+    title: 'Hugging Face answered, but the model file could not be downloaded',
+    hint: 'The repository metadata came back HTTP 200 from this same browser, so the network is not down and huggingface.co is not blocked. The weights are served from a different host after a redirect (Hugging Face\u2019s LFS CDN), and that request is what failed — typically a firewall, proxy or privacy extension that allows the API but not large binaries. Fix: serve the file from this site instead with `node scripts/fetch-model.mjs`, or retry on a network that allows the download.'
+  };
+}
+
 /* ------------------------------------------------------------------ *
  * Source diagnostics — what Hugging Face actually says about a model.
  *
@@ -743,7 +774,7 @@ const DIAG_TIMEOUT = Symbol('diag-timeout');
 
 async function diagRequest(url, { fetchImpl, timeoutMs = HF_DIAG_TIMEOUT_MS, signal, init, parse = 'json' } = {}) {
   const doFetch = fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
-  if (!doFetch) return { http: null, data: null, headers: null, thrown: 'unreachable', error: 'no fetch implementation in this environment' };
+  if (!doFetch) return { http: null, data: null, headers: null, thrown: 'unreachable', error: 'no fetch implementation in this environment', finalUrl: null };
   const ctrl = new AbortController();
   let timer = null;
   const gate = new Promise(resolve => {
@@ -756,23 +787,26 @@ async function diagRequest(url, { fetchImpl, timeoutMs = HF_DIAG_TIMEOUT_MS, sig
   try {
     const outcome = await Promise.race([attempt, gate]);
     if (outcome === DIAG_TIMEOUT) {
-      return { http: null, data: null, headers: null, thrown: 'timeout', error: `no answer within ${Math.round(timeoutMs)} ms` };
+      return { http: null, data: null, headers: null, thrown: 'timeout', error: `no answer within ${Math.round(timeoutMs)} ms`, finalUrl: null };
     }
     if (outcome.err) {
-      if (signal?.aborted) return { http: null, data: null, headers: null, thrown: 'aborted', error: String(outcome.err?.message || outcome.err) };
-      return { http: null, data: null, headers: null, thrown: 'unreachable', error: String(outcome.err?.message || outcome.err) };
+      if (signal?.aborted) return { http: null, data: null, headers: null, thrown: 'aborted', error: String(outcome.err?.message || outcome.err), finalUrl: null };
+      return { http: null, data: null, headers: null, thrown: 'unreachable', error: String(outcome.err?.message || outcome.err), finalUrl: null };
     }
     const res = outcome.res;
     const http = res?.status ?? null;
     const headers = res?.headers || null;
-    if (parse === 'none') return { http, data: null, headers, thrown: null, error: null };
+    // `res.url` is where the request ended up after redirects — for a model
+    // file that is the CDN host, which is the whole point of probing it.
+    const finalUrl = typeof res?.url === 'string' ? res.url : null;
+    if (parse === 'none') return { http, data: null, headers, thrown: null, error: null, finalUrl };
     if (!res?.ok) {
       let detail = null;
       try { detail = await res.json(); } catch { /* a non-JSON error body is normal */ }
-      return { http, data: detail, headers, thrown: null, error: detail?.error || detail?.message || null };
+      return { http, data: detail, headers, thrown: null, error: detail?.error || detail?.message || null, finalUrl };
     }
     try {
-      return { http, data: await res.json(), headers, thrown: null, error: null };
+      return { http, data: await res.json(), headers, thrown: null, error: null, finalUrl };
     } catch (err) {
       return { http, data: null, headers, thrown: 'bad-json', error: String(err?.message || err) };
     }
@@ -871,6 +905,17 @@ export async function fetchModelSourceFacts(modelCfg, opts = {}) {
   const onnx = cfg.hfId ? await inspectOnnxRepo(cfg, reqOpts) : null;
   const local = probeSelfHosted && cfg.ggufFile ? await inspectSelfHostedCopy(cfg, reqOpts) : null;
 
+  // The metadata calls above can all answer 200 while the file itself is
+  // unreachable, so ask for one byte of each real download too. Together,
+  // because the failure path is already slow and these are independent.
+  const ggufPath = gguf?.wouldLoad?.path || gguf?.suggested?.path || null;
+  const [download, onnxDownload] = await Promise.all([
+    ggufPath && gguf?.repo ? probeDownloadUrl(ggufUrlFor(gguf.repo, ggufPath), ggufPath, reqOpts) : null,
+    onnx?.weightFile && onnx?.repo
+      ? probeDownloadUrl(`${HF_BASE}/${onnx.repo}/resolve/main/${onnx.weightFile}`, onnx.weightFile, reqOpts)
+      : null
+  ]);
+
   const facts = {
     id: cfg.id || null,
     label: cfg.label || cfg.id || 'the selected model',
@@ -878,11 +923,50 @@ export async function fetchModelSourceFacts(modelCfg, opts = {}) {
     fetchedAt: new Date().toISOString(),
     gguf,
     onnx,
+    download,
+    onnxDownload,
     selfHosted: local
   };
-  const broken = [gguf, onnx, local].some(r => r && r.status !== 'ok' && r.status !== 'present' && r.status !== 'no-source');
+  const broken = [gguf, onnx, local, download, onnxDownload]
+    .some(r => r && r.status !== 'ok' && r.status !== 'present' && r.status !== 'no-source');
   hfDiagCache.set(cacheKey, { facts, expires: Date.now() + (broken ? HF_DIAG_FAIL_CACHE_MS : HF_DIAG_CACHE_MS) });
   return facts;
+}
+
+/**
+ * Ask for one byte of the file the loaders actually download.
+ *
+ * `/api/models/<repo>` and `resolve/main/<file>` are not the same request: the
+ * first is JSON on huggingface.co, the second is a redirect to Hugging Face's
+ * LFS CDN. A firewall, proxy or privacy extension that allows one and blocks
+ * the other makes every engine report "Failed to fetch" while the repository
+ * metadata answers HTTP 200 — which reads as "your network is down" and is
+ * exactly wrong. One ranged byte settles which host is the problem, and names
+ * the CDN it was redirected to when it works.
+ */
+async function probeDownloadUrl(url, path, { fetchImpl, timeoutMs, signal }) {
+  const out = { path: path || null, url, status: 'no-source', http: null, finalUrl: null, host: null, bytes: null, error: null };
+  if (!url) return out;
+  const res = await diagRequest(url, {
+    fetchImpl,
+    timeoutMs,
+    signal,
+    init: { method: 'GET', headers: { Range: 'bytes=0-0' } },
+    parse: 'none'
+  });
+  out.http = res.http;
+  out.finalUrl = res.finalUrl || null;
+  try { out.host = out.finalUrl ? new URL(out.finalUrl).host : null; } catch { out.host = null; }
+  if (res.error) out.error = res.error;
+  const total = Number(String(res.headers?.get?.('content-range') || '').split('/')[1]);
+  if (Number.isFinite(total) && total > 0) {
+    out.bytes = total;
+  } else {
+    const len = Number(res.headers?.get?.('content-length'));
+    if (Number.isFinite(len) && len > 0) out.bytes = len;
+  }
+  out.status = res.http === 200 || res.http === 206 ? 'ok' : sourceStatus(res.http, res.thrown);
+  return out;
 }
 
 /** The GGUF side: does the repo exist, and is the quant we ask for in it? */
@@ -963,7 +1047,7 @@ async function inspectGgufRepo(cfg, preferred, { fetchImpl, timeoutMs, signal, b
 
 /** The ONNX side, which the browser path uses instead of GGUF. */
 async function inspectOnnxRepo(cfg, { fetchImpl, timeoutMs, signal }) {
-  const out = { repo: cfg.hfId || null, alts: (cfg.hfIdAlts || []).slice(), status: 'no-source', http: null, error: null, fileCount: null, hasOnnxWeights: null, lastModified: null };
+  const out = { repo: cfg.hfId || null, alts: (cfg.hfIdAlts || []).slice(), status: 'no-source', http: null, error: null, fileCount: null, hasOnnxWeights: null, weightFile: null, lastModified: null };
   if (!out.repo) return out;
   const meta = await diagRequest(`${HF_BASE}/api/models/${out.repo}`, { fetchImpl, timeoutMs, signal });
   out.http = meta.http;
@@ -977,7 +1061,11 @@ async function inspectOnnxRepo(cfg, { fetchImpl, timeoutMs, signal }) {
     // Only a real file list can prove the weights are missing; an empty one
     // proves nothing, so leave it unknown rather than reporting a false absence.
     if (Array.isArray(data.siblings) && data.siblings.length) {
-      out.hasOnnxWeights = data.siblings.some(f => /\.onnx$/i.test(String(f?.rfilename || '')) && !/\.onnx_data$/i.test(String(f?.rfilename || '')));
+      const weights = data.siblings
+        .map(f => String(f?.rfilename || ''))
+        .filter(f => /\.onnx$/i.test(f) && !/\.onnx_data$/i.test(f));
+      out.hasOnnxWeights = weights.length > 0;
+      out.weightFile = weights[0] || null;
     }
   }
   if (meta.thrown === 'bad-json') out.status = 'bad-json';
@@ -1068,6 +1156,26 @@ export function describeModelSourceFacts(facts) {
     if (o.alts?.length) lines.push(`Fallback ONNX repos this build would try next: ${o.alts.join(', ')}.`);
   }
 
+  // The file itself is a different request from the metadata above, and on a
+  // different host once Hugging Face redirects it to the CDN.
+  const probes = [
+    { what: 'The GGUF file WLlama would download', d: facts.download },
+    { what: 'The ONNX weight the browser path would download', d: facts.onnxDownload }
+  ].filter(x => x.d && x.d.status !== 'no-source');
+  let contradicted = false;
+  for (const { what, d } of probes) {
+    const name = d.path ? `${what} — ${d.path} —` : `${what} —`;
+    if (d.status === 'ok') {
+      lines.push(`${name} answered HTTP ${d.http}${d.bytes ? ` and is ${fmtBytes(d.bytes)} in total` : ''}${d.host ? `, served from ${d.host}` : ''}, so this browser can fetch the weights.`);
+      continue;
+    }
+    lines.push(`${name} could not be fetched: HTTP ${d.http ?? 'none'}, ${SOURCE_STATUS_COPY[d.status] || d.status}${d.error ? ` (${String(d.error).slice(0, 140)})` : ''}.`);
+    if ([g, facts.onnx].some(r => r && (r.http === 200 || r.http === 206))) contradicted = true;
+  }
+  if (contradicted) {
+    lines.push('That is not a dead network: the repository API on huggingface.co answered HTTP 200 from this same browser moments earlier. Hugging Face serves metadata from huggingface.co and the weights from its LFS CDN after a redirect, so what is blocked, filtered or timing out is the *file* host — most often a firewall, proxy or privacy extension that allows the API but not large binaries.');
+  }
+
   const l = facts.selfHosted;
   if (l) {
     if (l.status === 'present') lines.push(`This site is serving the model itself: ${l.file} is present locally${l.bytes ? ` (${fmtBytes(l.bytes)})` : ''}, so no download was needed for the WLlama path.`);
@@ -1095,6 +1203,7 @@ export function modelSourceFixAdvice(facts, classified) {
     return `Set hfGgufQuant to ${quant || 'a quant that exists in that repo'} in ${where} — the quant in the table is not published there.`;
   }
   if (g.status === 'no-gguf') return `That repo publishes no GGUF. Change hfGgufRepo in ${where} to a repo that does, or drop the WLlama attempt for this model.`;
+  if (classified?.kind === 'blocked-download') return 'The repository is reachable and the file exists, so the block is on the download itself: self-host it with `node scripts/fetch-model.mjs`, which serves the weights from this origin and takes the CDN redirect out of the path, or retry from a network that allows large downloads.';
   if (g.status === 'timeout' || g.status === 'unreachable') return 'The diagnostic call itself could not reach huggingface.co, so treat the network as the suspect before the model: blocked DNS, a firewall, a privacy extension, or no CORS from this origin.';
   if (g.status === 'ok' && g.wouldLoad && g.budgetBytes > 0 && g.wouldLoad.bytes > g.budgetBytes) {
     return `Raise ggufMB for this model in ${where} (the real file is ${fmtBytes(g.wouldLoad.bytes)}), or pick a lighter quant — the budget in the table is what the warnings and the WASM heap check are computed from.`;

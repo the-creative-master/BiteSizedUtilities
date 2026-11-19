@@ -13,6 +13,7 @@ import {
   fetchModelSourceFacts,
   describeModelSourceFacts,
   modelSourceFixAdvice,
+  reconcileAiFailureWithFacts,
   clearModelSourceFactsCache,
   sourceStatus,
   fmtBytes,
@@ -47,7 +48,7 @@ const bareResponse = (status, hdrs = {}) => ({ ok: status >= 200 && status < 300
 /** A fetch stub driven by [url-substring, handler] pairs, first match wins. */
 function fakeFetch(routes, calls = []) {
   return async (url, init = {}) => {
-    calls.push({ url: String(url), method: init?.method || 'GET' });
+    calls.push({ url: String(url), method: init?.method || 'GET', range: init?.headers?.Range || null });
     for (const [match, handler] of routes) {
       if (String(url).includes(match)) return handler(String(url), init);
     }
@@ -73,12 +74,31 @@ const treeOf = files => jsonResponse(files.map(([p, pointerBytes, realBytes]) =>
 
 const localMissing = ['api/waffle-ai/gguf', () => bareResponse(404)];
 
+/**
+ * One byte of a model file, the way the CDN answers it: the redirect has
+ * already happened by the time the response comes back, so `url` is the CDN and
+ * the real total arrives in Content-Range.
+ */
+const downloadResponse = (bytes, { status = 206, host = 'cdn-lfs-us-1.hf.co', url = null } = {}) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  url: url || `https://${host}/lfs/objects/abc123`,
+  headers: headers(status === 206
+    ? { 'content-range': `bytes 0-0/${bytes}` }
+    : { 'content-length': String(bytes) })
+});
+const downloadRoute = (bytes, opts) => ['resolve/main', () => downloadResponse(bytes, opts)];
+/** A scenario that says nothing about the file gets a healthy CDN. */
+const DEFAULT_DOWNLOAD = downloadRoute(Math.round(68.4 * MB));
+
 async function diagnose(routes, opts = {}) {
   const { model = CFG, classified = null, ...rest } = opts;
   clearModelSourceFactsCache();
   const calls = [];
+  // Appended last, so a scenario that cares about the file probe overrides it
+  // and every other scenario still gets a consistent, healthy download.
   const facts = await fetchModelSourceFacts(model, {
-    fetchImpl: fakeFetch(routes, calls),
+    fetchImpl: fakeFetch([...routes, DEFAULT_DOWNLOAD], calls),
     timeoutMs: 800,
     ...rest
   });
@@ -469,17 +489,178 @@ test('every model in the table can be diagnosed without producing junk', async (
 
 test('the failure path in Waffle AI appends the report and can never be masked by it', () => {
   const src = fs.readFileSync('waffle-ai.js', 'utf8');
-  assert.match(src, /fetchModelSourceFacts,\s*describeModelSourceFacts,\s*modelSourceFixAdvice,\s*HF_DIAG_TIMEOUT_MS/,
+  assert.match(src, /fetchModelSourceFacts,\s*describeModelSourceFacts,\s*modelSourceFixAdvice,\s*reconcileAiFailureWithFacts,\s*HF_DIAG_TIMEOUT_MS/,
     'the chat imports the diagnostics');
-  assert.match(src, /async function modelSourceReport\(cfg, classified, signal\)/, 'behind one bounded helper');
-  assert.match(src, /catch \{\s*return '';\s*\}/, 'which swallows its own failures');
-  assert.match(src, /navigator\.onLine === false\) return ''/, 'and does not ask anyone when the device is offline');
-  assert.match(src, /headline\?\.kind === 'offline' \? '' : await modelSourceReport/, 'nor when the cause is already known to be offline');
+  assert.match(src, /async function modelSourceFactsFor\(cfg, signal\)/, 'the facts come from one bounded helper');
+  assert.match(src, /function renderModelSourceReport\(facts, classified\)/, 'and the prose is rendered from them separately');
+  assert.match(src, /catch \{\s*return null;\s*\}/, 'which swallows its own failures');
+  assert.match(src, /navigator\.onLine === false\) return null/, 'and does not ask anyone when the device is offline');
 
   const chain = src.slice(src.indexOf('const headline = summarizeAiFailures'), src.indexOf('async function fetchStatus'));
+  assert.match(chain, /headline\?\.kind === 'offline' \? null : await modelSourceFactsFor/,
+    'nor when the cause is already known to be offline');
+  assert.match(chain, /const cause = reconcileAiFailureWithFacts\(headline, facts\);/,
+    "the facts get to overrule the engines' guess at the cause");
   assert.equal(chain.split('${sourceReport}').length - 1, 2,
     'both failure throws carry the report — the classified one and the bare one');
-  assert.match(chain, /failures\.map\(f => `• \$\{f\.step\} → \$\{f\.message\}`\)\.join\('\\n'\)\}\$\{sourceReport\}/,
+  assert.match(chain, /join\('\\n'\)\}\$\{sourceReport\}/,
     'appended after the engine errors, not instead of them');
-  assert.match(src, /checked live against Hugging Face/, 'and the report says where its facts came from');
+  assert.match(chain, /\$\{cause\.title\}\. \$\{cause\.hint\}/, 'and the headline printed is the reconciled one');
+  assert.match(src, /checked live against Hugging Face/, 'the report says where its facts came from');
+});
+
+/* ================= the file itself, which lives on another host ================= */
+
+const NETWORK_HEADLINE = {
+  kind: 'network',
+  title: 'Could not reach the model host',
+  hint: 'The download never started — huggingface.co was unreachable from this browser.',
+  uniform: true,
+  count: 5
+};
+
+const healthyRoutes = () => [
+  ['/tree/main', () => treeOf([['SmolLM2-135M-Instruct-Q3_K_L.gguf', 134, Math.round(68.4 * MB)]])],
+  ['/api/models/bartowski', () => metaOf({})],
+  ['/api/models/HuggingFaceTB', () => metaOf({ siblings: [{ rfilename: 'onnx/model_q4.onnx' }, { rfilename: 'onnx/model_q4.onnx_data' }, { rfilename: 'README.md' }] })],
+  localMissing
+];
+
+test('the file the loaders really download is probed, and the CDN behind it is named', async () => {
+  const { facts, calls, lines } = await diagnose(healthyRoutes());
+
+  assert.equal(facts.download.status, 'ok');
+  assert.equal(facts.download.path, 'SmolLM2-135M-Instruct-Q3_K_L.gguf', 'the probe is of the file the loader picked');
+  assert.equal(facts.download.http, 206);
+  assert.equal(facts.download.bytes, Math.round(68.4 * MB), 'the total comes from Content-Range, not the one byte asked for');
+  assert.equal(facts.download.host, 'cdn-lfs-us-1.hf.co', 'and the redirect target is recorded');
+
+  const probe = calls.find(c => c.url.includes('resolve/main/SmolLM2-135M-Instruct-Q3_K_L.gguf'));
+  assert.ok(probe, `the file URL was really requested: ${calls.map(c => c.url).join(' | ')}`);
+  assert.equal(probe.range, 'bytes=0-0', 'one byte, because the report must not download 880 MB to make a point');
+
+  const text = lines.join('\n');
+  assert.match(text, /The GGUF file WLlama would download — SmolLM2-135M-Instruct-Q3_K_L\.gguf — answered HTTP 206 and is 68\.4 MB in total, served from cdn-lfs-us-1\.hf\.co/);
+  assert.match(text, /so this browser can fetch the weights/);
+  assert.ok(!text.includes('not a dead network'), 'a working download does not get the contradiction paragraph');
+});
+
+test('the ONNX weight is probed too, and the .onnx_data sidecar is not mistaken for it', async () => {
+  const { facts, calls } = await diagnose(healthyRoutes());
+  assert.equal(facts.onnx.weightFile, 'onnx/model_q4.onnx');
+  assert.equal(facts.onnx.hasOnnxWeights, true);
+  assert.equal(facts.onnxDownload.status, 'ok');
+  assert.equal(facts.onnxDownload.path, 'onnx/model_q4.onnx');
+  assert.ok(calls.some(c => c.url.includes('resolve/main/onnx/model_q4.onnx')),
+    'the browser path downloads a different file from the GGUF path, so it gets its own probe');
+  assert.ok(!calls.some(c => c.url.includes('.onnx_data')), 'and the sidecar is never probed');
+  assert.match(describeModelSourceFacts(facts).join('\n'), /The ONNX weight the browser path would download — onnx\/model_q4\.onnx —/);
+});
+
+test('the report refuses to blame the network when the host answered and only the file failed', async () => {
+  // Exactly the failure that came back from a real device: five runtimes all
+  // said "Failed to fetch", while the metadata calls answered HTTP 200.
+  const { facts, lines } = await diagnose([
+    ['/tree/main', () => treeOf([['qwen2.5-1.5b-instruct-q3_k_m.gguf', 134, Math.round(881.6 * MB)]])],
+    ['/api/models/Qwen', () => metaOf({})],
+    ['/api/models/onnx-community', () => metaOf({ siblings: [{ rfilename: 'onnx/decoder_model_merged_quantized.q4.onnx' }] })],
+    ['resolve/main', () => { throw new TypeError('Failed to fetch'); }],
+    localMissing
+  ], {
+    quants: ['Q3_K_L', 'Q3_K_M'],
+    model: {
+      ...CFG,
+      id: 'qwen2.5-1.5b',
+      label: 'Qwen 2.5 1.5B',
+      hfId: 'onnx-community/Qwen2.5-1.5B-Instruct',
+      hfGgufRepo: 'Qwen/Qwen2.5-1.5B-Instruct-GGUF',
+      hfGgufQuant: 'Q3_K_L',
+      ggufFile: 'qwen2.5-1.5b.gguf',
+      ggufMB: 882
+    }
+  });
+
+  assert.equal(facts.gguf.status, 'ok', 'the repository is fine');
+  assert.equal(facts.gguf.http, 200);
+  assert.equal(facts.download.status, 'unreachable', 'the file is not');
+  assert.equal(facts.download.error, 'Failed to fetch');
+  assert.equal(facts.onnxDownload.status, 'unreachable');
+
+  const text = lines.join('\n');
+  assert.match(text, /could not be fetched: HTTP none, could not be reached from this browser \(Failed to fetch\)/);
+  assert.match(text, /That is not a dead network/);
+  assert.match(text, /the repository API on huggingface\.co answered HTTP 200 from this same browser/);
+  assert.match(text, /LFS CDN after a redirect/, 'it names the host that is actually failing');
+  assert.equal(text.split('That is not a dead network').length - 1, 1,
+    'the explanation is printed once, not once per probe');
+
+  const cause = reconcileAiFailureWithFacts(NETWORK_HEADLINE, facts);
+  assert.equal(cause.kind, 'blocked-download');
+  assert.match(cause.title, /Hugging Face answered, but the model file could not be downloaded/);
+  assert.match(cause.hint, /the network is not down/);
+  assert.match(cause.hint, /scripts\/fetch-model\.mjs/, 'and it says what to do about it');
+  assert.equal(cause.count, 5, 'the chain facts survive the overrule');
+  assert.equal(cause.uniform, true);
+
+  const fix = modelSourceFixAdvice(facts, cause);
+  assert.match(fix, /the block is on the download itself/);
+  assert.match(fix, /takes the CDN redirect out of the path/);
+  assert.ok(!fix.includes('treat the network as the suspect'),
+    'the old advice — check your firewall and DNS — is exactly what sent this report down the wrong road');
+});
+
+test('the headline is left alone unless the contradiction is clean', () => {
+  // A download that worked proves nothing was blocked.
+  assert.equal(reconcileAiFailureWithFacts(NETWORK_HEADLINE, {
+    gguf: { http: 200 }, onnx: null,
+    download: { status: 'ok' }, onnxDownload: null
+  }), NETWORK_HEADLINE, 'a working download cannot overrule anything');
+
+  // A dead network fails the metadata call too — that really is the network.
+  assert.equal(reconcileAiFailureWithFacts(NETWORK_HEADLINE, {
+    gguf: { http: null, status: 'unreachable' }, onnx: null,
+    download: { status: 'unreachable' }, onnxDownload: null
+  }).kind, 'network');
+
+  // No file probe, no overrule: nothing was measured.
+  assert.equal(reconcileAiFailureWithFacts(NETWORK_HEADLINE, {
+    gguf: { http: 200 }, onnx: null, download: null, onnxDownload: null
+  }), NETWORK_HEADLINE);
+
+  // And a different kind of failure is none of this function's business.
+  const memory = { kind: 'memory', title: 'Not enough memory', hint: '' };
+  assert.equal(reconcileAiFailureWithFacts(memory, {
+    gguf: { http: 200 }, onnx: null, download: { status: 'unreachable' }, onnxDownload: null
+  }), memory);
+
+  assert.equal(reconcileAiFailureWithFacts(null, null), null, 'it cannot invent a headline');
+  assert.equal(reconcileAiFailureWithFacts(NETWORK_HEADLINE, null), NETWORK_HEADLINE);
+});
+
+test('a file probe that hangs cannot stall the failure report either', async () => {
+  const started = Date.now();
+  const { facts, lines } = await diagnose([
+    ['/tree/main', () => treeOf([['SmolLM2-135M-Instruct-Q3_K_L.gguf', 134, Math.round(68.4 * MB)]])],
+    ['/api/models/bartowski', () => metaOf({})],
+    ['/api/models/HuggingFaceTB', () => metaOf({})],
+    ['resolve/main', () => new Promise(() => {})],
+    localMissing
+  ], { timeoutMs: 300 });
+  const elapsed = Date.now() - started;
+
+  assert.equal(facts.download.status, 'timeout');
+  assert.match(lines.join('\n'), /could not be fetched: HTTP none, the request timed out/);
+  assert.ok(elapsed < 3000, `both probes were time-boxed and ran together (${elapsed} ms)`);
+});
+
+test('the model table carries the size the live report measured, not a guess', () => {
+  const qwen = TEXT_MODELS.find(m => m.id === 'qwen2.5-1.5b');
+  assert.ok(qwen, 'the model is still in the table');
+  // The source report from a real device measured qwen2.5-1.5b-instruct-q3_k_m.gguf
+  // at 881.6 MB while the table claimed 700 MB. That number drives the
+  // "will this fit?" check and every warning built on it.
+  assert.equal(qwen.ggufMB, 882);
+  assert.match(qwen.desc, /~882 MB/, 'the description quotes the same measured figure');
+  assert.ok(!qwen.desc.includes('700'), 'and not the old guess');
+  assert.equal(qwen.hfGgufRepo, 'Qwen/Qwen2.5-1.5B-Instruct-GGUF');
 });

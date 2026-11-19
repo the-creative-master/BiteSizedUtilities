@@ -2,7 +2,7 @@
 import { gEl, gameBtn, gameTabs, gameToggle, gameSlider, gameColorPicker, gameFilePill, gameField, statBox, copyToClipboard } from './ui-kit.js';
 import { playPop, playSparkle } from './sfx.js';
 import {
-  BETA_STUDIO_ID, isBetaPage, createDoc, createHistory, cloneDoc, touchedLayerIds,
+  LAYERS_STUDIO_ID, isBackupPage, createDoc, createHistory, cloneDoc, touchedLayerIds,
   BRUSH_GROUPS, STAMP_GLYPHS, SYMMETRY_MODES, BLEND_MODES, CANVAS_PRESETS, blendLabel,
   SIZE_RANGE, OPACITY_RANGE, FLOW_RANGE, SMOOTH_RANGE, MAX_DOC_W, MAX_DOC_H, MAX_LAYER_NAME, MAX_PROJECT_BYTES,
   brushById, brushesForGroup, paintSegment, drawShape, stampGlyph, pressureOf,
@@ -12,13 +12,14 @@ import {
   mergeDown, flattenDoc, resizeDoc,
   pushUndo, popUndo, pushRedo, popRedo, historyBytes, clearHistory,
   serializeProject, parseProject
-} from './art-studio-beta.js';
+} from './art-studio-layers.js';
 
 const TEXT_IDS = ['file-converter', 'crazy-text-filters', 'word-counter', 'case-converter', 'json-formatter', 'base64', 'url-codec', 'markdown-preview', 'text-diff', 'find-replace', 'lorem-ipsum', 'hash-generator', 'csv-editor', 'notepad', 'file-inspector'];
 const ART_IDS = ['art-studio', 'color-picker', 'palette-generator', 'gradient-maker', 'pixel-art', 'image-resizer', 'image-cropper', 'image-filters', 'svg-editor', 'contrast-checker', 'color-converter', 'pattern-maker', 'collage-maker', 'ascii-art', 'mandala'];
-// Beta-only art toy. Kept out of ART_IDS so the shipped catalogue stays 115 tools;
-// it is dispatched from here but refuses to mount unless the page is beta.html.
-const ART_BETA_IDS = [BETA_STUDIO_ID];
+// Backup-only art toy. Kept out of ART_IDS so the shipped catalogue stays 115
+// tools; it is dispatched from here but refuses to mount unless the page is
+// backup.html.
+const ART_LAYERS_IDS = [LAYERS_STUDIO_ID];
 const LIMIT = 20 * 1024 * 1024;
 
 function area(value = '', rows = 7) {
@@ -1118,9 +1119,9 @@ function mandala(ctx) {
   );
 }
 
-/* ============ ART STUDIO (BETA) — layers, 18 brushes, pressure ============ */
+/* ============ ART STUDIO (WITH LAYERS) — layers, 18 brushes, pressure ============ */
 
-const BETA_PAPERS = {
+const STUDIO_PAPERS = {
   Cream: { css: '#fff8e8', flat: '#fff8e8' },
   Transparent: { css: 'repeating-conic-gradient(#f5ebd6 0% 25%,#fffdf8 0% 50%) 0 / 24px 24px', flat: null },
   Chalkboard: { css: '#2c211d', flat: '#2c211d' },
@@ -1130,7 +1131,7 @@ const BETA_PAPERS = {
 
 /** Paints the paper backdrop into an export canvas so the file matches the preview. */
 function paintPaperBackdrop(g, mode, width, height) {
-  const paper = BETA_PAPERS[mode] || BETA_PAPERS.Cream;
+  const paper = STUDIO_PAPERS[mode] || STUDIO_PAPERS.Cream;
   if (!paper.flat) return;
   g.save();
   g.globalCompositeOperation = 'source-over';
@@ -1146,17 +1147,17 @@ function paintPaperBackdrop(g, mode, width, height) {
   g.restore();
 }
 
-function artStudioBeta(ctx) {
+function artStudioLayers(ctx) {
   let doc = createDoc({ width: 1024, height: 1024, name: 'Untitled' });
   const history = createHistory();
   const surfaces = new Map();
   let pendingEntry = null;
   let painting = false, pid = null, lastPt = null, previewBase = null, strokePts = [], hue = 0, lastPressure = 1, reportedPressure = false;
 
-  const stage = gEl('div', { class: 'beta-stage', 'aria-label': 'Layer stack canvas' });
-  const paperEl = gEl('div', { class: 'beta-stage-paper', 'aria-hidden': 'true' });
+  const stage = gEl('div', { class: 'studio-stage', 'aria-label': 'Layer stack canvas' });
+  const paperEl = gEl('div', { class: 'studio-stage-paper', 'aria-hidden': 'true' });
   stage.append(paperEl);
-  const layerList = gEl('div', { class: 'beta-layer-list', role: 'list', 'aria-label': 'Layers' });
+  const layerList = gEl('div', { class: 'studio-layer-list', role: 'list', 'aria-label': 'Layers' });
 
   /* ------------------------------- controls ------------------------------- */
 
@@ -1166,13 +1167,13 @@ function artStudioBeta(ctx) {
     syncBrushDefaults();
   }, 'Brush Box');
   const brushTabs = gameTabs(brushItems('ink'), 'pen', () => syncBrushDefaults(), 'Brush');
-  const brushHint = gEl('p', { class: 'beta-brush-hint', 'aria-live': 'polite' });
+  const brushHint = gEl('p', { class: 'studio-brush-hint', 'aria-live': 'polite' });
   const glyphTabs = gameTabs(STAMP_GLYPHS, 'Waffle', null, 'Sticker');
   const glyphRow = gEl('div', { hidden: true }, glyphTabs.el);
   const fillTog = gameToggle('Filled shapes', false);
   const shapeRow = gEl('div', { class: 'gtabs', hidden: true }, fillTog.el);
   const symTabs = gameTabs(SYMMETRY_MODES.map(s => [s.id, s.label]), 'off', null, 'Symmetry');
-  const paperTabs = gameTabs(Object.keys(BETA_PAPERS).map(k => [k, k]), 'Cream', () => { paperEl.style.background = BETA_PAPERS[paperTabs.value].css; }, 'Paper Backdrop');
+  const paperTabs = gameTabs(Object.keys(STUDIO_PAPERS).map(k => [k, k]), 'Cream', () => { paperEl.style.background = STUDIO_PAPERS[paperTabs.value].css; }, 'Paper Backdrop');
   const colorPick = gameColorPicker('Studio Ink', '#e78167');
 
   const sizeSl = gameSlider({ label: 'Brush Size', min: SIZE_RANGE.min, max: SIZE_RANGE.max, step: 1, value: 12, unit: 'px', color: '#e78167' });
@@ -1180,14 +1181,14 @@ function artStudioBeta(ctx) {
   const flowSl = gameSlider({ label: 'Flow (build-up)', min: FLOW_RANGE.min, max: FLOW_RANGE.max, step: 5, value: 100, unit: '%', color: '#f0a5a5' });
   const smoothSl = gameSlider({ label: 'Stroke Smoothing', min: SMOOTH_RANGE.min, max: SMOOTH_RANGE.max, step: 5, value: 55, unit: '%', color: '#8fc487' });
   const pressureTog = gameToggle('Pen pressure', true, () => updatePressureReadout());
-  const pressureReadout = gEl('span', { class: 'beta-pressure-readout' });
+  const pressureReadout = gEl('span', { class: 'studio-pressure-readout' });
 
   const layerOpacitySl = gameSlider({ label: 'Active Layer Opacity', min: 0, max: 100, step: 5, value: 100, unit: '%', color: '#c79ae0', onChange: v => patchActive({ opacity: v }) });
   const lockTog = gameToggle('Lock active layer', false, () => patchActive({ locked: lockTog.checked }));
-  const blendRow = gEl('div', { class: 'beta-chip-row', role: 'group', 'aria-label': 'Layer blend mode' });
+  const blendRow = gEl('div', { class: 'studio-chip-row', role: 'group', 'aria-label': 'Layer blend mode' });
   const blendBtns = new Map();
   for (const mode of BLEND_MODES) {
-    const b = gEl('button', { type: 'button', class: 'beta-chip', 'data-blend': mode, 'aria-pressed': 'false' }, blendLabel(mode));
+    const b = gEl('button', { type: 'button', class: 'studio-chip', 'data-blend': mode, 'aria-pressed': 'false' }, blendLabel(mode));
     b.addEventListener('click', () => { playPop(560); patchActive({ blend: mode }); });
     blendBtns.set(mode, b);
     blendRow.append(b);
@@ -1217,7 +1218,7 @@ function artStudioBeta(ctx) {
     for (const layer of doc.layers) {
       if (!surfaces.has(layer.id)) {
         const c = canvas(doc.width, doc.height);
-        c.classList.add('beta-layer-canvas');
+        c.classList.add('studio-layer-canvas');
         c.dataset.layerId = layer.id;
         c.setAttribute('aria-label', `${layer.name} layer canvas`);
         surfaces.set(layer.id, { canvas: c, g: c.getContext('2d', { willReadFrequently: true }) });
@@ -1231,7 +1232,7 @@ function artStudioBeta(ctx) {
       stage.append(s.canvas);
     }
     stage.style.aspectRatio = `${doc.width} / ${doc.height}`;
-    paperEl.style.background = BETA_PAPERS[paperTabs.value].css;
+    paperEl.style.background = STUDIO_PAPERS[paperTabs.value].css;
   }
 
   function activeSurface() { return surfaces.get(doc.activeId) || null; }
@@ -1335,7 +1336,7 @@ function artStudioBeta(ctx) {
   function rebuildSurfacesForResize(resize) {
     for (const [id, s] of [...surfaces]) {
       const next = canvas(resize.width, resize.height);
-      next.classList.add('beta-layer-canvas');
+      next.classList.add('studio-layer-canvas');
       next.dataset.layerId = id;
       next.setAttribute('aria-label', `${layerById(doc, id)?.name || id} layer canvas`);
       next.getContext('2d').drawImage(s.canvas, 0, 0);
@@ -1400,10 +1401,10 @@ function artStudioBeta(ctx) {
     layerList.replaceChildren();
     for (const layer of [...doc.layers].reverse()) {
       const isActive = layer.id === doc.activeId;
-      const row = gEl('div', { class: `beta-layer-row${isActive ? ' is-active' : ''}`, role: 'listitem', 'data-layer': layer.id });
+      const row = gEl('div', { class: `studio-layer-row${isActive ? ' is-active' : ''}`, role: 'listitem', 'data-layer': layer.id });
 
       const eye = gEl('button', {
-        type: 'button', class: 'beta-layer-eye', 'aria-pressed': String(layer.visible !== false),
+        type: 'button', class: 'studio-layer-eye', 'aria-pressed': String(layer.visible !== false),
         'aria-label': `${layer.visible === false ? 'Show' : 'Hide'} ${layer.name}`, title: 'Show / hide'
       }, layer.visible === false ? '🚫' : '👁');
       eye.addEventListener('click', () => {
@@ -1414,14 +1415,14 @@ function artStudioBeta(ctx) {
         syncAll();
       });
 
-      const nameBtn = gEl('button', { type: 'button', class: 'beta-layer-name', title: 'Make this the active layer' },
+      const nameBtn = gEl('button', { type: 'button', class: 'studio-layer-name', title: 'Make this the active layer' },
         `${layer.locked ? '🔒 ' : ''}${layer.name}`);
       nameBtn.addEventListener('click', () => { playPop(600); doc = setActiveLayer(doc, layer.id).doc; syncAll(); });
 
-      const chip = gEl('span', { class: 'beta-layer-chip' },
+      const chip = gEl('span', { class: 'studio-layer-chip' },
         `${blendLabel(layer.blend)}${layer.opacity === 100 ? '' : ` · ${layer.opacity}%`}`);
 
-      const btns = gEl('span', { class: 'beta-layer-btns' },
+      const btns = gEl('span', { class: 'studio-layer-btns' },
         miniBtn('▲', `Raise ${layer.name}`, () => runOp(`Raise ${layer.name}`, moveLayer(doc, layer.id, 'up'))),
         miniBtn('▼', `Lower ${layer.name}`, () => runOp(`Lower ${layer.name}`, moveLayer(doc, layer.id, 'down'))),
         miniBtn('⧉', `Duplicate ${layer.name}`, () => runOp(`Duplicate ${layer.name}`, duplicateLayer(doc, layer.id))),
@@ -1436,7 +1437,7 @@ function artStudioBeta(ctx) {
   }
 
   function miniBtn(label, ariaLabel, onClick) {
-    const b = gEl('button', { type: 'button', class: 'gbtn gbtn-mini beta-layer-btn', 'aria-label': ariaLabel, title: ariaLabel }, label);
+    const b = gEl('button', { type: 'button', class: 'gbtn gbtn-mini studio-layer-btn', 'aria-label': ariaLabel, title: ariaLabel }, label);
     b.addEventListener('click', () => {
       try { playPop(520); onClick(); }
       catch (err) { ctx.say(err.message || String(err)); }
@@ -1447,7 +1448,7 @@ function artStudioBeta(ctx) {
   function startRename(layer, row) {
     const input = textInput(layer.name, 'Layer name');
     input.maxLength = MAX_LAYER_NAME;
-    input.classList.add('beta-layer-rename');
+    input.classList.add('studio-layer-rename');
     input.setAttribute('aria-label', `New name for ${layer.name}`);
     let done = false;
     const commit = () => {
@@ -1694,7 +1695,7 @@ function artStudioBeta(ctx) {
   async function exportImage(mime, ext, opts) {
     const out = canvas(doc.width, doc.height);
     compositeTo(out, opts);
-    const name = `${(doc.name || 'art-studio-beta').replace(/[^\w.-]+/g, '-').toLowerCase()}${opts?.layerOnly ? '-layer' : ''}.${ext}`;
+    const name = `${(doc.name || 'art-studio-layers').replace(/[^\w.-]+/g, '-').toLowerCase()}${opts?.layerOnly ? '-layer' : ''}.${ext}`;
     download(await blobFromCanvas(out, mime, 0.94), name);
     ctx.say(`Saved ${name}.`);
   }
@@ -1706,7 +1707,7 @@ function artStudioBeta(ctx) {
       if (s) images.set(layer.id, s.canvas.toDataURL('image/png'));
     }
     const json = serializeProject(doc, images);
-    download(json, `${(doc.name || 'art-studio-beta').replace(/[^\w.-]+/g, '-').toLowerCase()}.waffleart.json`, 'application/json');
+    download(json, `${(doc.name || 'art-studio-layers').replace(/[^\w.-]+/g, '-').toLowerCase()}.waffleart.json`, 'application/json');
     ctx.say(`Project saved — ${(json.length / 1024).toFixed(0)} KB with ${doc.layers.length} layers.`);
   }
 
@@ -1769,9 +1770,9 @@ function artStudioBeta(ctx) {
   });
 
   ctx.form.append(
-    gEl('div', { class: 'pastel-card cream beta-note' },
-      gEl('strong', {}, '🧪 Beta experiment'),
-      gEl('span', {}, ' Layers, 18 brushes (10 of them pressure-aware), stroke smoothing and a canvas up to 4096×4096. The public Art Studio is untouched — this tile only appears on the beta page, and rough edges are expected.')
+    gEl('div', { class: 'pastel-card cream studio-note' },
+      gEl('strong', {}, '🎨 With layers'),
+      gEl('span', {}, ' Layers, 18 brushes (10 of them pressure-aware), stroke smoothing and a canvas up to 4096×4096. The public Art Studio is untouched — this tile only appears in the backup kitchen, and rough edges are expected.')
     ),
     groupTabs.el,
     brushTabs.el,
@@ -1795,8 +1796,8 @@ function artStudioBeta(ctx) {
         ctx.say('Cleared every layer.');
       })
     ),
-    gEl('div', { class: 'graph-bezel beta-bezel' }, stage),
-    gEl('div', { class: 'beta-layer-panel' },
+    gEl('div', { class: 'graph-bezel studio-bezel' }, stage),
+    gEl('div', { class: 'studio-layer-panel' },
       gEl('div', { class: 'gfield' }, gEl('span', { class: 'gfield-label' }, `Layers (top first)`), layerList),
       gEl('div', { class: 'gtabs' },
         miniBtn('＋', 'Add a layer above', () => runOp('Add layer', addLayer(doc))),
@@ -1806,7 +1807,7 @@ function artStudioBeta(ctx) {
         miniBtn('▣', 'Flatten every visible layer', () => runOp('Flatten', flattenDoc(doc))),
         miniBtn('🗑', 'Delete the active layer', () => runOp('Delete layer', removeLayer(doc, doc.activeId)))
       ),
-      gEl('div', { class: 'beta-layer-controls' }, layerOpacitySl.el, blendRow, lockTog.el)
+      gEl('div', { class: 'studio-layer-controls' }, layerOpacitySl.el, blendRow, lockTog.el)
     ),
     sizePresetTabs.el,
     gEl('div', { class: 'two-col' }, gameField('Width (px)', wIn), gameField('Height (px)', hIn)),
@@ -1826,7 +1827,7 @@ function artStudioBeta(ctx) {
   syncBrushDefaults();
   updatePressureReadout();
 
-  // Waffle AI hands generated images over through sessionStorage; in the beta
+  // Waffle AI hands generated images over through sessionStorage; in the layered
   // studio they land on their own layer instead of being painted flat.
   try {
     const pending = sessionStorage.getItem('waffle-art-import');
@@ -1842,20 +1843,20 @@ function artStudioBeta(ctx) {
     }
   } catch {}
 
-  ctx.say('Beta Art Studio ready — pick a brush, then draw. Every layer has its own opacity and blend mode.');
+  ctx.say('Art Studio (with layers) ready — pick a brush, then draw. Every layer has its own opacity and blend mode.');
 }
 
 export function mountTextArt(id, root) {
-  if ((!TEXT_IDS.includes(id) && !ART_IDS.includes(id) && !ART_BETA_IDS.includes(id)) || !root || typeof root.append !== 'function' || typeof root.querySelectorAll !== 'function') return false;
+  if ((!TEXT_IDS.includes(id) && !ART_IDS.includes(id) && !ART_LAYERS_IDS.includes(id)) || !root || typeof root.append !== 'function' || typeof root.querySelectorAll !== 'function') return false;
   root.querySelectorAll('.tool-form').forEach(n => n.dispatchEvent(new Event('tool-dispose')));
   root.replaceChildren();
   const ctx = init(root);
   try {
     if (TEXT_IDS.includes(id)) textTools(id, ctx);
     else if (id === 'art-studio' || id === 'pixel-art') artStudio(ctx, id === 'pixel-art');
-    else if (id === BETA_STUDIO_ID) {
-      if (!isBetaPage()) { ctx.say('Art Studio (Beta) only runs on the beta testing page.'); return false; }
-      artStudioBeta(ctx);
+    else if (id === LAYERS_STUDIO_ID) {
+      if (!isBackupPage()) { ctx.say('Art Studio (with layers) only runs in the backup kitchen.'); return false; }
+      artStudioLayers(ctx);
     }
     else if (['color-picker', 'palette-generator', 'gradient-maker', 'contrast-checker', 'color-converter'].includes(id)) colorTools(id, ctx);
     else if (['image-resizer', 'image-cropper', 'image-filters'].includes(id)) imageTools(id, ctx);

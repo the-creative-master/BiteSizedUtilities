@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cupboards, allTools, betaToolAdditions, resolveTools } from '../catalog.js';
+import { cupboards, allTools, backupToolAdditions, resolveTools } from '../catalog.js';
 import { mountMathScience } from '../tools-math-science.js';
 import { mountCode } from '../tools-code.js';
 import { mountTextArt } from '../tools-text-art.js';
@@ -179,7 +179,7 @@ test('all 115 utilities across all 8 cupboards render with cozy 2.5D game UI and
   }
 });
 
-/* ==================== Art Studio (Beta): mounted and driven for real ==================== */
+/* ==================== Art Studio (with layers): mounted and driven for real ==================== */
 
 function walk(node, out = []) {
   for (const c of node.children || []) {
@@ -198,39 +198,39 @@ const pointerEvent = (type, x, y, extra = {}) => ({
   preventDefault() {}, ...extra
 });
 
-test('Art Studio (Beta) refuses to mount on the public page and mounts on beta.html', () => {
+test('Art Studio (with layers) refuses to mount on the public page and mounts on backup.html', () => {
   const { FakeElement } = makeDOMShim();
-  const betaId = betaToolAdditions[0].id;
-  assert.equal(betaId, 'art-studio-beta');
+  const layersId = backupToolAdditions[0].id;
+  assert.equal(layersId, 'art-studio-layers');
 
-  document.documentElement.dataset.beta = '0';
+  document.documentElement.dataset.backup = '0';
   const publicRoot = new FakeElement('div');
-  assert.equal(mountTextArt(betaId, publicRoot), false, 'index.html must not be able to open the beta studio');
+  assert.equal(mountTextArt(layersId, publicRoot), false, 'index.html must not be able to open the layered studio');
 
-  document.documentElement.dataset.beta = '1';
+  document.documentElement.dataset.backup = '1';
   const root = new FakeElement('div');
-  assert.equal(mountTextArt(betaId, root), true, 'beta.html mounts it');
-  assert.equal(resolveTools(true).some(t => t.id === betaId), true);
+  assert.equal(mountTextArt(layersId, root), true, 'backup.html mounts it');
+  assert.equal(resolveTools(true).some(t => t.id === layersId), true);
   assert.ok(root.querySelectorAll('.game-panel').length >= 1, 'it uses the shared cozy panel');
   for (const banned of ['select', 'input[type="range"]', 'input[type="checkbox"]', 'input[type="color"]']) {
     assert.equal(root.querySelectorAll(banned).length, 0, `no default ${banned}`);
   }
-  assert.equal(byClass(root, 'beta-stage').length, 1, 'one layer stack');
-  assert.equal(byClass(root, 'beta-layer-row').length, 1, 'it opens with a single layer');
-  assert.equal(byClass(root, 'beta-layer-canvas').length, 1);
-  assert.ok(byClass(root, 'beta-chip').length >= 12, 'every blend mode is offered');
+  assert.equal(byClass(root, 'studio-stage').length, 1, 'one layer stack');
+  assert.equal(byClass(root, 'studio-layer-row').length, 1, 'it opens with a single layer');
+  assert.equal(byClass(root, 'studio-layer-canvas').length, 1);
+  assert.ok(byClass(root, 'studio-chip').length >= 12, 'every blend mode is offered');
   assert.ok(byText(root, '↩ Undo') && byText(root, '↪ Redo'), 'undo and redo are on the panel');
 });
 
-test('driving the beta studio: layers, strokes, undo order, merge and flatten', () => {
+test('driving the layered studio: layers, strokes, undo order, merge and flatten', () => {
   const { FakeElement } = makeDOMShim();
-  document.documentElement.dataset.beta = '1';
+  document.documentElement.dataset.backup = '1';
   const root = new FakeElement('div');
-  mountTextArt('art-studio-beta', root);
-  const stage = byClass(root, 'beta-stage')[0];
+  mountTextArt('art-studio-layers', root);
+  const stage = byClass(root, 'studio-stage')[0];
   const status = () => byClass(root, 'output')[0].textContent;
-  const rows = () => byClass(root, 'beta-layer-row').length;
-  const canvases = () => byClass(root, 'beta-layer-canvas').length;
+  const rows = () => byClass(root, 'studio-layer-row').length;
+  const canvases = () => byClass(root, 'studio-layer-canvas').length;
   assert.equal(rows(), 1);
 
   // A stroke on the empty document is undoable on its own.
@@ -281,7 +281,7 @@ test('driving the beta studio: layers, strokes, undo order, merge and flatten', 
   click(byLabel(root, 'Flatten every visible layer'));
   assert.equal(rows(), 1);
   assert.equal(canvases(), 1, 'the hidden canvases are released');
-  assert.ok(byClass(root, 'beta-layer-row')[0].textContent.includes('Flattened'));
+  assert.ok(byClass(root, 'studio-layer-row')[0].textContent.includes('Flattened'));
   click(byText(root, '↩ Undo'));
   assert.equal(rows(), 3, 'flattening is not a one-way door');
 

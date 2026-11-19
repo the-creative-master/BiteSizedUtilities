@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { cupboards, allTools, betaToolAdditions, resolveTools, cupboardToolCount } from '../catalog.js';
+import { cupboards, allTools, backupToolAdditions, resolveTools, cupboardToolCount } from '../catalog.js';
+import { isBackupBuild } from '../build-mode.js';
 import { toolPropSVG } from '../icons-25d.js';
 import {
-  BETA_STUDIO_ID, isBetaPage, createDoc, createHistory, cloneDoc, touchedLayerIds,
+  LAYERS_STUDIO_ID, isBackupPage, createDoc, createHistory, cloneDoc, touchedLayerIds,
   BRUSHES, BRUSH_GROUPS, STAMP_GLYPHS, SYMMETRY_MODES, BLEND_MODES, BLEND_LABELS, CANVAS_PRESETS,
   SIZE_RANGE, OPACITY_RANGE, FLOW_RANGE, SMOOTH_RANGE, MAX_DOC_W, MAX_LAYERS, MAX_LAYER_NAME,
-  MAX_PROJECT_BYTES, PROJECT_MAGIC, PROJECT_VERSION,
+  MAX_PROJECT_BYTES, PROJECT_MAGIC, LEGACY_PROJECT_MAGIC, PROJECT_VERSION,
   brushById, brushesForGroup, isShapeBrush, clampToRange, paintSegment, drawShape, stampGlyph,
   pressureOf, radiusFor, calligraphyWidth, angleOf, densifySegment, resamplePolyline,
   quadraticPolyline, smoothedSegment, midpoint, smoothPoints, mirrorPoints, radialCount,
@@ -16,7 +17,7 @@ import {
   moveLayer, setLayer, setActiveLayer, mergeDown, flattenDoc, resizeDoc, renameDoc, layerAcceptsPaint,
   imageDataBytes, entryBytes, historyBytes, pushUndo, popUndo, pushRedo, popRedo, trimHistory,
   clearHistory, serializeProject, parseProject
-} from '../art-studio-beta.js';
+} from '../art-studio-layers.js';
 
 const uiSrc = fs.readFileSync('tools-text-art.js', 'utf8');
 const appSrc = fs.readFileSync('app.js', 'utf8');
@@ -61,75 +62,88 @@ test('the shipped catalogue is untouched: 8 cupboards, 115 utilities, 15 in Art 
   assert.equal(allTools.length, 115);
   const art = cupboards.find(c => c.id === 'art');
   assert.equal(art.tools.length, 15);
-  assert.ok(!allTools.some(t => t.id === BETA_STUDIO_ID), 'the beta studio is not a shipped utility');
-  assert.ok(!art.tools.some(t => t[0] === BETA_STUDIO_ID));
+  assert.ok(!allTools.some(t => t.id === LAYERS_STUDIO_ID), 'the beta studio is not a shipped utility');
+  assert.ok(!art.tools.some(t => t[0] === LAYERS_STUDIO_ID));
   assert.equal(cupboardToolCount('art'), 15);
 });
 
 test('resolveTools(false) is the identical shipped array, resolveTools(true) adds exactly one tile', () => {
   assert.equal(resolveTools(false), allTools, 'the public kitchen must not get a copy or a re-sort');
   assert.equal(resolveTools(false).length, 115);
-  const beta = resolveTools(true);
-  assert.equal(beta.length, 116);
-  assert.equal(new Set(beta.map(t => t.id)).size, 116, 'beta ids stay unique');
-  assert.equal(beta.filter(t => t.beta).length, 1);
+  const withExtras = resolveTools(true);
+  assert.equal(withExtras.length, 116);
+  assert.equal(new Set(withExtras.map(t => t.id)).size, 116, 'backup-only ids stay unique');
+  assert.equal(withExtras.filter(t => t.backup).length, 1);
   assert.equal(cupboardToolCount('art', true), 16);
-  assert.equal(cupboardToolCount('math', true), 10, 'cupboards with no beta extra are unchanged');
+  assert.equal(cupboardToolCount('math', true), 10, 'cupboards with no extra are unchanged');
 });
 
-test('the beta tile sits directly after Art Studio and inherits its cupboard identity', () => {
-  const beta = resolveTools(true);
-  const art = beta.filter(t => t.cupboard === 'art').map(t => t.id);
-  const at = art.indexOf(BETA_STUDIO_ID);
-  assert.ok(at > 0, 'the beta studio is in the Art & Coloring cupboard');
-  assert.equal(art[at - 1], 'art-studio', 'it sits right after the tool it experiments on');
-  const tile = beta.find(t => t.id === BETA_STUDIO_ID);
+test('the layered studio tile sits directly after Art Studio and inherits its cupboard identity', () => {
+  const withExtras = resolveTools(true);
+  const art = withExtras.filter(t => t.cupboard === 'art').map(t => t.id);
+  const at = art.indexOf(LAYERS_STUDIO_ID);
+  assert.ok(at > 0, 'the layered studio is in the Art & Coloring cupboard');
+  assert.equal(art[at - 1], 'art-studio', 'it sits right after the tool it upgrades');
+  const tile = withExtras.find(t => t.id === LAYERS_STUDIO_ID);
   const shipped = allTools.find(t => t.id === 'art-studio');
-  assert.equal(tile.star, false, 'a beta experiment never becomes the cupboard star');
-  assert.equal(tile.beta, true);
+  assert.equal(tile.star, false, 'a backup-only tool never becomes the cupboard star');
+  assert.equal(tile.backup, true);
   assert.equal(tile.icon, shipped.icon);
   assert.equal(tile.color, shipped.color);
-  assert.ok(tile.name.includes('Beta'), tile.name);
+  assert.equal(tile.name, 'Art Studio (with layers)', 'the name says what the tool does');
+  assert.ok(!/beta/i.test(tile.name), 'and not which stage of release it is at');
   assert.ok(tile.description.length > 10, 'the tile explains itself');
-  assert.equal(betaToolAdditions.length, 1);
+  assert.equal(backupToolAdditions.length, 1);
 });
 
-test('the beta studio gets its own hand-drawn 2.5D icon, distinct from all 115', () => {
-  const beta = toolPropSVG(BETA_STUDIO_ID);
-  assert.ok(beta.startsWith('<svg') && beta.includes('viewBox="0 0 96 96"'), 'same 96px tile as every other icon');
+test('the layered studio gets its own hand-drawn 2.5D icon, distinct from all 115', () => {
+  const layersIcon = toolPropSVG(LAYERS_STUDIO_ID);
+  assert.ok(layersIcon.startsWith('<svg') && layersIcon.includes('viewBox="0 0 96 96"'), 'same 96px tile as every other icon');
   const shipped = allTools.map(t => toolPropSVG(t.id));
-  assert.ok(!shipped.includes(beta), 'the beta icon is not a duplicate of a shipped one');
-  assert.notEqual(beta, toolPropSVG('art-studio'), 'it must not reuse the Art Studio pencil');
-  assert.equal(new Set([...shipped, beta]).size, 116);
-  assert.ok(iconSrc.includes(`'${BETA_STUDIO_ID}': wrapTile(`), 'the icon lives in the TOOL_SVGS map');
+  assert.ok(!shipped.includes(layersIcon), 'the layered icon is not a duplicate of a shipped one');
+  assert.notEqual(layersIcon, toolPropSVG('art-studio'), 'it must not reuse the Art Studio pencil');
+  assert.equal(new Set([...shipped, layersIcon]).size, 116);
+  assert.ok(iconSrc.includes(`'${LAYERS_STUDIO_ID}': wrapTile(`), 'the icon lives in the TOOL_SVGS map');
 });
 
-test('app.js resolves the tool list through the beta flag and never reads allTools directly', () => {
-  assert.ok(appSrc.includes('const BETA_BUILD = isBetaTesting();'), 'app.js asks the page whether it is beta');
-  assert.ok(appSrc.includes('resolveTools(BETA_BUILD)'), 'the tool list comes from resolveTools');
+test('app.js resolves the tool list through the backup flag and never reads allTools directly', () => {
+  assert.ok(appSrc.includes("import { isBackupBuild } from './build-mode.js';"), 'app.js asks the shared flag which build this page is');
+  assert.ok(appSrc.includes('const BACKUP_BUILD = isBackupBuild();'));
+  assert.ok(appSrc.includes('resolveTools(BACKUP_BUILD)'), 'the tool list comes from resolveTools');
   assert.ok(!appSrc.includes('allTools'), 'every render path uses the resolved list');
-  assert.ok(appSrc.includes('cupboardToolCount(c.id, BETA_BUILD)'), 'the cupboard door advertises the beta count');
-  assert.ok(appSrc.includes('shelf-beta-badge'), 'beta tiles are visibly marked on the shelf');
+  assert.ok(appSrc.includes('cupboardToolCount(c.id, BACKUP_BUILD)'), 'the cupboard door advertises the right count');
+  // The extra tile is no longer badged on the shelf. A badge would advertise
+  // which tools only exist in the other build, and the tool is named for what it
+  // does rather than for the stage it is at.
+  assert.ok(!appSrc.includes('shelf-backup-badge'), 'no shelf badge marks the extra tile');
+  assert.ok(!/beta/i.test(appSrc), 'app.js does not use the retired word anywhere');
 });
 
-test('the beta studio refuses to mount anywhere but beta.html', () => {
-  assert.ok(uiSrc.includes("import {\n  BETA_STUDIO_ID, isBetaPage,"), 'the tool imports the beta gate');
-  assert.ok(uiSrc.includes('const ART_BETA_IDS = [BETA_STUDIO_ID];'), 'beta ids are kept out of ART_IDS');
-  assert.match(uiSrc, /else if \(id === BETA_STUDIO_ID\) \{\s*\n\s*if \(!isBetaPage\(\)\)/,
-    'mounting is gated on the page being beta');
-  assert.ok(uiSrc.includes('Art Studio (Beta) only runs on the beta testing page.'), 'a refused mount says why');
+test('the layered studio refuses to mount anywhere but backup.html', () => {
+  assert.ok(uiSrc.includes("import {\n  LAYERS_STUDIO_ID, isBackupPage,"), 'the tool imports the page gate');
+  assert.ok(uiSrc.includes('const ART_LAYERS_IDS = [LAYERS_STUDIO_ID];'), 'backup-only ids are kept out of ART_IDS');
+  assert.match(uiSrc, /else if \(id === LAYERS_STUDIO_ID\) \{\s*\n\s*if \(!isBackupPage\(\)\)/,
+    'mounting is gated on which page this is');
+  assert.ok(uiSrc.includes('Art Studio (with layers) only runs in the backup kitchen.'), 'a refused mount says why');
 });
 
-test('isBetaPage reads the same flag as isBetaTesting, and both fail closed', () => {
-  assert.equal(isBetaPage({ documentElement: { dataset: { beta: '1' } } }), true);
-  assert.equal(isBetaPage({ documentElement: { dataset: { beta: '0' } } }), false);
-  assert.equal(isBetaPage({ documentElement: { dataset: {} } }), false);
-  assert.equal(isBetaPage(undefined), false, 'no document at all means not beta');
-  const aiSrc = fs.readFileSync('waffle-ai.js', 'utf8');
-  assert.ok(aiSrc.includes("dataset?.beta === '1'"), 'waffle-ai.js gates on data-beta');
-  assert.ok(fs.readFileSync('art-studio-beta.js', 'utf8').includes("dataset?.beta === '1'"),
-    'the studio gates on the same attribute, so the two can never disagree');
-  assert.ok(fs.readFileSync('beta.html', 'utf8').includes('data-beta="1"'), 'beta.html sets it');
+test('isBackupPage reads the same flag as isBackupBuild, and both fail closed', () => {
+  assert.equal(isBackupPage({ documentElement: { dataset: { backup: '1' } } }), true);
+  assert.equal(isBackupBuild({ documentElement: { dataset: { backup: '1' } } }), true, 'same flag, same answer');
+  assert.equal(isBackupPage({ documentElement: { dataset: { backup: '0' } } }), false);
+  assert.equal(isBackupPage({ documentElement: { dataset: {} } }), false);
+  assert.equal(isBackupPage({ documentElement: { dataset: { beta: '1' } } }), false, 'the retired attribute opens nothing');
+  assert.equal(isBackupPage(undefined), false, 'no document at all means the public build');
+
+  // One module reads the attribute, and everybody else imports it, so the AI
+  // gate and the studio gate cannot drift apart.
+  const modeSrc = fs.readFileSync('build-mode.js', 'utf8');
+  assert.ok(modeSrc.includes("dataset?.backup === '1'"), 'build-mode.js is the only place the flag is read');
+  assert.ok(fs.readFileSync('waffle-ai.js', 'utf8').includes("import { isBackupBuild } from './build-mode.js';"),
+    'the AI gate imports it');
+  assert.ok(fs.readFileSync('art-studio-layers.js', 'utf8').includes("export { isBackupBuild as isBackupPage } from './build-mode.js';"),
+    'and so does the studio');
+  assert.ok(fs.readFileSync('backup.html', 'utf8').includes('data-backup="1"'), 'backup.html sets it');
 });
 
 /* ================================== layer model ================================== */
@@ -739,7 +753,17 @@ test('parseProject rejects anything that is not one of our own projects, with a 
   assert.throws(() => parseProject(null), /empty/);
   assert.throws(() => parseProject('{not json'), /not valid JSON/);
   assert.throws(() => parseProject('42'), /not a Waffle Art project/);
-  assert.throws(() => parseProject(mutate(r => { r.magic = 'photoshop'; })), /not saved by Art Studio \(Beta\)/);
+  assert.throws(() => parseProject(mutate(r => { r.magic = 'photoshop'; })), /not saved by Art Studio \(with layers\)/);
+  // Renaming the studio must not cost anybody a drawing: the old magic string is
+  // still accepted on the way in, and never written on the way out.
+  assert.equal(PROJECT_MAGIC, 'waffle-art-layers');
+  assert.equal(LEGACY_PROJECT_MAGIC, 'waffle-art-beta');
+  let legacyError = null;
+  try { parseProject(mutate(r => { r.magic = LEGACY_PROJECT_MAGIC; })); } catch (e) { legacyError = e.message; }
+  assert.ok(!legacyError || !/not saved by/i.test(legacyError),
+    `a project saved before the rename still opens (${legacyError || 'parsed cleanly'})`);
+  assert.ok(JSON.parse(serializeProject(createDoc({}), new Map())).magic === PROJECT_MAGIC,
+    'new files are written with the current magic');
   assert.throws(() => parseProject(mutate(r => { r.version = 99; })), /reads version 1 projects/);
   assert.throws(() => parseProject(mutate(r => { r.layers = []; })), /no layers/);
   assert.throws(() => parseProject(mutate(r => { r.layers = null; })), /no layers/);
@@ -787,7 +811,7 @@ test('every blend mode has a human label and a CSS equivalent', () => {
 
 test('the studio UI is driven by the registries rather than hardcoded duplicates', () => {
   for (const needle of [
-    'function artStudioBeta(ctx)', 'brushesForGroup(', 'BRUSH_GROUPS.map(', 'SYMMETRY_MODES.map(',
+    'function artStudioLayers(ctx)', 'brushesForGroup(', 'BRUSH_GROUPS.map(', 'SYMMETRY_MODES.map(',
     'CANVAS_PRESETS.map(', 'for (const mode of BLEND_MODES)', 'STAMP_GLYPHS', 'paintSegment(',
     'drawShape(', 'stampGlyph(', 'smoothedSegment(', 'mirrorPoints(', 'pressureOf(',
     'createHistory()', 'pushUndo(history', 'popUndo(history', 'pushRedo(history', 'popRedo(history',
@@ -811,10 +835,10 @@ test('the studio UI is driven by the registries rather than hardcoded duplicates
 });
 
 test('the beta studio has its own styling and adds none of the banned CSS', () => {
-  for (const cls of ['.beta-stage', '.beta-stage-paper', '.beta-layer-canvas', '.beta-layer-panel',
-    '.beta-layer-row', '.beta-layer-eye', '.beta-layer-name', '.beta-layer-chip', '.beta-layer-btn',
-    '.beta-layer-controls', '.beta-chip-row', '.beta-chip', '.beta-brush-hint', '.beta-note',
-    '.beta-pressure-readout', '.shelf-beta-badge']) {
+  for (const cls of ['.studio-stage', '.studio-stage-paper', '.studio-layer-canvas', '.studio-layer-panel',
+    '.studio-layer-row', '.studio-layer-eye', '.studio-layer-name', '.studio-layer-chip', '.studio-layer-btn',
+    '.studio-layer-controls', '.studio-chip-row', '.studio-chip', '.studio-brush-hint', '.studio-note',
+    '.studio-pressure-readout', '.shelf-backup-badge']) {
     assert.ok(cssSrc.includes(cls), `${cls} is styled`);
   }
   assert.ok(cssSrc.includes('isolation: isolate'), 'layer blend modes cannot leak into the page');

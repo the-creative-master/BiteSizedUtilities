@@ -245,12 +245,12 @@ export default defineConfig({
     target: 'es2022',
     chunkSizeWarningLimit: 1200,
     rollupOptions: {
-      // beta.html is the beta-testing door (ten taps on Sir Waffle in three
-      // seconds). Rollup only emits index.html unless it is listed here, and
-      // the easter egg would 404 on GitHub Pages.
+      // backup.html is the second build of the same kitchen, reached by a
+      // hidden gesture. Rollup only emits index.html unless it is listed here,
+      // and the page would 404 on GitHub Pages.
       input: {
         main: path.resolve('index.html'),
-        beta: path.resolve('beta.html')
+        backup: path.resolve('backup.html')
       }
     }
   },

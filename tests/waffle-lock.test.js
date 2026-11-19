@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import {
   WAFFLE_AI_LOCK_MESSAGE,
   WaffleAiLockedError,
-  isBetaTesting,
+  isBackupBuild,
   isWaffleAiLocked,
   openWaffleAI,
   closeWaffleAI,
@@ -19,7 +19,7 @@ import { APP_VERSION, CHANGELOG } from '../changelog.js';
  * needs createElement/append and null-safe querySelector. The full chat overlay
  * needs a real browser and is covered by the Playwright suites instead.
  */
-function miniDOM({ beta = false } = {}) {
+function miniDOM({ backup = false } = {}) {
   const mk = tag => ({
     tagName: String(tag).toUpperCase(),
     children: [],
@@ -52,7 +52,7 @@ function miniDOM({ beta = false } = {}) {
     removeEventListener() {},
     querySelector() { return null; }
   };
-  if (beta) doc.documentElement.dataset.beta = '1';
+  if (backup) doc.documentElement.dataset.backup = '1';
   globalThis.document = doc;
   if (!globalThis.window) globalThis.window = { addEventListener() {}, removeEventListener() {} };
   return doc;
@@ -72,9 +72,9 @@ test('Waffle AI is paused with the promised apology, and the pause is spelled co
   assert.match(waffleAiLockedNoticeHTML(), /waffle-ai-locked-note/);
 });
 
-test('the AI gate is locked by default and opens only for the beta build', async () => {
-  miniDOM({ beta: false });
-  assert.equal(isBetaTesting(), false, 'index.html is not a beta build');
+test('the AI gate is locked by default and opens only for the backup build', async () => {
+  miniDOM({ backup: false });
+  assert.equal(isBackupBuild(), false, 'index.html is not the backup build');
   assert.equal(isWaffleAiLocked(), true, 'AI is paused in the public build');
 
   await assert.rejects(
@@ -83,14 +83,14 @@ test('the AI gate is locked by default and opens only for the beta build', async
     'streamWaffleChat refuses while paused'
   );
 
-  globalThis.document.documentElement.dataset.beta = '1';
-  assert.equal(isBetaTesting(), true, 'data-beta="1" switches AI back on');
+  globalThis.document.documentElement.dataset.backup = '1';
+  assert.equal(isBackupBuild(), true, 'data-backup="1" switches AI back on');
   assert.equal(isWaffleAiLocked(), false);
   clearDOM();
 });
 
 test('no AI network work happens while the feature is paused', async () => {
-  miniDOM({ beta: false });
+  miniDOM({ backup: false });
   const calls = [];
   const realFetch = globalThis.fetch;
   globalThis.fetch = (url, opts) => { calls.push(String(url)); return Promise.resolve({ ok: false, json: async () => ({}) }); };
@@ -104,7 +104,7 @@ test('no AI network work happens while the feature is paused', async () => {
 });
 
 test('tapping Sir Waffle while paused shows the notice, not a dead chat', () => {
-  const doc = miniDOM({ beta: false });
+  const doc = miniDOM({ backup: false });
   openWaffleAI();
   const overlay = doc.body.children.find(el => el.id === 'waffle-ai-overlay');
   assert.ok(overlay, 'an overlay is appended to the body');
@@ -113,7 +113,7 @@ test('tapping Sir Waffle while paused shows the notice, not a dead chat', () => 
   // esc() only escapes &<>"', so the curly apostrophe in the message survives
   // verbatim and the whole sentence must appear on screen.
   assert.ok(overlay.innerHTML.includes(WAFFLE_AI_LOCK_MESSAGE), 'the apology is on screen');
-  assert.match(overlay.innerHTML, /data-waffle-tap/, 'Sir Waffle stays tappable as the beta door');
+  assert.match(overlay.innerHTML, /data-waffle-tap/, 'Sir Waffle stays tappable as the hidden unlock gesture');
   assert.ok(!overlay.innerHTML.includes('waffle-ai-input'), 'no composer is rendered while paused');
 
   closeWaffleAI();
@@ -122,39 +122,50 @@ test('tapping Sir Waffle while paused shows the notice, not a dead chat', () => 
   clearDOM();
 });
 
-test('beta.html is the beta-testing door and is wired into the build', () => {
-  assert.ok(fs.existsSync('beta.html'), 'beta.html exists');
-  const beta = fs.readFileSync('beta.html', 'utf8');
-  assert.match(beta, /<html lang="en" data-beta="1">/, 'beta build is marked on <html> so isBetaTesting() can see it');
-  assert.match(beta, /<title>BiteSizedUtilities Beta Testing<\/title>/);
-  assert.match(beta, /src="\.\/app\.js"/, 'beta page runs the same kitchen app');
-  assert.ok(!beta.includes('iframe'), 'beta page embeds no iframes');
+test('backup.html is the second build of the kitchen and is wired into the build', () => {
+  assert.ok(fs.existsSync('backup.html'), 'backup.html exists');
+  const backup = fs.readFileSync('backup.html', 'utf8');
+  assert.match(backup, /<html lang="en" data-backup="1">/, 'the build is marked on <html> so isBackupBuild() can see it');
+  assert.match(backup, /<title>BiteSized Utilities \u2014 Backup Kitchen<\/title>/);
+  assert.match(backup, /content="noindex,nofollow"/, 'the page asks not to be indexed');
+  assert.match(backup, /src="\.\/app\.js"/, 'it runs the same kitchen app');
+  assert.ok(!backup.includes('iframe'), 'it embeds no iframes');
 
   const viteSrc = fs.readFileSync('vite.config.js', 'utf8');
-  assert.match(viteSrc, /beta:\s*path\.resolve\('beta\.html'\)/, 'Rollup emits beta.html alongside index.html');
+  assert.match(viteSrc, /backup:\s*path\.resolve\('backup\.html'\)/, 'Rollup emits backup.html alongside index.html');
 
   const indexSrc = fs.readFileSync('index.html', 'utf8');
-  assert.ok(!indexSrc.includes('data-beta'), 'the public page is never a beta build');
+  assert.ok(!indexSrc.includes('data-backup'), 'the public page is never the backup build');
 });
 
-test('ten taps on Sir Waffle in three seconds open beta testing', () => {
+test('the unlock gesture still works, and nothing in the UI explains it', () => {
   const appSrc = fs.readFileSync('app.js', 'utf8');
-  assert.match(appSrc, /const BETA_TAP_TARGET = 10;/);
-  assert.match(appSrc, /const BETA_TAP_WINDOW_MS = 3000;/);
-  assert.match(appSrc, /new URL\('beta\.html', document\.baseURI\)/, 'redirect is resolved against the document so GitHub Pages sub-paths work');
+  assert.match(appSrc, /const UNLOCK_TAP_TARGET = 10;/, 'the recipe still lives in one constant');
+  assert.match(appSrc, /const UNLOCK_TAP_WINDOW_MS = 3000;/);
+  assert.match(appSrc, /new URL\('backup\.html', document\.baseURI\)/, 'the redirect is resolved against the document so GitHub Pages sub-paths work');
   assert.match(appSrc, /data-waffle-tap/, 'the corner mascot and the paused notice are both tap targets');
   // The mascot handler calls stopPropagation(), so the counter must listen in
   // the capture phase or taps would never reach it.
   assert.match(appSrc, /document\.addEventListener\('click'[\s\S]{0,120}?\}, true\);/, 'tap counter listens in the capture phase');
-  assert.match(appSrc, /if \(isBetaTesting\(\)\) \{ betaTaps = \[\]; return; \}/, 'beta page does not redirect to itself');
+  assert.match(appSrc, /if \(isBackupBuild\(\)\) \{ unlockTaps = \[\]; return; \}/, 'the backup page does not redirect to itself');
+
+  // The gesture is hidden on purpose: it used to be spelled out in the
+  // changelog, on a banner, and in a hint that counted taps out loud.
+  const aiSrc = fs.readFileSync('waffle-ai.js', 'utf8');
+  const changelogSrc = fs.readFileSync('changelog.js', 'utf8');
+  for (const [name, src] of [['app.js', appSrc], ['waffle-ai.js', aiSrc], ['changelog.js', changelogSrc]]) {
+    assert.ok(!/ten times|ten taps|tap him ten|10 taps/i.test(src), `${name} does not print the recipe`);
+  }
+  assert.ok(!appSrc.includes('waffle-unlock-progress'), 'and the run is not broadcast for a hint to display');
+  assert.ok(!aiSrc.includes('waffle-ai-locked-tap-hint'), 'the paused notice has no tap hint');
 });
 
-test('the paused dialog cannot swallow the taps meant for the beta door', () => {
+test('the paused dialog cannot swallow the taps meant for the unlock gesture', () => {
   // Regression: the dialog opens on the FIRST tap and covers the whole viewport
   // (position fixed, inset 0, z-index 90) including the corner mascot (45). A
   // second tap in the same place landed on the backdrop, which closed the dialog
   // without counting, so the run alternated open/close and could never reach ten
-  // — reported as "beta mode times out".
+  // — which reads exactly like a timeout.
   const aiSrc = fs.readFileSync('waffle-ai.js', 'utf8');
   const lockedFn = aiSrc.slice(aiSrc.indexOf('function buildLockedOverlay()'), aiSrc.indexOf('export function openLockedWaffleAI()'));
 
@@ -167,19 +178,13 @@ test('the paused dialog cannot swallow the taps meant for the beta door', () => 
   assert.match(lockedFn, /#waffle-ai-locked-done/, 'the button still closes it');
   assert.match(lockedFn, /e\.key === 'Escape'/, 'and so does Escape');
 
-  // The run has to be visible: ten taps with no feedback reads as a broken
-  // button, and a run that expires reads as a timeout.
-  const appSrc = fs.readFileSync('app.js', 'utf8');
-  assert.match(appSrc, /window\.dispatchEvent\(new CustomEvent\('waffle-beta-progress'/,
-    'each counted tap is broadcast');
-  assert.match(appSrc, /detail: \{ count: betaTaps\.length, target: BETA_TAP_TARGET \}/,
-    'with the current count and the target');
-  assert.match(lockedFn, /addEventListener\('waffle-beta-progress'/, 'the dialog listens');
-  assert.match(lockedFn, /\$\{count\} \/ \$\{target\} taps/, 'and shows progress');
+  // The dialog still has to stay out of the way, but it no longer narrates the
+  // run: no hint, no counter, no styling for either.
+  assert.ok(!/waffle-unlock-progress/.test(lockedFn), 'the dialog does not listen for a tap count');
+  assert.ok(!/taps/.test(lockedFn), 'and never prints one');
 
   const css = fs.readFileSync('style.css', 'utf8');
-  assert.match(css, /\.waffle-ai-locked-tap-hint \{/, 'the hint is styled');
-  assert.match(css, /\.waffle-ai-locked-tap-hint\.is-counting \{/, 'and changes while counting');
+  assert.ok(!css.includes('waffle-ai-locked-tap-hint'), 'the hint styling went with the hint');
 });
 
 test('the changelog puts 1.1 above 1.0.1 above the original 1.0 release', () => {
@@ -214,9 +219,9 @@ test('the changelog puts 1.1 above 1.0.1 above the original 1.0 release', () => 
   assert.match(latest, /Syrup Glide/);
   assert.match(latest, /Waffle Whisk/);
   assert.match(latest, /51 games/, '1.1 states the new cabinet size');
-  assert.match(latest, /Art Studio \(Beta\)/, '1.1 records the beta art studio');
+  assert.match(latest, /Art Studio \(with layers\)/, '1.1 records the layered art studio by its real name');
   assert.match(latest, /Waffle AI is still paused/, '1.1 does not pretend the AI came back');
-  assert.match(latest, /ten taps on Sir Waffle within three seconds/, '1.1 repeats the beta door recipe');
+  assert.match(latest, /backup build/, '1.1 mentions the other build without advertising how to reach it');
 
   // Vendored games are credited in the release notes, and the retired folder
   // name is not: that rename was never a user-facing change to announce.
@@ -229,8 +234,8 @@ test('the changelog puts 1.1 above 1.0.1 above the original 1.0 release', () => 
   const honest = textOf('1.0.1');
   assert.match(honest, /Waffle AI is paused/, '1.0.1 says the AI is paused');
   assert.ok(honest.includes(WAFFLE_AI_LOCK_MESSAGE), '1.0.1 carries the same apology visitors see');
-  assert.match(honest, /Beta Testing/, '1.0.1 tells testers how to get the AI back');
-  assert.match(honest, /ten times within three seconds/, 'the beta door recipe is documented');
+  assert.ok(!/testing programme/i.test(honest), '1.0.1 no longer advertises a testing programme');
+  assert.ok(!/ten times within three seconds/i.test(honest), 'and no longer prints the unlock recipe');
 
   const originalText = textOf('1.0');
   assert.match(originalText, /115 bite-sized utilities across 8 cupboards/, '1.0 records the launch scope');
@@ -255,18 +260,18 @@ test('the changelog is reachable from the kitchen header and styled like the res
   assert.ok(!css.includes('backdrop-filter'), 'changelog keeps the strict 2.5D rules (no frosted blur)');
 });
 
-test('AI is out of Settings in the public build but back for beta testers', () => {
+test('AI is out of Settings in the public build but back in the backup build', () => {
   const appSrc = fs.readFileSync('app.js', 'utf8');
   const section = appSrc.slice(
-    appSrc.indexOf('${isBetaTesting() ? `'),
+    appSrc.indexOf('${isBackupBuild() ? `'),
     appSrc.indexOf('` : \'\'}\n      </div>\n    </div>\n\n    <div class="settings-overlay" id="english-warning-overlay"')
   );
-  assert.ok(section.length > 500, 'the whole AI settings block is inside the beta conditional');
+  assert.ok(section.length > 500, 'the whole AI settings block is inside the backup conditional');
   for (const id of ['settings-ai-section', 'settings-ai-text-list', 'settings-ai-image-list', 'settings-ai-exec-list', 'settings-ai-quant-list', 'settings-ai-precache', 'settings-temp-wrap']) {
-    assert.ok(section.includes(id), `${id} only renders for beta testers`);
+    assert.ok(section.includes(id), `${id} only renders in the backup build`);
   }
   assert.match(appSrc, /if \(!\$\('#settings-ai-precache'\)\) return;/, 'pre-cache state is not refreshed when the panel is gone');
-  assert.match(appSrc, /if \(!isBetaTesting\(\)\) return;\n\n  detectDeviceDiagnostics/, 'device probes are skipped while AI is paused');
+  assert.match(appSrc, /if \(!isBackupBuild\(\)\) return;\n\n  detectDeviceDiagnostics/, 'device probes are skipped while AI is paused');
 });
 
 test('Sir Waffle stops advertising Waffle AI while the feature is paused', () => {
@@ -279,7 +284,7 @@ test('Sir Waffle stops advertising Waffle AI while the feature is paused', () =>
   // The wall quip is an AI feature, so it must stay behind the same gate while
   // the endpoint string the existing suite asserts on is still present.
   assert.match(appSrc, /if \(aiLocked\) \{[\s\S]{0,240}?return;\s*\}\s*\n\s*if \(wallQuipAbort\)/);
-  assert.ok(appSrc.includes('/api/waffle-ai/wall-quip'), 'beta build still calls the quip endpoint');
+  assert.ok(appSrc.includes('/api/waffle-ai/wall-quip'), 'the backup build still calls the quip endpoint');
   assert.ok(appSrc.includes('openWaffleAI'), 'Sir Waffle still opens the AI surface');
   assert.ok(!appSrc.includes('waffle-hud-btn'), 'still exactly one Waffle button');
   assert.ok(!appSrc.includes('await import('), 'app.js keeps static imports');
@@ -290,15 +295,15 @@ test('every AI feature inside tools is gated, not silently broken', () => {
   assert.match(codeSrc, /isWaffleAiLocked, waffleAiLockedNoticeHTML/);
   const diagnose = codeSrc.slice(codeSrc.indexOf('async function diagnoseWithCoderAI'), codeSrc.indexOf('function buildMoreChips'));
   assert.match(diagnose, /if \(isWaffleAiLocked\(\)\) \{[\s\S]*?waffleAiLockedNoticeHTML\(\);[\s\S]*?return;/, 'CodeHub diagnostics show the notice instead of calling a model');
-  assert.ok(codeSrc.includes('AI Error Diagnostics') && codeSrc.includes('qwen2.5-coder-1.5b'), 'the beta build keeps the real diagnostics wiring');
+  assert.ok(codeSrc.includes('AI Error Diagnostics') && codeSrc.includes('qwen2.5-coder-1.5b'), 'the backup build keeps the real diagnostics wiring');
 
   const engSrc = fs.readFileSync('tools-english.js', 'utf8');
   assert.match(engSrc, /isWaffleAiLocked, waffleAiLockedNoticeHTML/);
   assert.match(engSrc, /if \(isWaffleAiLocked\(\)\) \{[\s\S]{0,400}?waffleAiLockedNoticeHTML\(\);\s*return;/, 'every AI writing helper funnels through the gate');
-  assert.match(engSrc, /isWaffleAiLocked\(\) \? \['Google Translate'\] : \['Google Translate', 'Waffle AI \(Strict\)'\]/, 'the strict-AI engine is only offered in beta');
+  assert.match(engSrc, /isWaffleAiLocked\(\) \? \['Google Translate'\] : \['Google Translate', 'Waffle AI \(Strict\)'\]/, 'the strict-AI engine is only offered in the backup build');
   assert.match(engSrc, /isWaffleAiLocked\(\) \? '🔒 AI writing helpers are paused' : '✨ Powered by Qwen 2\.5 1\.5B'/, 'badges stop naming a model that cannot run');
   assert.ok(engSrc.includes('translate.googleapis.com/translate_a/single'), 'Google Translate keeps working without AI');
-  assert.ok(engSrc.includes('(Speak in ${appLang})'), 'language hint survives for the beta build');
+  assert.ok(engSrc.includes('(Speak in ${appLang})'), 'language hint survives in the backup build');
 
   for (const f of ['tools-code.js', 'tools-english.js', 'app.js', 'waffle-ai.js', 'changelog.js']) {
     assert.ok(!fs.readFileSync(f, 'utf8').includes('iframe'), `${f} embeds no iframes`);
@@ -306,9 +311,9 @@ test('every AI feature inside tools is gated, not silently broken', () => {
   }
 });
 
-test('the paused notice and beta banner are styled, and nothing is deleted', () => {
+test('the paused notice and backup banner are styled, and nothing is deleted', () => {
   const css = fs.readFileSync('style.css', 'utf8');
-  for (const cls of ['.waffle-ai-locked-dialog', '.waffle-ai-locked-mascot', '.waffle-ai-locked-copy', '.waffle-ai-locked-note', '.beta-banner', '.beta-banner-exit']) {
+  for (const cls of ['.waffle-ai-locked-dialog', '.waffle-ai-locked-mascot', '.waffle-ai-locked-copy', '.waffle-ai-locked-note', '.backup-banner', '.backup-banner-exit']) {
     assert.ok(css.includes(cls), `style.css styles ${cls}`);
   }
   assert.ok(!css.includes('backdrop-filter'), 'no frosted blur anywhere');
@@ -316,7 +321,7 @@ test('the paused notice and beta banner are styled, and nothing is deleted', () 
   assert.ok(css.includes('rotateY(-108deg)'), 'cupboard door animation intact');
 
   // Pausing is not deleting: the models, runtimes and server stay in the tree so
-  // the beta build can switch them straight back on.
+  // the backup build can switch them straight back on.
   for (const f of ['waffle-browser-ai.js', 'waffle-ai-server.js', 'waffle-image-gen.js']) {
     assert.ok(fs.existsSync(f), `${f} still ships`);
   }

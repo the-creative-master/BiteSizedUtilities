@@ -70,42 +70,42 @@ export const cupboards = [
 export const allTools=cupboards.flatMap(c=>c.tools.map(([id,name,description])=>({id,name,description,cupboard:c.id,star:id===c.star,icon:c.icon,color:c.color})));
 
 /**
- * Beta-only utilities.
+ * Backup-only utilities.
  *
  * These are NOT part of `cupboards` or `allTools`, so the public kitchen stays
  * exactly 115 utilities and every count, icon and dispatch invariant that
  * tests/catalog.test.js pins keeps holding. `resolveTools(true)` splices them
- * into their cupboard, and only `beta.html` (data-beta="1") ever asks for that.
+ * into their cupboard, and only `backup.html` (data-backup="1") ever asks for that.
  *
  * Each entry names the shipped tool it sits next to, so the experiment appears
  * right after the thing it is an upgrade of instead of at the end of a shelf.
  */
-export const betaToolAdditions=[
-  {cupboard:'art',after:'art-studio',id:'art-studio-beta',name:'Art Studio (Beta)',description:'Layers, 18 brushes (10 pressure-aware) & a 4096px canvas'}
+export const backupToolAdditions=[
+  {cupboard:'art',after:'art-studio',id:'art-studio-layers',name:'Art Studio (with layers)',description:'Layers, 18 brushes (10 pressure-aware) & a 4096px canvas'}
 ];
 
-function toolObject(c,id,name,description,beta){
-  return {id,name,description,cupboard:c.id,star:beta?false:id===c.star,icon:c.icon,color:c.color,beta:Boolean(beta)};
+function toolObject(c,id,name,description,backup){
+  return {id,name,description,cupboard:c.id,star:backup?false:id===c.star,icon:c.icon,color:c.color,backup:Boolean(backup)};
 }
 
 function additionsFor(cupboardId){
-  return betaToolAdditions.filter(b=>b.cupboard===cupboardId);
+  return backupToolAdditions.filter(b=>b.cupboard===cupboardId);
 }
 
-/** How many utilities a cupboard door should advertise, beta extras included. */
-export function cupboardToolCount(cupboardId,includeBeta=false){
+/** How many utilities a cupboard door should advertise, backup extras included. */
+export function cupboardToolCount(cupboardId,includeBackup=false){
   const c=cupboards.find(x=>x.id===cupboardId);
   if(!c) return 0;
-  return c.tools.length+(includeBeta?additionsFor(cupboardId).length:0);
+  return c.tools.length+(includeBackup?additionsFor(cupboardId).length:0);
 }
 
 /**
- * The tool list to render. `includeBeta` false returns the shipped 115
+ * The tool list to render. `includeBackup` false returns the shipped 115
  * untouched (the same array identity as `allTools`); true returns a new array
- * with each beta tool inserted directly after the tool it experiments on.
+ * with each backup-only tool inserted directly after the tool it upgrades.
  */
-export function resolveTools(includeBeta=false){
-  if(!includeBeta) return allTools;
+export function resolveTools(includeBackup=false){
+  if(!includeBackup) return allTools;
   const out=[];
   for(const c of cupboards){
     const adds=additionsFor(c.id);

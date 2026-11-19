@@ -32,28 +32,40 @@ test('the public kitchen reports a plain release version and knows nothing about
   assert.ok(!JSON.stringify(CHANGELOG).includes('TVAR'), 'and the public release notes never mention one');
 });
 
-test('the backup kitchen reports 1.1 TVAR 1 and gets the extended entries', () => {
+test('the backup kitchen reports 1.1 TVAR 2 and gets the extended entries', () => {
   pageWith({ backup: '1' });
-  assert.equal(TVAR, 1, 'this is the first test version after 1.1');
-  assert.equal(APP_VERSION_EXTENDED, '1.1 TVAR 1');
-  assert.equal(appVersionLabel(), '1.1 TVAR 1', 'backup.html reports the extended version');
+  assert.equal(TVAR, 2, 'this is the second test version after 1.1');
+  assert.equal(APP_VERSION_EXTENDED, '1.1 TVAR 2');
+  assert.equal(appVersionLabel(), '1.1 TVAR 2', 'backup.html reports the extended version');
   assert.equal(isBackupBuild(), true);
   assert.equal(isPublicBuild(), false);
 
-  assert.equal(TVAR_LOG.length, 1, 'one extended minor version is documented');
-  const tvar = TVAR_LOG[0];
-  assert.equal(tvar.version, APP_VERSION_EXTENDED, 'the entry is named after the build it describes');
-  assert.equal(tvar.tvar, true, 'and marked so the renderer can style it apart');
-  assert.ok(tvar.date && tvar.title, 'it has a date and a title');
-  assert.ok(tvar.groups.length >= 3, 'a TVAR entry documents itself in groups');
-  for (const g of tvar.groups) {
-    assert.ok(g.label && g.items.length, `${g.label} has entries`);
-    for (const item of g.items) assert.ok(item.length > 20, 'entries are real sentences');
+  assert.equal(TVAR_LOG.length, 2, 'both extended minor versions are documented');
+  assert.equal(TVAR_LOG[0].version, APP_VERSION_EXTENDED,
+    'the newest entry spells out the counter, so bumping TVAR cannot leave it describing the wrong build');
+  assert.deepEqual(TVAR_LOG.map(e => e.version), [`${APP_VERSION} TVAR 2`, `${APP_VERSION} TVAR 1`],
+    'newest first, and an old entry keeps its own number');
+
+  for (const tvar of TVAR_LOG) {
+    assert.equal(tvar.tvar, true, `${tvar.version} is marked so the renderer can style it apart`);
+    assert.ok(tvar.date && tvar.title, `${tvar.version} has a date and a title`);
+    assert.ok(tvar.groups.length >= 3, `${tvar.version} documents itself in groups`);
+    for (const g of tvar.groups) {
+      assert.ok(g.label && g.items.length, `${g.label} has entries`);
+      for (const item of g.items) assert.ok(item.length > 20, 'entries are real sentences');
+    }
   }
 
-  const text = tvar.groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
-  assert.match(text, /test version after release/, 'the entry explains what TVAR stands for');
-  assert.match(text, /Hugging Face/, 'and records the extended AI error report');
+  const textOf = e => e.groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
+  const all = TVAR_LOG.map(textOf).join(' ');
+  assert.match(all, /test version after release/, 'the log explains what TVAR stands for');
+  assert.match(all, /Hugging Face/, 'and records the extended AI error report');
+
+  const latest = textOf(TVAR_LOG[0]);
+  assert.match(latest, /freez/, 'TVAR 2 records the freeze it was built to fix');
+  assert.match(latest, /Only one inference runs at a time/, 'what replaced it');
+  assert.match(latest, /45 seconds/, 'the watchdog window a visitor would actually hit');
+  assert.match(latest, /cannot be revived/, 'and it is honest about what a watchdog cannot do');
 });
 
 test('TVAR entries reset with each release and are rendered only in the backup build', () => {

@@ -22,9 +22,9 @@ import { isBackupBuild } from './build-mode.js';
 export const APP_VERSION = '1.1';
 
 /** Test versions built after 1.1 shipped. Reset to 0 on every public release. */
-export const TVAR = 1;
+export const TVAR = 2;
 
-/** `1.1 TVAR 1` — the version string the backup kitchen reports. */
+/** `1.1 TVAR 2` — the version string the backup kitchen reports. */
 export const APP_VERSION_EXTENDED = `${APP_VERSION} TVAR ${TVAR}`;
 
 /** What the footer of the changelog should call this build. */
@@ -39,7 +39,47 @@ export function appVersionLabel() {
  */
 export const TVAR_LOG = [
   {
-    version: APP_VERSION_EXTENDED,
+    // The newest entry always spells the counter out literally, and a test
+    // pins it to APP_VERSION_EXTENDED, so history cannot quietly renumber
+    // itself when the counter moves.
+    version: `${APP_VERSION} TVAR 2`,
+    date: 'November 19, 2026',
+    title: 'The one that stops freezing on the second question',
+    tvar: true,
+    groups: [
+      {
+        label: '\u{1F41B} What was actually wrong',
+        items: [
+          'Waffle AI would answer one question and then freeze on the next. The tab stayed open, the input stayed greyed out, and no error ever appeared, which made it look like the model had died. The model was fine.',
+          'A browser runtime answers one request at a time. WLlama holds a single inference slot per loaded model and only releases it when its own loop finishes or its own abort fires. Walking away from a stream \u2014 pressing Stop, closing the dialog, an engine error halfway through a reply \u2014 left that slot occupied, so the next prompt queued behind a runtime that was still busy with the one before it.',
+          'Nothing in the whole fallback chain had a timeout. That is what turned a wait into a freeze: the flag that disables the composer is only cleared when a reply finishes, and that reply was never going to finish.',
+          'A wedged runtime was also reused. The kitchen kept the loaded model between questions to save a reload, which is right for a healthy one and exactly wrong for one that stopped answering.'
+        ]
+      },
+      {
+        label: '\u{1F527} What changed',
+        items: [
+          'Stop now really stops. The abort signal is handed to WLlama itself, which cancels the request and releases the slot instead of generating into a queue nobody is reading any more.',
+          'A runtime that was walked away from is thrown away rather than reused, so the next question starts on a clean worker instead of inheriting a busy one.',
+          'Only one inference runs at a time anywhere in the kitchen. The chat, CodeHub\u2019s AI Error Diagnostics and the AI writing tools now share a single queue, so two overlapping requests can no longer deadlock each other.',
+          'Every attempt is watched for silence instead of for total time, with two windows because the phases fail differently: up to four minutes before the first token (downloading, compiling WASM and shaders \u2014 slow, but it reports progress), and 45 seconds once text is streaming, because a reply that goes quiet mid-sentence for 45 seconds is not thinking.',
+          'When the watchdog fires it says so in the reply \u2014 which runtime went quiet, for how long, and that it was discarded \u2014 and the next runtime in the fallback chain takes over. A permanent freeze became a message and a retry.',
+          'Pressing Stop while a runtime is wedged frees the input after five seconds instead of never. ONNX generation cannot be interrupted at all, so the page simply stops waiting for it.',
+          'A stall is classified as its own kind of failure, so a wedged runtime is never reported as a network problem or a broken model file, and it gets its own fix line.'
+        ]
+      },
+      {
+        label: '\u{26A0}\u{FE0F} Known rough edges',
+        items: [
+          'A wedged WASM or WebGPU worker cannot be revived from inside the tab. The kitchen recovers by discarding it and starting the next attempt clean, but if one model wedges every single time, reloading the page is still the real fix.',
+          'The watchdog measures silence, so a runtime that emits one token a minute forever would not be caught. That is deliberate: killing a slow reply that is still working is worse than waiting for it.',
+          'This was diagnosed from the runtime\u2019s own source rather than reproduced on a device, so the counters are conservative. If a healthy reply is ever cut off, the two windows are the numbers to change.'
+        ]
+      }
+    ]
+  },
+  {
+    version: `${APP_VERSION} TVAR 1`,
     date: 'November 18, 2026',
     title: 'First test build after 1.1',
     tvar: true,

@@ -353,6 +353,11 @@ export async function detectDeviceDiagnostics() {
 const pipeCache = new Map();
 let wllamaInstance = null;
 let wllamaLoadedFile = null;
+// Set when a request was abandoned mid-flight (Stop, a stall, an engine error).
+// Wllama holds one inference slot per loaded model and only releases it when
+// its own loop finishes or its abort fires, so an instance that was walked away
+// from must never be handed to the next prompt.
+let wllamaDirty = false;
 
 async function disposeBrowserModels(keepKey = null) {
   for (const [key, entryPromise] of [...pipeCache.entries()]) {
@@ -370,6 +375,186 @@ async function disposeWllama() {
   try { await wllamaInstance?.exit?.(); } catch {}
   wllamaInstance = null;
   wllamaLoadedFile = null;
+  wllamaDirty = false;
+}
+
+/* ------------------------------------------------------------------ *
+ * One inference at a time, and none of them allowed to hang forever.
+ *
+ * A browser runtime is single-slot: the Wllama worker answers one request at a
+ * time (`cancelRequest` exists precisely to "release the slot occupied by the
+ * request") and an ONNX WebGPU session is no better. Two overlapping
+ * generations — a second prompt sent before the first one settled, CodeHub
+ * diagnostics firing while the chat is busy, or a Stop that walked away from a
+ * stream that was still running — left the next caller waiting for a slot that
+ * was never released. On screen that is a tab that answers one prompt and then
+ * freezes on the second, with no error to show.
+ *
+ * Nothing in the chain timed out either, so the freeze was permanent:
+ * `isGenerating` stayed true, the composer stayed disabled, and Stop did
+ * nothing because an abort signal is only ever observed *between* tokens.
+ *
+ * So every engine attempt runs through here: strictly serialized, and watched
+ * for silence rather than for total time — a small model on a phone can
+ * legitimately take minutes, but it never goes quiet for minutes. Two windows,
+ * because the phases fail differently: before the first token the runtime is
+ * downloading and compiling shaders (slow, but it reports progress), and once
+ * text is streaming a long silence really does mean wedged.
+ * ------------------------------------------------------------------ */
+
+/** Silence allowed once text has started streaming. */
+export const AI_STALL_TIMEOUT_MS = 45_000;
+/** Silence allowed before the first token: download, WASM compile, shader compile. */
+export const AI_LOAD_STALL_TIMEOUT_MS = 240_000;
+/**
+ * Once the visitor has pressed Stop, waiting on a runtime that cannot be
+ * interrupted is waiting for nothing: ORT's `generate()` has no abort at all,
+ * so the UI is freed after this instead of after the full stall window.
+ */
+export const AI_ABORT_GRACE_MS = 5_000;
+const STALL_CHECK_MS = 1000;
+
+let inferenceTail = Promise.resolve();
+let inferenceBusy = false;
+let inferenceWaiting = 0;
+let inferenceBeat = 0;
+let inferenceSawToken = false;
+let lastInferenceStall = null;
+
+/** "Still working" — every status, download-progress and load callback. */
+export function markInferenceBeat() {
+  inferenceBeat = Date.now();
+}
+
+/** "Text is arriving" — switches the watchdog to the stricter streaming window. */
+export function markInferenceToken() {
+  inferenceSawToken = true;
+  inferenceBeat = Date.now();
+}
+
+export function getInferenceQueueState() {
+  return {
+    busy: inferenceBusy,
+    waiting: inferenceWaiting,
+    sawToken: inferenceSawToken,
+    idleMs: inferenceBusy ? Date.now() - inferenceBeat : 0,
+    lastStall: lastInferenceStall
+  };
+}
+
+/** Tests need a clean slate; so does a "reset the AI" action. */
+export function resetInferenceQueue() {
+  inferenceTail = Promise.resolve();
+  inferenceBusy = false;
+  inferenceWaiting = 0;
+  inferenceBeat = 0;
+  inferenceSawToken = false;
+  lastInferenceStall = null;
+}
+
+/** Throw away whichever runtime just wedged, so the next attempt starts clean. */
+async function discardWedgedRuntime(kind) {
+  if (kind === 'wllama') {
+    wllamaDirty = true;
+    await disposeWllama();
+    return;
+  }
+  await disposeBrowserModels();
+}
+
+/**
+ * Run one browser inference, alone, with a watchdog on its silence.
+ *
+ * `task` is a factory (not a promise) so nothing starts before its turn. When
+ * the watchdog fires it releases the queue, discards the runtime and rejects —
+ * the wedged task is left running in the background with nobody listening to
+ * it, which is the only thing possible: a WASM worker that stopped answering
+ * cannot be talked into finishing.
+ */
+export function runBrowserInference(label, task, opts = {}) {
+  const {
+    kind = 'browser',
+    signal = null,
+    stallMs = AI_STALL_TIMEOUT_MS,
+    loadStallMs = AI_LOAD_STALL_TIMEOUT_MS,
+    abortGraceMs = AI_ABORT_GRACE_MS,
+    // How often the watchdog looks at the clock. One second is free next to a
+    // model download; tests dial it down so they can assert on real timings.
+    checkMs = STALL_CHECK_MS
+  } = opts;
+
+  const start = () => new Promise((resolve, reject) => {
+    let settled = false;
+    // No longer queued behind somebody else: it is the one running now.
+    inferenceWaiting = Math.max(0, inferenceWaiting - 1);
+    inferenceBusy = true;
+    inferenceBeat = Date.now();
+    inferenceSawToken = false;
+
+    const timer = setInterval(() => {
+      if (settled) return;
+      const idle = Date.now() - inferenceBeat;
+      const stopped = Boolean(signal?.aborted);
+      const limit = stopped ? abortGraceMs : (inferenceSawToken ? stallMs : loadStallMs);
+      if (idle < limit) return;
+      settled = true;
+      clearInterval(timer);
+      inferenceBusy = false;
+      const phase = inferenceSawToken ? 'after it started replying' : 'while loading';
+      const measure = inferenceSawToken ? 'no output' : 'no progress';
+      // Whole seconds read better than "0s" on a short stall, and one decimal
+      // is more useful than "0" when the wait was under ten seconds.
+      const secs = idle < 10_000 ? (idle / 1000).toFixed(1) : String(Math.round(idle / 1000));
+      lastInferenceStall = { label, kind, idleMs: idle, phase, stopped, at: Date.now() };
+      // Cannot await here, and must not block the rejection on it.
+      Promise.resolve(discardWedgedRuntime(kind)).catch(() => {});
+      // A Stop the runtime ignored is still a Stop: callers branch on the name
+      // to tell "you stopped me" apart from "I failed".
+      if (stopped) {
+        reject(new DOMException(
+          `${label} did not stop when asked and was abandoned after ${secs}s.`,
+          'AbortError'
+        ));
+        return;
+      }
+      reject(new Error(
+        `${label} stopped answering — ${measure} for ${secs}s ${phase}, ` +
+        'so this attempt was abandoned instead of freezing the page. ' +
+        'The runtime it was using has been discarded and the next one takes over.'
+      ));
+    }, Math.max(5, checkMs));
+    // Deliberately left referenced: this watchdog is the only thing that can
+    // end a task that never settles, so it has to keep running (in Node that
+    // means keeping the loop alive) until it either fires or is cleared. Every
+    // exit path clears it, so it cannot outlive the attempt it watches.
+
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(timer);
+      inferenceBusy = false;
+      fn(value);
+    };
+
+    let out;
+    try {
+      out = task();
+    } catch (err) {
+      finish(reject, err);
+      return;
+    }
+    Promise.resolve(out).then(
+      value => finish(resolve, value),
+      err => finish(reject, err)
+    );
+  });
+
+  inferenceWaiting++;
+  // Runs after whatever is in flight, and after a rejection too: a failed
+  // attempt must not strand the queue behind it.
+  const run = inferenceTail.then(start, start);
+  inferenceTail = run.then(() => {}, () => {});
+  return run;
 }
 
 function resolveAssetUrl(relPath) {
@@ -423,6 +608,15 @@ export function classifyAiFailure(err) {
       hint: 'Nothing can be downloaded without a connection. A model already pre-cached on this device would still run — pre-cache one while online from Settings \u2192 AI Models.'
     };
   }
+  // A wedged runtime is its own cause: the model loaded and the engine was
+  // alive, so neither the network nor the weights are the suspect.
+  if (/stopped answering|no output for|no progress for|abandoned instead of freezing/.test(text)) {
+    return {
+      kind: 'stall',
+      title: 'The AI runtime stopped answering',
+      hint: 'The engine loaded and then went silent, so the attempt was abandoned rather than left hanging. A wedged WASM or WebGPU worker cannot be revived from inside the tab: reload the page, and if it happens again choose a smaller model or CPU/WASM in Settings \u2192 AI Models.'
+    };
+  }
   // Covers the browser's own wording plus what the engines wrap around it.
   if (/failed to fetch|networkerror|network error|load failed|net::err_|could not resolve|err_name_not_resolved|err_internet|err_connection|err_cert|err_blocked|econnrefused|enotfound|etimedout|request failed|status 429|status 503|\(429\)|\(503\)/.test(text)) {
     return {
@@ -471,7 +665,7 @@ export function summarizeAiFailures(classified) {
   // chain where five runtimes ran out of memory and one could not fetch — but
   // a memory failure proves the host *was* reachable, so it is the better lead.
   // Ties break toward whichever runtime got furthest.
-  const depth = ['memory', 'runtime', 'model', 'offline', 'network', 'unknown'];
+  const depth = ['memory', 'runtime', 'stall', 'model', 'offline', 'network', 'unknown'];
   const counts = new Map();
   for (const c of classified) counts.set(c.kind, (counts.get(c.kind) || 0) + 1);
   const ranked = [...counts.entries()].sort((a, b) =>
@@ -907,6 +1101,7 @@ export function modelSourceFixAdvice(facts, classified) {
   }
   if (classified?.kind === 'memory') return 'The source is fine, so this is the device: pick a smaller model or a lighter quantization preset in Settings → AI Models.';
   if (classified?.kind === 'runtime') return 'The source is fine, so this is the runtime: switch the fallback mode to CPU/WASM — Chromium without shader-f16 aborts the whole WebGPU module.';
+  if (classified?.kind === 'stall') return 'The source is fine and the model loaded, so the runtime wedged mid-reply: reload the page (a stuck WASM or WebGPU worker cannot be revived in place) and try a smaller model or CPU/WASM in Settings \u2192 AI Models.';
   return null;
 }
 
@@ -1200,6 +1395,7 @@ async function getBrowserGenerator(modelCfg, preferredDevice, onStatus, withVisi
     const repo = await resolveOnnxRepo(modelCfg);
 
     const progress_callback = p => {
+      markInferenceBeat();
       if (p?.status === 'progress' && typeof p.progress === 'number') {
         onStatus?.({
           state: 'downloading',
@@ -1328,6 +1524,7 @@ export async function streamBrowserChat({
     skip_prompt: true,
     skip_special_tokens: true,
     callback_function(text) {
+      markInferenceToken();
       if (signal?.aborted) return;
       acc += text;
       const cleaned = acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*$/, '');
@@ -1802,6 +1999,7 @@ export async function streamWllamaChat({
       log_level: 3,
       useCache: true,
       progressCallback({ loaded, total }) {
+        markInferenceBeat();
         if (total > 0) {
           onStatus?.({
             state: 'downloading',
@@ -1887,8 +2085,12 @@ export async function streamWllamaChat({
   };
 
   let loadedHere = false;
-  if (wllamaInstance && wllamaLoadedFile === `${targetKey}:${useGpu}` && wllamaInstance.isModelLoaded?.()) {
+  if (wllamaInstance && !wllamaDirty && wllamaLoadedFile === `${targetKey}:${useGpu}` && wllamaInstance.isModelLoaded?.()) {
     loadedHere = true;
+  } else if (wllamaInstance && wllamaDirty) {
+    // The last request on it never finished, so its slot may still be held.
+    // Starting from it is how a second prompt ends up waiting forever.
+    await disposeWllama();
   }
 
   let lastErr = null;
@@ -1935,7 +2137,13 @@ export async function streamWllamaChat({
       messages: chat,
       max_tokens: effectiveMaxTokens,
       temperature,
-      stream: true
+      stream: true,
+      // Wllama only releases the request slot when *its* loop ends: `getResponse`
+      // polls until the model is done and calls `cancelRequest` in its finally
+      // when it was not. Handing it our signal is what makes Stop actually stop,
+      // instead of leaving the worker generating into a queue nobody reads —
+      // which is what the next prompt then waits behind.
+      abortSignal: signal
     });
   } catch (err) {
     if (err?.name === 'AbortError' || signal?.aborted) throw err;
@@ -1944,6 +2152,7 @@ export async function streamWllamaChat({
 
   try {
     for await (const chunk of stream) {
+      markInferenceToken();
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       const piece = chunk?.choices?.[0]?.delta?.content || '';
       if (piece) {
@@ -1953,11 +2162,15 @@ export async function streamWllamaChat({
       }
     }
   } catch (err) {
+    // Walking away from a stream leaves Wllama's slot occupied, so this
+    // instance is not reusable — the next prompt gets a fresh one.
+    wllamaDirty = true;
     if (err?.name === 'AbortError' || signal?.aborted) throw err;
     if (!acc) throw wllamaFailure('WLlama generation', err);
     // Keep whatever already streamed instead of throwing the answer away.
     pushNativeLog('warn', [`generation interrupted: ${err?.message || err}`]);
   }
+  wllamaDirty = false;
   return acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*$/, '').trim();
 }
 

@@ -18,7 +18,10 @@ import {
   fetchModelSourceFacts,
   describeModelSourceFacts,
   modelSourceFixAdvice,
-  HF_DIAG_TIMEOUT_MS
+  HF_DIAG_TIMEOUT_MS,
+  runBrowserInference,
+  markInferenceBeat,
+  markInferenceToken
 } from './waffle-browser-ai.js';
 import { IMAGE_MODELS, detectImageCapabilities, generateWaffleImage } from './waffle-image-gen.js';
 
@@ -536,14 +539,23 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     if (i > 0) {
       onStatus?.({ state: 'loading', detail: `Switching to ${stepLabel}…` });
     }
+    // One inference at a time, and none of them allowed to go quiet forever.
+    // Every status and token also feeds the watchdog, so "still downloading"
+    // and "still writing" both count as alive.
+    const beatStatus = payload => { markInferenceBeat(); onStatus?.(payload); };
+    const beatToken = (chunk, acc) => { markInferenceToken(); onToken?.(chunk, acc); };
+    const engineName = step.kind === 'server' ? 'node-llama.cpp' : step.kind === 'wllama' ? 'WLlama' : 'ONNX Runtime Web';
     try {
-      if (step.kind === 'server') {
-        return report(step, 'node-llama.cpp', await streamServerChat({ modelId: step.id, messages: msgList, systemPrompt, maxTokens, temperature, signal, onStatus, onToken }));
-      }
-      if (step.kind === 'wllama') {
-        return report(step, 'WLlama', await streamWllamaChat({ ggufFile: step.gguf, hfRepo: step.hfRepo, hfQuant: step.hfQuant, messages: msgList, systemPrompt, maxTokens, temperature, useWebGPU: step.webgpu, signal, onStatus, onToken }));
-      }
-      return report(step, 'ONNX Runtime Web', await streamBrowserChat({ modelId: step.id, messages: msgList, imageUrls: step.vision ? imageUrls : [], systemPrompt, maxTokens, temperature, preferredDevice: step.dev, signal, onStatus, onToken }));
+      const text = await runBrowserInference(stepLabel, () => {
+        if (step.kind === 'server') {
+          return streamServerChat({ modelId: step.id, messages: msgList, systemPrompt, maxTokens, temperature, signal, onStatus: beatStatus, onToken: beatToken });
+        }
+        if (step.kind === 'wllama') {
+          return streamWllamaChat({ ggufFile: step.gguf, hfRepo: step.hfRepo, hfQuant: step.hfQuant, messages: msgList, systemPrompt, maxTokens, temperature, useWebGPU: step.webgpu, signal, onStatus: beatStatus, onToken: beatToken });
+        }
+        return streamBrowserChat({ modelId: step.id, messages: msgList, imageUrls: step.vision ? imageUrls : [], systemPrompt, maxTokens, temperature, preferredDevice: step.dev, signal, onStatus: beatStatus, onToken: beatToken });
+      }, { kind: step.kind, signal });
+      return report(step, engineName, text);
     } catch (err) {
       if (err.name === 'AbortError' || signal?.aborted) throw err;
       failures.push({

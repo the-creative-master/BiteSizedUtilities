@@ -433,7 +433,11 @@ export function platformLabelFor(profile) {
  */
 const WEBNN_RUNTIME_SHIPPED = (() => {
   try {
-    return String(import.meta.env?.WAFFLE_WEBNN ?? '') === '1';
+    // No optional chaining here on purpose: Vite's `define` replaces this exact
+    // expression at build time, and `import.meta.env?.X` would not match it, so
+    // a WAFFLE_WEBNN=1 build would silently ship the runtime and never use it.
+    // Outside a bundler `import.meta.env` is undefined and the throw is caught.
+    return String(import.meta.env.WAFFLE_WEBNN || '') === '1';
   } catch {
     return false;
   }

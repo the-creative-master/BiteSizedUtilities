@@ -300,6 +300,16 @@ test('the attempt chain is ranked by the device, not hard-coded', () => {
   assert.equal(autoBranch.split('pushBrowserChain()').length - 1, 3, 'all three auto branches are ranked');
 });
 
+test('the WebNN build flag is written so a bundler can actually replace it', () => {
+  const src = fs.readFileSync('waffle-browser-ai.js', 'utf8');
+  assert.match(src, /String\(import\.meta\.env\.WAFFLE_WEBNN \|\| ''\) === '1'/,
+    'the exact expression Vite defines — `import.meta.env?.X` would not match it');
+  assert.ok(!/import\.meta\.env\?\.WAFFLE_WEBNN/.test(src),
+    'optional chaining has not crept back in, which would ship the runtime and never use it');
+  assert.match(src, /catch \{\s*return false;\s*\}\s*\}\)\(\);/,
+    'and outside a bundler, where import.meta.env is undefined, it falls back to off');
+});
+
 test('the WebNN runtime ships only when the build asks for it', () => {
   const vite = fs.readFileSync('vite.config.js', 'utf8');
   assert.match(vite, /SHIP_WEBNN = process\.env\.WAFFLE_WEBNN === '1'/);

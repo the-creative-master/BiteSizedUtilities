@@ -18,7 +18,11 @@ import {
   fetchModelSourceFacts,
   describeModelSourceFacts,
   modelSourceFixAdvice,
-  HF_DIAG_TIMEOUT_MS
+  reconcileAiFailureWithFacts,
+  HF_DIAG_TIMEOUT_MS,
+  runBrowserInference,
+  markInferenceBeat,
+  markInferenceToken
 } from './waffle-browser-ai.js';
 import { IMAGE_MODELS, detectImageCapabilities, generateWaffleImage } from './waffle-image-gen.js';
 
@@ -375,22 +379,31 @@ async function streamServerChat({ modelId, messages: msgList, systemPrompt, maxT
  * them and prints them under the error. Bounded and swallowed whole: a
  * diagnostic that hangs or throws must never replace the failure it explains.
  */
-async function modelSourceReport(cfg, classified, signal) {
+/**
+ * Facts first, prose second — because the facts also get to overrule the
+ * headline the engines produced. Never throws: a diagnostic that fails must not
+ * take the error it was called to explain down with it.
+ */
+async function modelSourceFactsFor(cfg, signal) {
   try {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return '';
-    if (!cfg?.hfGgufRepo && !cfg?.hfId) return '';
-    const facts = await fetchModelSourceFacts(cfg, { signal, timeoutMs: HF_DIAG_TIMEOUT_MS });
-    const lines = describeModelSourceFacts(facts);
-    if (!lines.length) return '';
-    const fix = modelSourceFixAdvice(facts, classified);
-    const stamp = new Date(facts.fetchedAt);
-    const when = Number.isNaN(stamp.getTime()) ? 'just now' : stamp.toUTCString().replace('GMT', 'UTC');
-    return `\n\n**Where this model was supposed to come from** (checked live against Hugging Face, ${when}):\n` +
-      lines.map(l => `- ${l}`).join('\n') +
-      (fix ? `\n- **Fix:** ${fix}` : '');
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return null;
+    if (!cfg?.hfGgufRepo && !cfg?.hfId) return null;
+    return await fetchModelSourceFacts(cfg, { signal, timeoutMs: HF_DIAG_TIMEOUT_MS });
   } catch {
-    return '';
+    return null;
   }
+}
+
+function renderModelSourceReport(facts, classified) {
+  if (!facts) return '';
+  const lines = describeModelSourceFacts(facts);
+  if (!lines.length) return '';
+  const fix = modelSourceFixAdvice(facts, classified);
+  const stamp = new Date(facts.fetchedAt);
+  const when = Number.isNaN(stamp.getTime()) ? 'just now' : stamp.toUTCString().replace('GMT', 'UTC');
+  return `\n\n**Where this model was supposed to come from** (checked live against Hugging Face, ${when}):\n` +
+    lines.map(l => `- ${l}`).join('\n') +
+    (fix ? `\n- **Fix:** ${fix}` : '');
 }
 
 export async function streamWaffleChat({ modelId, messages: msgList, imageUrls = [], systemPrompt, maxTokens = 520, temperature = 0.7, signal, onStatus, onToken, onRuntime }) {
@@ -536,14 +549,23 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     if (i > 0) {
       onStatus?.({ state: 'loading', detail: `Switching to ${stepLabel}…` });
     }
+    // One inference at a time, and none of them allowed to go quiet forever.
+    // Every status and token also feeds the watchdog, so "still downloading"
+    // and "still writing" both count as alive.
+    const beatStatus = payload => { markInferenceBeat(); onStatus?.(payload); };
+    const beatToken = (chunk, acc) => { markInferenceToken(); onToken?.(chunk, acc); };
+    const engineName = step.kind === 'server' ? 'node-llama.cpp' : step.kind === 'wllama' ? 'WLlama' : 'ONNX Runtime Web';
     try {
-      if (step.kind === 'server') {
-        return report(step, 'node-llama.cpp', await streamServerChat({ modelId: step.id, messages: msgList, systemPrompt, maxTokens, temperature, signal, onStatus, onToken }));
-      }
-      if (step.kind === 'wllama') {
-        return report(step, 'WLlama', await streamWllamaChat({ ggufFile: step.gguf, hfRepo: step.hfRepo, hfQuant: step.hfQuant, messages: msgList, systemPrompt, maxTokens, temperature, useWebGPU: step.webgpu, signal, onStatus, onToken }));
-      }
-      return report(step, 'ONNX Runtime Web', await streamBrowserChat({ modelId: step.id, messages: msgList, imageUrls: step.vision ? imageUrls : [], systemPrompt, maxTokens, temperature, preferredDevice: step.dev, signal, onStatus, onToken }));
+      const text = await runBrowserInference(stepLabel, () => {
+        if (step.kind === 'server') {
+          return streamServerChat({ modelId: step.id, messages: msgList, systemPrompt, maxTokens, temperature, signal, onStatus: beatStatus, onToken: beatToken });
+        }
+        if (step.kind === 'wllama') {
+          return streamWllamaChat({ ggufFile: step.gguf, hfRepo: step.hfRepo, hfQuant: step.hfQuant, messages: msgList, systemPrompt, maxTokens, temperature, useWebGPU: step.webgpu, signal, onStatus: beatStatus, onToken: beatToken });
+        }
+        return streamBrowserChat({ modelId: step.id, messages: msgList, imageUrls: step.vision ? imageUrls : [], systemPrompt, maxTokens, temperature, preferredDevice: step.dev, signal, onStatus: beatStatus, onToken: beatToken });
+      }, { kind: step.kind, signal });
+      return report(step, engineName, text);
     } catch (err) {
       if (err.name === 'AbortError' || signal?.aborted) throw err;
       failures.push({
@@ -570,14 +592,19 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
   // Ask the real source what it has, so the failure carries evidence and not
   // only engine names. Skipped when the device is offline: there is nothing to
   // ask, and the attempt would only add a second confusing network error.
-  const sourceReport = headline?.kind === 'offline' ? '' : await modelSourceReport(cfg, headline, signal);
+  const facts = headline?.kind === 'offline' ? null : await modelSourceFactsFor(cfg, signal);
+  // Five engines reporting "Failed to fetch" is not evidence that the network is
+  // down when the host answered their metadata calls with HTTP 200 and only the
+  // file download failed. The facts get the last word on the headline.
+  const cause = reconcileAiFailureWithFacts(headline, facts);
+  const sourceReport = renderModelSourceReport(facts, cause);
 
-  if (headline) {
-    const detail = headline.uniform
-      ? `All ${headline.count} runtimes failed the same way.`
-      : `${headline.count} runtimes failed, with different causes.`;
+  if (cause) {
+    const detail = cause.uniform
+      ? `All ${cause.count} runtimes failed the same way.`
+      : `${cause.count} runtimes failed, with different causes.`;
     throw new Error(
-      `${headline.title}. ${headline.hint}\n\n${detail}\n\n${failures.map(f => `• ${f.step} → ${f.message}`).join('\n')}${sourceReport}`
+      `${cause.title}. ${cause.hint}\n\n${detail}\n\n${failures.map(f => `• ${f.step} → ${f.message}`).join('\n')}${sourceReport}`
     );
   }
   throw new Error(`Could not run ${cfg.label}.${diagHint}${sourceReport}`);

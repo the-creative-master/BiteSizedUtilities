@@ -13,8 +13,12 @@ export const TEXT_MODELS = [
     hfGgufRepo: 'Qwen/Qwen2.5-1.5B-Instruct-GGUF',
     hfGgufQuant: 'Q3_K_L',
     ggufFile: 'qwen2.5-1.5b.gguf',
-    ggufMB: 700,
-    desc: 'Qwen 2.5 1.5B via local llama.cpp when cached, or Q3_K_L / q4 in browser (~700 MB)'
+    // Measured, not guessed: the source report for this entry came back with
+    // qwen2.5-1.5b-instruct-q3_k_m.gguf at 881.6 MB (Q3_K_L is not published in
+    // that repo, so the loader falls through to Q3_K_M). The table said 700 MB,
+    // which is what the "will this fit?" check and the warnings are built from.
+    ggufMB: 882,
+    desc: 'Qwen 2.5 1.5B via local llama.cpp when cached, or Q3_K_M / q4 in browser (~882 MB)'
   },
   {
     id: 'qwen2.5-coder-1.5b',
@@ -47,7 +51,7 @@ export const TEXT_MODELS = [
   {
     id: 'smollm2-135m',
     label: 'SmolLM2 135M',
-    badge: 'Chromium Safe · ~70 MB',
+    badge: 'Chromium Safe · ~93 MB',
     kind: 'browser',
     hfId: 'HuggingFaceTB/SmolLM2-135M-Instruct-ONNX',
     hfIdAlts: ['onnx-community/SmolLM2-135M-Instruct', 'HuggingFaceTB/SmolLM2-135M-Instruct'],
@@ -55,8 +59,11 @@ export const TEXT_MODELS = [
     hfGgufRepo: 'bartowski/SmolLM2-135M-Instruct-GGUF',
     hfGgufQuant: 'Q3_K_L',
     ggufFile: 'smollm2-135m.gguf',
-    ggufMB: 70,
-    desc: 'Ultra-compact ~70 MB model safe for low-RAM Chromium & mobile browsers'
+    // Measured by the source report: SmolLM2-135M-Instruct-Q3_K_L.gguf is
+    // 93.0 MB in bartowski/SmolLM2-135M-Instruct-GGUF. The table said 70 MB,
+    // and this figure is what the "will it fit?" check is computed from.
+    ggufMB: 93,
+    desc: 'Ultra-compact ~93 MB model safe for low-RAM Chromium & mobile browsers'
   },
   {
     id: 'smollm2-360m',
@@ -353,6 +360,11 @@ export async function detectDeviceDiagnostics() {
 const pipeCache = new Map();
 let wllamaInstance = null;
 let wllamaLoadedFile = null;
+// Set when a request was abandoned mid-flight (Stop, a stall, an engine error).
+// Wllama holds one inference slot per loaded model and only releases it when
+// its own loop finishes or its abort fires, so an instance that was walked away
+// from must never be handed to the next prompt.
+let wllamaDirty = false;
 
 async function disposeBrowserModels(keepKey = null) {
   for (const [key, entryPromise] of [...pipeCache.entries()]) {
@@ -370,6 +382,189 @@ async function disposeWllama() {
   try { await wllamaInstance?.exit?.(); } catch {}
   wllamaInstance = null;
   wllamaLoadedFile = null;
+  wllamaDirty = false;
+}
+
+/* ------------------------------------------------------------------ *
+ * One inference at a time, and none of them allowed to hang forever.
+ *
+ * A browser runtime is single-slot: the Wllama worker answers one request at a
+ * time (`cancelRequest` exists precisely to "release the slot occupied by the
+ * request") and an ONNX WebGPU session is no better. Two overlapping
+ * generations — a second prompt sent before the first one settled, CodeHub
+ * diagnostics firing while the chat is busy, or a Stop that walked away from a
+ * stream that was still running — left the next caller waiting for a slot that
+ * was never released. On screen that is a tab that answers one prompt and then
+ * freezes on the second, with no error to show.
+ *
+ * Nothing in the chain timed out either, so the freeze was permanent:
+ * `isGenerating` stayed true, the composer stayed disabled, and Stop did
+ * nothing because an abort signal is only ever observed *between* tokens.
+ *
+ * So every engine attempt runs through here: strictly serialized, and watched
+ * for silence rather than for total time — a small model on a phone can
+ * legitimately take minutes, but it never goes quiet for minutes. Two windows,
+ * because the phases fail differently: before the first token the runtime is
+ * downloading and compiling shaders (slow, but it reports progress), and once
+ * text is streaming a long silence really does mean wedged.
+ * ------------------------------------------------------------------ */
+
+/** Silence allowed once text has started streaming. */
+export const AI_STALL_TIMEOUT_MS = 45_000;
+/** Silence allowed before the first token: download, WASM compile, shader compile. */
+export const AI_LOAD_STALL_TIMEOUT_MS = 240_000;
+/**
+ * Once the visitor has pressed Stop, waiting on a runtime that cannot be
+ * interrupted is waiting for nothing: ORT's `generate()` has no abort at all,
+ * so the UI is freed after this instead of after the full stall window.
+ */
+export const AI_ABORT_GRACE_MS = 5_000;
+const STALL_CHECK_MS = 1000;
+
+let inferenceTail = Promise.resolve();
+let inferenceBusy = false;
+let inferenceWaiting = 0;
+let inferenceBeat = 0;
+let inferenceSawToken = false;
+let lastInferenceStall = null;
+
+/** "Still working" — every status, download-progress and load callback. */
+export function markInferenceBeat() {
+  inferenceBeat = Date.now();
+}
+
+/** "Text is arriving" — switches the watchdog to the stricter streaming window. */
+export function markInferenceToken() {
+  inferenceSawToken = true;
+  inferenceBeat = Date.now();
+}
+
+export function getInferenceQueueState() {
+  return {
+    busy: inferenceBusy,
+    waiting: inferenceWaiting,
+    sawToken: inferenceSawToken,
+    idleMs: inferenceBusy ? Date.now() - inferenceBeat : 0,
+    lastStall: lastInferenceStall
+  };
+}
+
+/** Tests need a clean slate; so does a "reset the AI" action. */
+export function resetInferenceQueue() {
+  inferenceTail = Promise.resolve();
+  inferenceBusy = false;
+  inferenceWaiting = 0;
+  inferenceBeat = 0;
+  inferenceSawToken = false;
+  lastInferenceStall = null;
+}
+
+/** Throw away whichever runtime just wedged, so the next attempt starts clean. */
+async function discardWedgedRuntime(kind) {
+  if (kind === 'wllama') {
+    wllamaDirty = true;
+    await disposeWllama();
+    return;
+  }
+  await disposeBrowserModels();
+}
+
+/**
+ * Run one browser inference, alone, with a watchdog on its silence.
+ *
+ * `task` is a factory (not a promise) so nothing starts before its turn. When
+ * the watchdog fires it releases the queue, discards the runtime and rejects —
+ * the wedged task is left running in the background with nobody listening to
+ * it, which is the only thing possible: a WASM worker that stopped answering
+ * cannot be talked into finishing.
+ */
+export function runBrowserInference(label, task, opts = {}) {
+  const {
+    kind = 'browser',
+    signal = null,
+    stallMs = AI_STALL_TIMEOUT_MS,
+    loadStallMs = AI_LOAD_STALL_TIMEOUT_MS,
+    abortGraceMs = AI_ABORT_GRACE_MS,
+    // How often the watchdog looks at the clock. One second is free next to a
+    // model download; tests dial it down so they can assert on real timings.
+    checkMs = STALL_CHECK_MS
+  } = opts;
+
+  const start = () => new Promise((resolve, reject) => {
+    let settled = false;
+    // No longer queued behind somebody else: it is the one running now.
+    inferenceWaiting = Math.max(0, inferenceWaiting - 1);
+    // A background pre-cache must never compete with a real prompt for the
+    // single inference slot, the network or the visitor's patience.
+    stopAutoPrecache('a chat started');
+    inferenceBusy = true;
+    inferenceBeat = Date.now();
+    inferenceSawToken = false;
+
+    const timer = setInterval(() => {
+      if (settled) return;
+      const idle = Date.now() - inferenceBeat;
+      const stopped = Boolean(signal?.aborted);
+      const limit = stopped ? abortGraceMs : (inferenceSawToken ? stallMs : loadStallMs);
+      if (idle < limit) return;
+      settled = true;
+      clearInterval(timer);
+      inferenceBusy = false;
+      const phase = inferenceSawToken ? 'after it started replying' : 'while loading';
+      const measure = inferenceSawToken ? 'no output' : 'no progress';
+      // Whole seconds read better than "0s" on a short stall, and one decimal
+      // is more useful than "0" when the wait was under ten seconds.
+      const secs = idle < 10_000 ? (idle / 1000).toFixed(1) : String(Math.round(idle / 1000));
+      lastInferenceStall = { label, kind, idleMs: idle, phase, stopped, at: Date.now() };
+      // Cannot await here, and must not block the rejection on it.
+      Promise.resolve(discardWedgedRuntime(kind)).catch(() => {});
+      // A Stop the runtime ignored is still a Stop: callers branch on the name
+      // to tell "you stopped me" apart from "I failed".
+      if (stopped) {
+        reject(new DOMException(
+          `${label} did not stop when asked and was abandoned after ${secs}s.`,
+          'AbortError'
+        ));
+        return;
+      }
+      reject(new Error(
+        `${label} stopped answering — ${measure} for ${secs}s ${phase}, ` +
+        'so this attempt was abandoned instead of freezing the page. ' +
+        'The runtime it was using has been discarded and the next one takes over.'
+      ));
+    }, Math.max(5, checkMs));
+    // Deliberately left referenced: this watchdog is the only thing that can
+    // end a task that never settles, so it has to keep running (in Node that
+    // means keeping the loop alive) until it either fires or is cleared. Every
+    // exit path clears it, so it cannot outlive the attempt it watches.
+
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(timer);
+      inferenceBusy = false;
+      fn(value);
+    };
+
+    let out;
+    try {
+      out = task();
+    } catch (err) {
+      finish(reject, err);
+      return;
+    }
+    Promise.resolve(out).then(
+      value => finish(resolve, value),
+      err => finish(reject, err)
+    );
+  });
+
+  inferenceWaiting++;
+  // Runs after whatever is in flight, and after a rejection too: a failed
+  // attempt must not strand the queue behind it.
+  const run = inferenceTail.then(start, start);
+  inferenceTail = run.then(() => {}, () => {});
+  return run;
 }
 
 function resolveAssetUrl(relPath) {
@@ -423,6 +618,15 @@ export function classifyAiFailure(err) {
       hint: 'Nothing can be downloaded without a connection. A model already pre-cached on this device would still run — pre-cache one while online from Settings \u2192 AI Models.'
     };
   }
+  // A wedged runtime is its own cause: the model loaded and the engine was
+  // alive, so neither the network nor the weights are the suspect.
+  if (/stopped answering|no output for|no progress for|abandoned instead of freezing/.test(text)) {
+    return {
+      kind: 'stall',
+      title: 'The AI runtime stopped answering',
+      hint: 'The engine loaded and then went silent, so the attempt was abandoned rather than left hanging. A wedged WASM or WebGPU worker cannot be revived from inside the tab: reload the page, and if it happens again choose a smaller model or CPU/WASM in Settings \u2192 AI Models.'
+    };
+  }
   // Covers the browser's own wording plus what the engines wrap around it.
   if (/failed to fetch|networkerror|network error|load failed|net::err_|could not resolve|err_name_not_resolved|err_internet|err_connection|err_cert|err_blocked|econnrefused|enotfound|etimedout|request failed|status 429|status 503|\(429\)|\(503\)/.test(text)) {
     return {
@@ -471,13 +675,53 @@ export function summarizeAiFailures(classified) {
   // chain where five runtimes ran out of memory and one could not fetch — but
   // a memory failure proves the host *was* reachable, so it is the better lead.
   // Ties break toward whichever runtime got furthest.
-  const depth = ['memory', 'runtime', 'model', 'offline', 'network', 'unknown'];
+  const depth = ['memory', 'runtime', 'stall', 'model', 'offline', 'network', 'unknown'];
   const counts = new Map();
   for (const c of classified) counts.set(c.kind, (counts.get(c.kind) || 0) + 1);
   const ranked = [...counts.entries()].sort((a, b) =>
     (b[1] - a[1]) || (depth.indexOf(a[0]) - depth.indexOf(b[0])));
   const hit = classified.find(c => c.kind === ranked[0][0]);
   return { ...hit, uniform: false, count: classified.length };
+}
+
+/**
+ * A headline is only as good as the evidence behind it, and the engines can
+ * only ever report "Failed to fetch". When the source facts contradict the
+ * headline — every runtime said the host was unreachable, while the host
+ * answered HTTP 200 for the metadata and failed only on the file — the facts
+ * win. Blaming the visitor's network for a blocked CDN redirect sends them off
+ * to check their wifi instead of the thing that is actually broken.
+ */
+export function reconcileAiFailureWithFacts(headline, facts) {
+  if (!headline || !facts || headline.kind !== 'network') return headline;
+  const probes = [facts.download, facts.onnxDownload].filter(Boolean);
+  if (!probes.length) return headline;
+  const apiAnswered = [facts.gguf, facts.onnx].some(r => r && (r.http === 200 || r.http === 206));
+  const fileFailed = probes.some(d => d.status !== 'ok' && d.status !== 'no-source');
+  const fileWorked = probes.some(d => d.status === 'ok');
+  // Only overrule on a clean contradiction: the API answered, no file could be
+  // fetched, and none of them succeeded. Anything less and the original
+  // headline is the more honest one.
+  if (!apiAnswered || !fileFailed || fileWorked) return headline;
+
+  // A plain HEAD got through where the ranged GET did not. That separates two
+  // completely different fixes: a network that blocks the CDN host, and one
+  // that only blocks the preflight a Range header forces the browser to send.
+  if (probes.some(d => d.plainStatus === 'ok')) {
+    return {
+      ...headline,
+      kind: 'blocked-preflight',
+      title: 'The model host is reachable — the ranged download request is what is being blocked',
+      hint: 'The repository API answered HTTP 200 and a plain, header-free request for the model file succeeded from this same browser, so neither huggingface.co nor its CDN is blocked. The loaders ask for the file with a Range header, and because Range is not a CORS-simple header the browser has to preflight it with an OPTIONS request — and that request is what never came back. A proxy, firewall or privacy extension that drops preflights looks exactly like this: metadata fine, weights never start. Fix: allow OPTIONS requests to huggingface.co and its CDN hosts (cdn-lfs*.hf.co), turn off privacy extensions for this site, or serve the weights from this site with `node scripts/fetch-model.mjs`.'
+    };
+  }
+
+  return {
+    ...headline,
+    kind: 'blocked-download',
+    title: 'Hugging Face answered, but the model file could not be downloaded',
+    hint: 'The repository metadata came back HTTP 200 from this same browser, so the network is not down and huggingface.co is not blocked. The weights are served from a different host after a redirect (Hugging Face\u2019s LFS CDN), and that request is what failed — typically a firewall, proxy or privacy extension that allows the API but not large binaries. Fix: serve the file from this site instead with `node scripts/fetch-model.mjs`, or retry on a network that allows the download.'
+  };
 }
 
 /* ------------------------------------------------------------------ *
@@ -527,6 +771,7 @@ const SOURCE_STATUS_COPY = {
   ok: 'reachable',
   restricted: 'refused (401/403 — gated, private, or needs a token a browser cannot carry)',
   'not-found': 'does not exist (404 — renamed, made private, or deleted)',
+  'not-a-model': 'answered with something that is not a model file',
   'rate-limited': 'rate-limited this IP (429)',
   'server-error': 'server error on their side (5xx)',
   timeout: 'the request timed out',
@@ -549,7 +794,7 @@ const DIAG_TIMEOUT = Symbol('diag-timeout');
 
 async function diagRequest(url, { fetchImpl, timeoutMs = HF_DIAG_TIMEOUT_MS, signal, init, parse = 'json' } = {}) {
   const doFetch = fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
-  if (!doFetch) return { http: null, data: null, headers: null, thrown: 'unreachable', error: 'no fetch implementation in this environment' };
+  if (!doFetch) return { http: null, data: null, headers: null, thrown: 'unreachable', error: 'no fetch implementation in this environment', finalUrl: null };
   const ctrl = new AbortController();
   let timer = null;
   const gate = new Promise(resolve => {
@@ -562,23 +807,26 @@ async function diagRequest(url, { fetchImpl, timeoutMs = HF_DIAG_TIMEOUT_MS, sig
   try {
     const outcome = await Promise.race([attempt, gate]);
     if (outcome === DIAG_TIMEOUT) {
-      return { http: null, data: null, headers: null, thrown: 'timeout', error: `no answer within ${Math.round(timeoutMs)} ms` };
+      return { http: null, data: null, headers: null, thrown: 'timeout', error: `no answer within ${Math.round(timeoutMs)} ms`, finalUrl: null };
     }
     if (outcome.err) {
-      if (signal?.aborted) return { http: null, data: null, headers: null, thrown: 'aborted', error: String(outcome.err?.message || outcome.err) };
-      return { http: null, data: null, headers: null, thrown: 'unreachable', error: String(outcome.err?.message || outcome.err) };
+      if (signal?.aborted) return { http: null, data: null, headers: null, thrown: 'aborted', error: String(outcome.err?.message || outcome.err), finalUrl: null };
+      return { http: null, data: null, headers: null, thrown: 'unreachable', error: String(outcome.err?.message || outcome.err), finalUrl: null };
     }
     const res = outcome.res;
     const http = res?.status ?? null;
     const headers = res?.headers || null;
-    if (parse === 'none') return { http, data: null, headers, thrown: null, error: null };
+    // `res.url` is where the request ended up after redirects — for a model
+    // file that is the CDN host, which is the whole point of probing it.
+    const finalUrl = typeof res?.url === 'string' ? res.url : null;
+    if (parse === 'none') return { http, data: null, headers, thrown: null, error: null, finalUrl };
     if (!res?.ok) {
       let detail = null;
       try { detail = await res.json(); } catch { /* a non-JSON error body is normal */ }
-      return { http, data: detail, headers, thrown: null, error: detail?.error || detail?.message || null };
+      return { http, data: detail, headers, thrown: null, error: detail?.error || detail?.message || null, finalUrl };
     }
     try {
-      return { http, data: await res.json(), headers, thrown: null, error: null };
+      return { http, data: await res.json(), headers, thrown: null, error: null, finalUrl };
     } catch (err) {
       return { http, data: null, headers, thrown: 'bad-json', error: String(err?.message || err) };
     }
@@ -677,6 +925,37 @@ export async function fetchModelSourceFacts(modelCfg, opts = {}) {
   const onnx = cfg.hfId ? await inspectOnnxRepo(cfg, reqOpts) : null;
   const local = probeSelfHosted && cfg.ggufFile ? await inspectSelfHostedCopy(cfg, reqOpts) : null;
 
+  // The metadata calls above can all answer 200 while the file itself is
+  // unreachable, so ask for one byte of each real download too. Together,
+  // because the failure path is already slow and these are independent.
+  const ggufPath = gguf?.wouldLoad?.path || gguf?.suggested?.path || null;
+  const [download, onnxDownload] = await Promise.all([
+    ggufPath && gguf?.repo ? probeDownloadUrl(ggufUrlFor(gguf.repo, ggufPath), ggufPath, reqOpts) : null,
+    onnx?.weightFile && onnx?.repo
+      ? probeDownloadUrl(`${HF_BASE}/${onnx.repo}/resolve/main/${onnx.weightFile}`, onnx.weightFile, reqOpts)
+      : null
+  ]);
+
+  // What this browser already holds for this model *on this origin*. Browser
+  // caches are per origin, so a model that is pre-cached on the live site has
+  // to download from scratch on a preview host, a localhost port or a new
+  // deploy — which is exactly when "it worked yesterday" stops being true.
+  let deviceCache = null;
+  try {
+    const entry = cfg.hfGgufRepo ? readPrecacheIndex()[cfg.hfGgufRepo] : null;
+    deviceCache = entry
+      ? {
+        present: true,
+        repo: cfg.hfGgufRepo,
+        url: entry.url || null,
+        quant: entry.quant || null,
+        sizeBytes: Number.isFinite(entry.sizeBytes) && entry.sizeBytes > 0 ? entry.sizeBytes : null,
+        preset: entry.preset || null,
+        at: Number.isFinite(entry.at) ? entry.at : null
+      }
+      : { present: false, repo: cfg.hfGgufRepo || null };
+  } catch { deviceCache = null; }
+
   const facts = {
     id: cfg.id || null,
     label: cfg.label || cfg.id || 'the selected model',
@@ -684,11 +963,77 @@ export async function fetchModelSourceFacts(modelCfg, opts = {}) {
     fetchedAt: new Date().toISOString(),
     gguf,
     onnx,
+    download,
+    onnxDownload,
+    deviceCache,
     selfHosted: local
   };
-  const broken = [gguf, onnx, local].some(r => r && r.status !== 'ok' && r.status !== 'present' && r.status !== 'no-source');
+  const broken = [gguf, onnx, local, download, onnxDownload]
+    .some(r => r && r.status !== 'ok' && r.status !== 'present' && r.status !== 'no-source');
   hfDiagCache.set(cacheKey, { facts, expires: Date.now() + (broken ? HF_DIAG_FAIL_CACHE_MS : HF_DIAG_CACHE_MS) });
   return facts;
+}
+
+/**
+ * Ask for one byte of the file the loaders actually download.
+ *
+ * `/api/models/<repo>` and `resolve/main/<file>` are not the same request: the
+ * first is JSON on huggingface.co, the second is a redirect to Hugging Face's
+ * LFS CDN. A firewall, proxy or privacy extension that allows one and blocks
+ * the other makes every engine report "Failed to fetch" while the repository
+ * metadata answers HTTP 200 — which reads as "your network is down" and is
+ * exactly wrong. One ranged byte settles which host is the problem, and names
+ * the CDN it was redirected to when it works.
+ */
+async function probeDownloadUrl(url, path, { fetchImpl, timeoutMs, signal }) {
+  const out = {
+    path: path || null,
+    url,
+    status: 'no-source',
+    http: null,
+    finalUrl: null,
+    host: null,
+    bytes: null,
+    error: null,
+    // The second probe, only run when the first one failed.
+    plainStatus: null,
+    plainHttp: null,
+    plainHost: null
+  };
+  if (!url) return out;
+  const res = await diagRequest(url, {
+    fetchImpl,
+    timeoutMs,
+    signal,
+    init: { method: 'GET', headers: { Range: 'bytes=0-0' } },
+    parse: 'none'
+  });
+  out.http = res.http;
+  out.finalUrl = res.finalUrl || null;
+  try { out.host = out.finalUrl ? new URL(out.finalUrl).host : null; } catch { out.host = null; }
+  if (res.error) out.error = res.error;
+  const total = Number(String(res.headers?.get?.('content-range') || '').split('/')[1]);
+  if (Number.isFinite(total) && total > 0) {
+    out.bytes = total;
+  } else {
+    const len = Number(res.headers?.get?.('content-length'));
+    if (Number.isFinite(len) && len > 0) out.bytes = len;
+  }
+  out.status = res.http === 200 || res.http === 206 ? 'ok' : sourceStatus(res.http, res.thrown);
+  if (out.status === 'ok') return out;
+
+  // The loaders ask for a byte range, and `Range` is not a CORS-simple header,
+  // so the browser preflights it with an OPTIONS request. A proxy, firewall or
+  // privacy extension that drops preflights therefore breaks every model
+  // download while leaving plain API calls working — which is indistinguishable
+  // from a blocked CDN right up to here. A HEAD with no custom headers is a
+  // simple request: no preflight, no body. If that gets through, the host is
+  // reachable and the *ranged* request is what is being stopped.
+  const plain = await diagRequest(url, { fetchImpl, timeoutMs, signal, init: { method: 'HEAD' }, parse: 'none' });
+  out.plainHttp = plain.http;
+  try { out.plainHost = plain.finalUrl ? new URL(plain.finalUrl).host : null; } catch { out.plainHost = null; }
+  out.plainStatus = plain.http === 200 || plain.http === 206 ? 'ok' : sourceStatus(plain.http, plain.thrown);
+  return out;
 }
 
 /** The GGUF side: does the repo exist, and is the quant we ask for in it? */
@@ -767,50 +1112,120 @@ async function inspectGgufRepo(cfg, preferred, { fetchImpl, timeoutMs, signal, b
   return out;
 }
 
-/** The ONNX side, which the browser path uses instead of GGUF. */
+/**
+ * The ONNX side, which the browser path uses instead of GGUF.
+ *
+ * Walks the candidate repositories in the same order `resolveOnnxRepo` does and
+ * stops at the first one that really holds .onnx weights, because reporting on
+ * the configured repo while the loader quietly used a fallback is how a report
+ * ends up describing a repository nobody asked for.
+ */
 async function inspectOnnxRepo(cfg, { fetchImpl, timeoutMs, signal }) {
-  const out = { repo: cfg.hfId || null, alts: (cfg.hfIdAlts || []).slice(), status: 'no-source', http: null, error: null, fileCount: null, hasOnnxWeights: null, lastModified: null };
-  if (!out.repo) return out;
-  const meta = await diagRequest(`${HF_BASE}/api/models/${out.repo}`, { fetchImpl, timeoutMs, signal });
-  out.http = meta.http;
-  out.status = sourceStatus(meta.http, meta.thrown);
-  if (meta.error) out.error = meta.error;
-  const data = meta.data && typeof meta.data === 'object' ? meta.data : null;
-  if (data) {
-    out.lastModified = data.lastModified || null;
-    out.fileCount = Array.isArray(data.siblings) ? data.siblings.length : null;
-    out.gated = data.gated === true || data.gated === 'auto' || data.gated === 'manual';
-    // Only a real file list can prove the weights are missing; an empty one
-    // proves nothing, so leave it unknown rather than reporting a false absence.
-    if (Array.isArray(data.siblings) && data.siblings.length) {
-      out.hasOnnxWeights = data.siblings.some(f => /\.onnx$/i.test(String(f?.rfilename || '')) && !/\.onnx_data$/i.test(String(f?.rfilename || '')));
+  const candidates = [...new Set([cfg?.hfId, ...(cfg?.hfIdAlts || [])].filter(Boolean))];
+  const out = {
+    repo: null,
+    configured: cfg?.hfId || null,
+    alts: (cfg?.hfIdAlts || []).slice(),
+    resolved: null,
+    checked: [],
+    status: 'no-source',
+    http: null,
+    error: null,
+    fileCount: null,
+    hasOnnxWeights: null,
+    weightFile: null,
+    lastModified: null,
+    gated: false
+  };
+  if (!candidates.length) return out;
+
+  for (const repo of candidates) {
+    const meta = await diagRequest(`${HF_BASE}/api/models/${repo}`, { fetchImpl, timeoutMs, signal });
+    const entry = {
+      repo,
+      http: meta.http,
+      status: sourceStatus(meta.http, meta.thrown),
+      hasWeights: null,
+      weightFile: null,
+      error: meta.error || null
+    };
+    const data = meta.data && typeof meta.data === 'object' ? meta.data : null;
+    if (data) {
+      entry.lastModified = data.lastModified || null;
+      entry.fileCount = Array.isArray(data.siblings) ? data.siblings.length : null;
+      entry.gated = data.gated === true || data.gated === 'auto' || data.gated === 'manual';
+      // Only a real file list can prove the weights are missing; an empty one
+      // proves nothing, so leave it unknown rather than reporting a false absence.
+      if (Array.isArray(data.siblings) && data.siblings.length) {
+        const weights = data.siblings
+          .map(f => String(f?.rfilename || ''))
+          .filter(f => /\.onnx$/i.test(f) && !/\.onnx_data$/i.test(f));
+        entry.hasWeights = weights.length > 0;
+        entry.weightFile = weights[0] || null;
+      }
+    }
+    if (meta.thrown === 'bad-json') entry.status = 'bad-json';
+    out.checked.push(entry);
+    if (entry.status === 'ok' && entry.hasWeights === true) {
+      out.resolved = repo;
+      break;
     }
   }
-  if (meta.thrown === 'bad-json') out.status = 'bad-json';
+
+  // `resolveOnnxRepo` falls back to the first candidate when none of them can
+  // prove they hold weights, so the report describes the same repository the
+  // loader would actually try.
+  const chosen = out.resolved ? out.checked.find(c => c.repo === out.resolved) : out.checked[0];
+  out.repo = chosen.repo;
+  out.http = chosen.http;
+  out.status = chosen.status;
+  out.error = chosen.error;
+  out.fileCount = chosen.fileCount ?? null;
+  out.hasOnnxWeights = chosen.hasWeights;
+  out.weightFile = chosen.weightFile;
+  out.lastModified = chosen.lastModified ?? null;
+  out.gated = Boolean(chosen.gated);
   return out;
+}
+
+/**
+ * Does a successful response actually carry a model, or is it the host's own
+ * index page? A static host with no such file answers 200 text/html — the dev
+ * server's SPA fallback does exactly that — and calling that "present" would
+ * send the loader after a few kilobytes of HTML instead of a GGUF.
+ */
+function servedLooksLikeModel(headers, bytes) {
+  const ct = String(headers?.get?.('content-type') || '').toLowerCase();
+  if (ct.includes('text/html')) return false;
+  if (Number(bytes) > MIN_SERVED_GGUF_BYTES) return true;
+  // No usable length: trust an explicit binary/model type, reject the rest.
+  return ct.includes('octet-stream') || ct.includes('gguf');
 }
 
 /** Is this site serving the model itself, or is every load a download? */
 async function inspectSelfHostedCopy(cfg, { fetchImpl, timeoutMs, signal }) {
   let url = null;
   try { url = resolveAssetUrl(`api/waffle-ai/gguf/${cfg.ggufFile}`); } catch { return null; }
-  const out = { file: cfg.ggufFile, url, status: 'unknown', http: null, bytes: null };
+  const out = { file: cfg.ggufFile, url, status: 'unknown', http: null, bytes: null, contentType: null };
   const head = await diagRequest(url, { fetchImpl, timeoutMs, signal, init: { method: 'HEAD' }, parse: 'none' });
   out.http = head.http;
+  out.contentType = String(head.headers?.get?.('content-type') || '') || null;
   if (head.http === 405 || head.http === 501) {
     // Some static hosts refuse HEAD; a one-byte ranged GET asks the same thing.
     const ranged = await diagRequest(url, { fetchImpl, timeoutMs, signal, init: { method: 'GET', headers: { Range: 'bytes=0-0' } }, parse: 'none' });
     out.http = ranged.http;
+    out.contentType = String(ranged.headers?.get?.('content-type') || '') || out.contentType;
     const range = ranged.headers?.get?.('content-range') || '';
     const total = Number(String(range).split('/')[1]);
     if (Number.isFinite(total) && total > 0) out.bytes = total;
-    out.status = ranged.http === 200 || ranged.http === 206 ? 'present' : sourceStatus(ranged.http, ranged.thrown);
+    if (ranged.http !== 200 && ranged.http !== 206) out.status = sourceStatus(ranged.http, ranged.thrown);
+    else out.status = servedLooksLikeModel(ranged.headers, out.bytes) ? 'present' : 'not-a-model';
     return out;
   }
   if (head.http === 200 || head.http === 206) {
     const len = Number(head.headers?.get?.('content-length'));
     out.bytes = Number.isFinite(len) && len > 0 ? len : null;
-    out.status = 'present';
+    out.status = servedLooksLikeModel(head.headers, out.bytes) ? 'present' : 'not-a-model';
     return out;
   }
   out.status = sourceStatus(head.http, head.thrown);
@@ -869,15 +1284,70 @@ export function describeModelSourceFacts(facts) {
 
   const o = facts.onnx;
   if (o && o.repo) {
-    const copy = SOURCE_STATUS_COPY[o.status] || o.status;
-    lines.push(`ONNX repo ${o.repo} — HTTP ${o.http ?? 'none'}, ${copy}${o.fileCount !== null ? `, ${o.fileCount} file(s)` : ''}${o.hasOnnxWeights === false ? ', and not one .onnx weight among them' : o.hasOnnxWeights === true ? ', with .onnx weights present' : ''}.`);
-    if (o.alts?.length) lines.push(`Fallback ONNX repos this build would try next: ${o.alts.join(', ')}.`);
+    const chain = (o.checked || []).filter(c => c && c.repo);
+    if (chain.length > 1) {
+      // More than one candidate was really asked, so show the walk. A 401 on the
+      // configured repo is not a dead end when a fallback answered, and the repo
+      // the loader settles on is the one whose files get probed.
+      lines.push(`ONNX repos this build tries, in order: ${chain.map(c =>
+        `${c.repo} → HTTP ${c.http ?? 'none'}, ${SOURCE_STATUS_COPY[c.status] || c.status}${c.hasWeights === true ? ', with .onnx weights' : c.hasWeights === false ? ', and not one .onnx weight among them' : ''}`
+      ).join('; ')}.`);
+      lines.push(o.resolved
+        ? `The loader would use ${o.resolved} — the first of those that really holds .onnx weights${o.configured && o.configured !== o.resolved ? `, not the configured ${o.configured}` : ''}.`
+        : `None of them could prove it holds .onnx weights, so the loader would try ${o.repo} anyway and report whatever it finds there.`);
+    } else {
+      const copy = SOURCE_STATUS_COPY[o.status] || o.status;
+      lines.push(`ONNX repo ${o.repo} — HTTP ${o.http ?? 'none'}, ${copy}${o.fileCount !== null ? `, ${o.fileCount} file(s)` : ''}${o.hasOnnxWeights === false ? ', and not one .onnx weight among them' : o.hasOnnxWeights === true ? ', with .onnx weights present' : ''}.`);
+      if (o.alts?.length) lines.push(`Fallback ONNX repos this build would try next: ${o.alts.join(', ')}.`);
+    }
+  }
+
+  // The file itself is a different request from the metadata above, and on a
+  // different host once Hugging Face redirects it to the CDN.
+  const probes = [
+    { what: 'The GGUF file WLlama would download', d: facts.download },
+    { what: 'The ONNX weight the browser path would download', d: facts.onnxDownload }
+  ].filter(x => x.d && x.d.status !== 'no-source');
+  let contradicted = false;
+  let plainWorked = false;
+  for (const { what, d } of probes) {
+    const name = d.path ? `${what} — ${d.path} —` : `${what} —`;
+    if (d.status === 'ok') {
+      lines.push(`${name} answered HTTP ${d.http}${d.bytes ? ` and is ${fmtBytes(d.bytes)} in total` : ''}${d.host ? `, served from ${d.host}` : ''}, so this browser can fetch the weights.`);
+      continue;
+    }
+    lines.push(`${name} could not be fetched: HTTP ${d.http ?? 'none'}, ${SOURCE_STATUS_COPY[d.status] || d.status}${d.error ? ` (${String(d.error).slice(0, 140)})` : ''}.`);
+    if (d.plainStatus === 'ok') {
+      plainWorked = true;
+      lines.push(`A plain request for that same file — a HEAD, with no Range header and therefore no CORS preflight — did succeed: HTTP ${d.plainHttp}${d.plainHost ? `, from ${d.plainHost}` : ''}. The file host is reachable, so what is being stopped is the *ranged* download the loaders send, which a browser must preflight with an OPTIONS request first.`);
+    } else if (d.plainStatus) {
+      lines.push(`A plain request for that same file failed too (HTTP ${d.plainHttp ?? 'none'}, ${SOURCE_STATUS_COPY[d.plainStatus] || d.plainStatus}), so this is not only about the Range header.`);
+    }
+    if ([g, facts.onnx].some(r => r && (r.http === 200 || r.http === 206))) contradicted = true;
+  }
+  if (contradicted) {
+    lines.push('That is not a dead network: the repository API on huggingface.co answered HTTP 200 from this same browser moments earlier. Hugging Face serves metadata from huggingface.co and the weights from its LFS CDN after a redirect, so what is blocked, filtered or timing out is the *file* host — most often a firewall, proxy or privacy extension that allows the API but not large binaries.');
+  }
+
+  const dc = facts.deviceCache;
+  if (dc && dc.repo) {
+    if (dc.present) {
+      const detail = [dc.sizeBytes ? fmtBytes(dc.sizeBytes) : null, dc.quant || null].filter(Boolean).join(', ');
+      lines.push(`This browser has that GGUF pre-cached on *this origin*${detail ? ` (${detail})` : ''}, so the WLlama path can start it with no download at all. Pre-cached copies belong to one origin: the same model can be ready on the live site and missing on a preview host or a new port.`);
+    } else {
+      lines.push(`This origin holds no pre-cached copy of that GGUF, so every load from here has to download it. Pre-caches are per origin, which is why a model that already ran on the live site can still fail from scratch on a different host or port.`);
+    }
   }
 
   const l = facts.selfHosted;
   if (l) {
-    if (l.status === 'present') lines.push(`This site is serving the model itself: ${l.file} is present locally${l.bytes ? ` (${fmtBytes(l.bytes)})` : ''}, so no download was needed for the WLlama path.`);
-    else if (l.status === 'not-found') lines.push(`This site is not serving the model itself — ${l.file} is absent locally (HTTP ${l.http}), so every load has to reach the network. Running \`node scripts/fetch-model.mjs\` once would put it here.`);
+    if (l.status === 'present') {
+      lines.push(`This site is serving the model itself: ${l.file} is present on this origin${l.bytes ? ` (${fmtBytes(l.bytes)})` : ''}. The WLlama path loads that copy *first* — same origin, so no CORS preflight and no third-party host to block — and keeps it on this device afterwards. Only the ONNX runtimes still have to reach Hugging Face.`);
+    } else if (l.status === 'not-a-model') {
+      lines.push(`This origin answered ${l.file} with ${l.contentType ? `${l.contentType}` : 'a page'}${l.bytes ? ` of ${fmtBytes(l.bytes)}` : ''}, not a model — a static host with no such file usually serves its own index page, so it counts as absent. Every load still has to reach huggingface.co.`);
+    } else if (l.status === 'not-found') {
+      lines.push(`This site is not serving the model itself — ${l.file} is absent on this origin (HTTP ${l.http}), so every load has to reach huggingface.co. \`node scripts/fetch-model.mjs\` (or \`npm run models\`) puts it here; a deploy that runs it serves the weights from its own origin and the browser pre-caches them by itself.`);
+    }
     else lines.push(`The self-hosted copy at ${l.url} reported ${SOURCE_STATUS_COPY[l.status] || l.status}.`);
   }
 
@@ -901,12 +1371,21 @@ export function modelSourceFixAdvice(facts, classified) {
     return `Set hfGgufQuant to ${quant || 'a quant that exists in that repo'} in ${where} — the quant in the table is not published there.`;
   }
   if (g.status === 'no-gguf') return `That repo publishes no GGUF. Change hfGgufRepo in ${where} to a repo that does, or drop the WLlama attempt for this model.`;
+  const served = facts.selfHosted;
+  const downloadBlocked = classified?.kind === 'blocked-download' || classified?.kind === 'blocked-preflight';
+  if (downloadBlocked && served?.status === 'present') {
+    const what = classified.kind === 'blocked-preflight' ? 'a blocked preflight' : 'a blocked download';
+    return `Hugging Face is out of the WLlama path already: this site serves ${served.file} from its own origin${served.bytes ? ` (${fmtBytes(served.bytes)})` : ''} and that copy is tried first, so ${what} on the CDN should not have stopped it. If WLlama still failed, look at this origin instead — the file being answered as text/html, truncated, or blocked here too. The ONNX runtimes have no same-origin copy and will keep failing until the network allows huggingface.co.`;
+  }
+  if (classified?.kind === 'blocked-preflight') return 'A plain request for the file succeeded, so the host is reachable and the block is on the preflighted ranged download: allow OPTIONS to huggingface.co and cdn-lfs*.hf.co (or disable privacy extensions for this site) — or take the CDN out of the path entirely by serving the weights from this origin with `node scripts/fetch-model.mjs`, after which the browser pre-caches them itself.';
+  if (classified?.kind === 'blocked-download') return 'The repository is reachable and the file exists, so the block is on the download itself: serve it from this origin with `node scripts/fetch-model.mjs` (a deploy that runs it does this automatically), which removes the CDN redirect and the cross-origin preflight, or retry from a network that allows large downloads.';
   if (g.status === 'timeout' || g.status === 'unreachable') return 'The diagnostic call itself could not reach huggingface.co, so treat the network as the suspect before the model: blocked DNS, a firewall, a privacy extension, or no CORS from this origin.';
   if (g.status === 'ok' && g.wouldLoad && g.budgetBytes > 0 && g.wouldLoad.bytes > g.budgetBytes) {
     return `Raise ggufMB for this model in ${where} (the real file is ${fmtBytes(g.wouldLoad.bytes)}), or pick a lighter quant — the budget in the table is what the warnings and the WASM heap check are computed from.`;
   }
   if (classified?.kind === 'memory') return 'The source is fine, so this is the device: pick a smaller model or a lighter quantization preset in Settings → AI Models.';
   if (classified?.kind === 'runtime') return 'The source is fine, so this is the runtime: switch the fallback mode to CPU/WASM — Chromium without shader-f16 aborts the whole WebGPU module.';
+  if (classified?.kind === 'stall') return 'The source is fine and the model loaded, so the runtime wedged mid-reply: reload the page (a stuck WASM or WebGPU worker cannot be revived in place) and try a smaller model or CPU/WASM in Settings \u2192 AI Models.';
   return null;
 }
 
@@ -1200,6 +1679,7 @@ async function getBrowserGenerator(modelCfg, preferredDevice, onStatus, withVisi
     const repo = await resolveOnnxRepo(modelCfg);
 
     const progress_callback = p => {
+      markInferenceBeat();
       if (p?.status === 'progress' && typeof p.progress === 'number') {
         onStatus?.({
           state: 'downloading',
@@ -1328,6 +1808,7 @@ export async function streamBrowserChat({
     skip_prompt: true,
     skip_special_tokens: true,
     callback_function(text) {
+      markInferenceToken();
       if (signal?.aborted) return;
       acc += text;
       const cleaned = acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*$/, '');
@@ -1611,6 +2092,191 @@ export async function listPrecachedModels() {
   }).sort((a, b) => (b.cachedAt || 0) - (a.cachedAt || 0));
 }
 
+/**
+ * Anything smaller than this is not a model: a static host that has no such
+ * file answers 200 with its own index page, and loading that as a GGUF would
+ * fail in a way that looks like a corrupt download.
+ */
+const MIN_SERVED_GGUF_BYTES = 1_000_000;
+
+/**
+ * The label recorded for a copy this origin serves. Its quant lives in
+ * `.cache/waffle-ai/models.json`, which the browser never sees, so claiming one
+ * would be inventing evidence — the preset is recorded instead, which is what
+ * the loader actually validates against.
+ */
+const LOCAL_QUANT_LABEL = 'served here';
+
+const KEY_AUTO_PRECACHE = 'bite-ai-auto-precache';
+
+/** How long an automatic pre-cache waits before it would consider running again. */
+export const AUTO_PRECACHE_COOLDOWN_MS = 12 * 60 * 60 * 1000;
+
+let autoPrecacheController = null;
+
+/**
+ * Cancel the background pre-cache, if one is running. Called by the inference
+ * queue the moment a real prompt starts, and by anything that needs the device
+ * copy slot or the network for itself.
+ */
+export function stopAutoPrecache(reason = 'interrupted') {
+  const controller = autoPrecacheController;
+  autoPrecacheController = null;
+  if (controller) {
+    try { controller.abort(reason); } catch { controller.abort(); }
+  }
+  return Boolean(controller);
+}
+
+export function isAutoPrecacheRunning() {
+  return Boolean(autoPrecacheController);
+}
+
+/** What this origin serves itself, per model id. Same-origin HEADs only. */
+export async function probeServedModels({ fetchImpl = fetch, signal = null } = {}) {
+  const out = {};
+  for (const m of TEXT_MODELS.filter(x => x.ggufFile)) {
+    try {
+      out[m.id] = await inspectSelfHostedCopy(m, { fetchImpl, timeoutMs: HF_DIAG_TIMEOUT_MS, signal });
+    } catch {
+      out[m.id] = null;
+    }
+  }
+  return out;
+}
+
+/**
+ * Decide what an idle browser should pre-cache — pure, so the rules can be
+ * tested without a network or an OPFS.
+ *
+ * Only files this origin already serves qualify. The site shipped them, so
+ * keeping a device copy costs no third-party request, trips no CORS preflight
+ * and works on exactly the networks that block huggingface.co.
+ */
+export function planAutoPrecache({
+  models,
+  served = {},
+  cached = {},
+  now = Date.now(),
+  lastRunAt = 0,
+  cooldownMs = AUTO_PRECACHE_COOLDOWN_MS,
+  storageOk = true,
+  saveData = false,
+  busy = false,
+  force = false
+}) {
+  if (busy) return { run: false, reason: 'a chat is running', ids: [] };
+  if (!storageOk) return { run: false, reason: 'this browser exposes no on-device storage', ids: [] };
+  if (saveData) return { run: false, reason: 'the browser asked to save data', ids: [] };
+  const eligible = models.filter(m => {
+    if (!m.hfGgufRepo || !m.ggufFile) return false;
+    const local = served[m.id];
+    if (local?.status !== 'present' || (local.bytes || 0) <= MIN_SERVED_GGUF_BYTES) return false;
+    return !cached[m.hfGgufRepo]?.present;
+  });
+  if (!eligible.length) {
+    return { run: false, reason: 'this origin serves no model that is not already on the device', ids: [] };
+  }
+  if (!force && now - lastRunAt < cooldownMs) {
+    return { run: false, reason: 'it already ran within the last 12 hours', ids: [] };
+  }
+  return { run: true, reason: '', ids: eligible.map(m => m.id) };
+}
+
+/**
+ * Pre-cache one model from *this origin's* copy — never from Hugging Face.
+ */
+export async function precacheFromThisOrigin(modelId, { onProgress, signal, fetchImpl = fetch } = {}) {
+  const cfg = TEXT_MODELS.find(m => m.id === modelId);
+  if (!cfg?.ggufFile) throw new Error(`${modelId} has no GGUF file name to look for on this origin.`);
+  const served = await inspectSelfHostedCopy(cfg, { fetchImpl, timeoutMs: HF_DIAG_TIMEOUT_MS, signal });
+  if (!served || served.status !== 'present' || (served.bytes || 0) <= MIN_SERVED_GGUF_BYTES) {
+    throw new Error(`This site is not serving ${cfg.ggufFile}${served?.http ? ` (HTTP ${served.http})` : ''}, so there is nothing here to pre-cache.`);
+  }
+  const diag = await detectDeviceDiagnostics().catch(() => null);
+  if (diag && !diag.hasOPFS) {
+    throw new Error('This browser exposes no on-device storage (OPFS), so models cannot be pre-cached.');
+  }
+  onProgress?.({
+    state: 'downloading',
+    detail: `Pre-caching ${cfg.label} from this site (${fmtMB(served.bytes)})…`,
+    loaded: 0,
+    total: served.bytes
+  });
+  const mm = await getModelManager();
+  const model = await mm.downloadModel({ url: served.url }, {
+    signal,
+    progressCallback: pr => onProgress?.({
+      state: 'downloading',
+      detail: `Pre-caching ${cfg.label} from this site: ${pr.total > 0 ? Math.round((pr.loaded / pr.total) * 100) : 0}%`,
+      loaded: pr.loaded,
+      total: pr.total
+    })
+  });
+  const sizeBytes = model?.size > 0 ? model.size : served.bytes;
+  if (cfg.hfGgufRepo) {
+    rememberPrecachedGguf(cfg.hfGgufRepo, {
+      url: served.url,
+      quant: LOCAL_QUANT_LABEL,
+      sizeBytes,
+      preset: null
+    });
+  }
+  return { modelId, url: served.url, sizeBytes, source: 'this origin' };
+}
+
+/**
+ * Pre-cache whatever this origin serves, in the background, at most once every
+ * `AUTO_PRECACHE_COOLDOWN_MS`. Quiet by design: it reports through `onProgress`
+ * only, and it cancels itself the moment a chat starts.
+ */
+export async function autoPrecacheServedModels({ onProgress, signal, fetchImpl = fetch, now = Date.now(), force = false } = {}) {
+  if (autoPrecacheController) return { run: false, reason: 'a pre-cache is already running', done: [] };
+  const controller = new AbortController();
+  const onOuterAbort = () => { try { controller.abort('interrupted'); } catch {} };
+  signal?.addEventListener?.('abort', onOuterAbort, { once: true });
+  autoPrecacheController = controller;
+  const done = [];
+  try {
+    const models = TEXT_MODELS.filter(m => m.hfGgufRepo && m.ggufFile);
+    const served = await probeServedModels({ fetchImpl, signal: controller.signal });
+    const cached = {};
+    for (const e of await listPrecachedModels().catch(() => [])) cached[e.repo] = { present: Boolean(e.usable) };
+    const conn = typeof navigator !== 'undefined' ? navigator.connection || null : null;
+    const diag = await detectDeviceDiagnostics().catch(() => null);
+    const plan = planAutoPrecache({
+      models,
+      served,
+      cached,
+      now,
+      lastRunAt: Number(readCachePref(KEY_AUTO_PRECACHE, {})?.at) || 0,
+      storageOk: diag ? Boolean(diag.hasOPFS) : true,
+      saveData: Boolean(conn?.saveData) || ['slow-2g', '2g'].includes(conn?.effectiveType),
+      busy: getInferenceQueueState().busy,
+      force
+    });
+    if (controller.signal.aborted) return { run: false, reason: 'cancelled before it started', done };
+    if (!plan.run) return { run: false, reason: plan.reason, done };
+
+    writeCachePref(KEY_AUTO_PRECACHE, { at: now, ids: plan.ids });
+    for (const id of plan.ids) {
+      if (controller.signal.aborted) break;
+      if (getInferenceQueueState().busy) { stopAutoPrecache('a chat started'); break; }
+      try {
+        const result = await precacheFromThisOrigin(id, { signal: controller.signal, onProgress });
+        done.push({ id, sizeBytes: result.sizeBytes });
+      } catch (err) {
+        if (err?.name === 'AbortError' || controller.signal.aborted) break;
+        onProgress?.({ state: 'error', id, detail: `${id}: ${err?.message || err}`, loaded: 0, total: 0 });
+      }
+    }
+    return { run: true, reason: '', done };
+  } finally {
+    if (autoPrecacheController === controller) autoPrecacheController = null;
+    signal?.removeEventListener?.('abort', onOuterAbort);
+  }
+}
+
 export async function removePrecachedModel(key) {
   const index = readPrecacheIndex();
   const entry = index[key];
@@ -1802,6 +2468,7 @@ export async function streamWllamaChat({
       log_level: 3,
       useCache: true,
       progressCallback({ loaded, total }) {
+        markInferenceBeat();
         if (total > 0) {
           onStatus?.({
             state: 'downloading',
@@ -1819,9 +2486,14 @@ export async function streamWllamaChat({
     // preset was recorded fall back to the quant-name check, and an unrecognised
     // quant ('smallest') is still accepted — re-resolving it would mean another
     // trip to the network to arrive at the same file.
-    const cacheUsable = cachedEntry?.preset
-      ? cachedEntry.preset === preset.id
-      : (quantList.includes(cachedEntry?.quant) || cachedEntry?.quant === 'smallest');
+    // A copy of what this origin serves is one fixed file, not a promise about
+    // a quant, so it stays usable whatever preset is selected — and its label
+    // says 'served here' rather than naming a quant nobody verified.
+    const cacheUsable = cachedEntry?.quant === LOCAL_QUANT_LABEL
+      ? true
+      : cachedEntry?.preset
+        ? cachedEntry.preset === preset.id
+        : (quantList.includes(cachedEntry?.quant) || cachedEntry?.quant === 'smallest');
     if (cachedEntry?.url && cacheUsable) {
       try {
         const mm = await getModelManager();
@@ -1841,7 +2513,56 @@ export async function streamWllamaChat({
       }
     }
 
-    // 2) HuggingFace → downloaded straight into on-device storage.
+    // 2) A GGUF this origin serves itself. Same origin means no CORS
+    //    preflight, no redirect to an LFS CDN and no third-party host for a
+    //    firewall or a privacy extension to block — which is the failure this
+    //    app keeps meeting in the wild. It is copied into on-device storage on
+    //    the way, so the next start needs no network at all.
+    if (localGgufUrl) {
+      let served = null;
+      try { served = await inspectSelfHostedCopy({ ggufFile }, { timeoutMs: HF_DIAG_TIMEOUT_MS, signal }); } catch {}
+      if (served?.status === 'present' && (served.bytes || 0) > MIN_SERVED_GGUF_BYTES) {
+        const sizeNote = served.bytes ? ` (${fmtMB(served.bytes)})` : '';
+        quantLabel = LOCAL_QUANT_LABEL;
+        onStatus?.({
+          state: 'loading',
+          detail: `Loading ${ggufFile} from this site${sizeNote} via WLlama (${gpu ? 'WebGPU' : 'CPU WASM'})…`
+        });
+        try {
+          const mm = await getModelManager();
+          const model = await mm.downloadModel({ url: localGgufUrl }, {
+            signal,
+            progressCallback: pr => {
+              if (pr.total > 0) {
+                onStatus?.({
+                  state: 'loading',
+                  detail: `Keeping this site's copy of ${ggufFile} on your device (${Math.round((pr.loaded / pr.total) * 100)}%)…`
+                });
+              }
+            }
+          });
+          await inst.loadModel(model, loadParams);
+          if (hfRepo) {
+            rememberPrecachedGguf(hfRepo, {
+              url: localGgufUrl,
+              quant: quantLabel,
+              sizeBytes: model?.size > 0 ? model.size : served.bytes,
+              preset: null
+            });
+          }
+          return { source: 'local', quant: quantLabel, sizeBytes: served.bytes };
+        } catch (err) {
+          if (err?.name === 'AbortError' || signal?.aborted) throw err;
+          // No on-device storage, or the copy failed. Streaming the same-origin
+          // file still beats a third-party download, so do that instead.
+          pushNativeLog('warn', [`could not keep ${ggufFile} on device: ${err?.message || err}`]);
+          await inst.loadModelFromUrl(localGgufUrl, loadParams);
+          return { source: 'local', quant: quantLabel, sizeBytes: served.bytes };
+        }
+      }
+    }
+
+    // 3) HuggingFace → downloaded straight into on-device storage.
     if (hfRepo) {
       const picked = await resolveBestHFGguf(hfRepo, quantList, signal, budget);
       quantLabel = picked.quant;
@@ -1863,32 +2584,20 @@ export async function streamWllamaChat({
       return { source: 'hf', quant: quantLabel, sizeBytes: picked.sizeBytes };
     }
 
-    // 3) A GGUF served by this host (the dev server's .cache/waffle-ai).
-    let hasLocalGguf = false;
-    if (localGgufUrl) {
-      try {
-        const probe = await fetch(localGgufUrl, { method: 'HEAD', signal });
-        const ct = probe.headers.get('content-type') || '';
-        const len = Number(probe.headers.get('content-length') || '0');
-        hasLocalGguf = probe.ok && !ct.includes('text/html') && len > 1_000_000;
-      } catch {}
-    }
-    if (!hasLocalGguf) {
-      throw new Error(ggufFile
-        ? `Local GGUF (${ggufFile}) is not served by this host and no HuggingFace GGUF repo is configured.`
-        : 'No HuggingFace GGUF repo is configured for this model and this host serves no local GGUF.');
-    }
-    onStatus?.({
-      state: 'loading',
-      detail: `Loading ${ggufFile} via WLlama (${gpu ? 'WebGPU' : 'CPU WASM'})…`
-    });
-    await inst.loadModelFromUrl(localGgufUrl, loadParams);
-    return { source: 'local', quant: quantLabel };
+    // 4) Nothing on this device, nothing served by this origin, and no
+    //    HuggingFace repo configured to fall back on.
+    throw new Error(ggufFile
+      ? `Local GGUF (${ggufFile}) is not served by this host and no HuggingFace GGUF repo is configured.`
+      : 'No HuggingFace GGUF repo is configured for this model and this host serves no local GGUF.');
   };
 
   let loadedHere = false;
-  if (wllamaInstance && wllamaLoadedFile === `${targetKey}:${useGpu}` && wllamaInstance.isModelLoaded?.()) {
+  if (wllamaInstance && !wllamaDirty && wllamaLoadedFile === `${targetKey}:${useGpu}` && wllamaInstance.isModelLoaded?.()) {
     loadedHere = true;
+  } else if (wllamaInstance && wllamaDirty) {
+    // The last request on it never finished, so its slot may still be held.
+    // Starting from it is how a second prompt ends up waiting forever.
+    await disposeWllama();
   }
 
   let lastErr = null;
@@ -1935,7 +2644,13 @@ export async function streamWllamaChat({
       messages: chat,
       max_tokens: effectiveMaxTokens,
       temperature,
-      stream: true
+      stream: true,
+      // Wllama only releases the request slot when *its* loop ends: `getResponse`
+      // polls until the model is done and calls `cancelRequest` in its finally
+      // when it was not. Handing it our signal is what makes Stop actually stop,
+      // instead of leaving the worker generating into a queue nobody reads —
+      // which is what the next prompt then waits behind.
+      abortSignal: signal
     });
   } catch (err) {
     if (err?.name === 'AbortError' || signal?.aborted) throw err;
@@ -1944,6 +2659,7 @@ export async function streamWllamaChat({
 
   try {
     for await (const chunk of stream) {
+      markInferenceToken();
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       const piece = chunk?.choices?.[0]?.delta?.content || '';
       if (piece) {
@@ -1953,11 +2669,15 @@ export async function streamWllamaChat({
       }
     }
   } catch (err) {
+    // Walking away from a stream leaves Wllama's slot occupied, so this
+    // instance is not reusable — the next prompt gets a fresh one.
+    wllamaDirty = true;
     if (err?.name === 'AbortError' || signal?.aborted) throw err;
     if (!acc) throw wllamaFailure('WLlama generation', err);
     // Keep whatever already streamed instead of throwing the answer away.
     pushNativeLog('warn', [`generation interrupted: ${err?.message || err}`]);
   }
+  wllamaDirty = false;
   return acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*$/, '').trim();
 }
 

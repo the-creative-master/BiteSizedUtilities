@@ -22,6 +22,20 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm test
+      # Serve the small models from this origin instead of making every visitor
+      # download them from Hugging Face. Runs after the tests so nothing they
+      # assert about an empty cache can be disturbed, and never fails the
+      # deploy: without it the site works exactly as it did before.
+      - name: Restore pre-cached model weights
+        continue-on-error: true
+        uses: actions/cache@v4
+        with:
+          path: .cache/waffle-ai
+          key: waffle-ai-models-${{ hashFiles('waffle-browser-ai.js', 'scripts/fetch-model.mjs') }}
+          restore-keys: waffle-ai-models-
+      - name: Pre-cache the models this site can serve
+        continue-on-error: true
+        run: npm run precache
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

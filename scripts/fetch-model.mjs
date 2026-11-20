@@ -13,7 +13,16 @@
  *   node scripts/fetch-model.mjs                 # SmolLM2 135M (the default)
  *   node scripts/fetch-model.mjs smollm2-360m    # any id from TEXT_MODELS
  *   node scripts/fetch-model.mjs --all-small     # every model under 1B params
+ *   node scripts/fetch-model.mjs --max-mb=160    # stop when the total passes 160 MB
  *   node scripts/fetch-model.mjs --force         # re-download
+ *
+ * `--max-mb` (or `WAFFLE_SELF_HOST_MB`) is what a deploy uses: GitHub Pages
+ * should stay well under 1 GB published, so CI pre-caches in table order until
+ * the budget is spent. The default model comes first, so it is the one that
+ * always makes the cut — and once a model is served from this origin, the
+ * browser loads that copy before it ever asks Hugging Face and keeps it on the
+ * device afterwards. No cross-origin request, no CORS preflight, no CDN left to
+ * be blocked, which is the failure this app keeps meeting in the wild.
  *
  * Files land in .cache/waffle-ai/, which is gitignored: weights are not source
  * code and must not end up in git history. The production build copies whatever
@@ -35,6 +44,11 @@ const args = process.argv.slice(2);
 const force = args.includes('--force');
 const allSmall = args.includes('--all-small');
 const presetId = (args.find(a => a.startsWith('--preset=')) || '').split('=')[1] || DEFAULT_PRESET;
+const maxMbArg = (args.find(a => a.startsWith('--max-mb=')) || '').split('=')[1];
+const envMb = Number(process.env.WAFFLE_SELF_HOST_MB);
+const maxBytes = Number(maxMbArg) > 0 ? Number(maxMbArg) * 1024 ** 2
+  : Number.isFinite(envMb) && envMb > 0 ? envMb * 1024 ** 2
+  : Infinity;
 const positional = args.filter(a => !a.startsWith('--'));
 
 const fmtMB = b => (b > 0 ? `${(b / 1024 ** 2).toFixed(1)} MB` : '? MB');
@@ -52,6 +66,28 @@ function pickQuantFile(files, preferredQuants) {
     if (hit) return { file: hit, quant: q };
   }
   return { file: bySize[0], quant: bySize[0] ? 'smallest available' : null };
+}
+
+/**
+ * Decide what fits before anything is downloaded. Sizes come from the repo tree
+ * (an API call, a few hundred bytes), so a budget cut costs no bandwidth. A file
+ * already on disk still counts against the budget: the build copies it into
+ * dist/ whether or not this run downloaded it.
+ */
+export function planBudget(picks, budgetBytes = Infinity) {
+  const take = [];
+  const skip = [];
+  let used = 0;
+  for (const pick of picks) {
+    const size = Number(pick.size) > 0 ? Number(pick.size) : 0;
+    if (Number.isFinite(budgetBytes) && used + size > budgetBytes) {
+      skip.push({ ...pick, size, reason: `${fmtMB(size)} would take the total past the ${fmtMB(budgetBytes)} budget` });
+      continue;
+    }
+    used += size;
+    take.push({ ...pick, size });
+  }
+  return { take, skip, used, budgetBytes };
 }
 
 async function fetchTree(repo) {
@@ -94,7 +130,8 @@ async function download(url, dest, totalHint) {
   return loaded;
 }
 
-async function fetchOne(modelId) {
+/** What would this model cost? Repo lookup only — no weights are downloaded. */
+async function resolvePick(modelId) {
   const cfg = TEXT_MODELS.find(m => m.id === modelId);
   if (!cfg) {
     throw new Error(`unknown model "${modelId}". Known ids:\n  ${TEXT_MODELS.map(m => m.id).join('\n  ')}`);
@@ -102,22 +139,29 @@ async function fetchOne(modelId) {
   if (!cfg.hfGgufRepo) throw new Error(`${modelId} has no GGUF source repo`);
 
   const dest = path.join(OUT_DIR, cfg.ggufFile);
-  if (fs.existsSync(dest) && !force) {
-    console.log(`  ✓ ${cfg.label} already present (${fmtMB(fs.statSync(dest).size)}) — skipping. Use --force to re-download.`);
-    return { modelId, skipped: true, dest };
-  }
-
   const preset = QUANT_PRESETS.find(q => q.id === presetId) || QUANT_PRESETS[0];
   const preferred = cfg.hfGgufQuant && !preset.ggufQuants.includes(cfg.hfGgufQuant)
     ? [...preset.ggufQuants, cfg.hfGgufQuant]
     : preset.ggufQuants;
 
-  console.log(`  · ${cfg.label} ← ${cfg.hfGgufRepo} (${preset.label})`);
+  if (fs.existsSync(dest) && !force) {
+    return { modelId, cfg, dest, preset, preferred, present: true, size: fs.statSync(dest).size, file: null, quant: null };
+  }
   const files = await fetchTree(cfg.hfGgufRepo);
   const { file, quant } = pickQuantFile(files, preferred);
   if (!file) throw new Error(`no usable single-file GGUF in ${cfg.hfGgufRepo}`);
+  return { modelId, cfg, dest, preset, preferred, present: false, size: file.size || 0, file, quant };
+}
 
+async function downloadPick(pick) {
+  const { cfg, dest, file } = pick;
+  if (pick.present) {
+    console.log(`  ✓ ${cfg.label} already present (${fmtMB(pick.size)}) — skipping. Use --force to re-download.`);
+    return { modelId: pick.modelId, skipped: true, dest };
+  }
+  const quant = pick.quant;
   const url = `${HF_BASE}/${cfg.hfGgufRepo}/resolve/main/${file.path}`;
+  console.log(`  · ${cfg.label} ← ${cfg.hfGgufRepo} (${pick.preset.label})`);
   console.log(`    ${file.path} · ${quant} · ${fmtMB(file.size)}`);
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const bytes = await download(url, dest, file.size);
@@ -146,25 +190,44 @@ async function fetchOne(modelId) {
   return { modelId, skipped: false, dest, bytes };
 }
 
-async function main() {
-  const ids = allSmall
-    ? TEXT_MODELS.filter(m => Number(m.params || 0) < 1).map(m => m.id)
-    : (positional.length ? positional : [DEFAULT_MODEL]);
+export async function main({ budgetBytes = maxBytes, ids = null } = {}) {
+  const wanted = ids
+    || (allSmall
+      ? TEXT_MODELS.filter(m => Number(m.params || 0) < 1).map(m => m.id)
+      : (positional.length ? positional : [DEFAULT_MODEL]));
 
-  console.log(`\nWaffle AI model fetch → .cache/waffle-ai/  (${ids.length} model${ids.length === 1 ? '' : 's'})\n`);
-  let ok = 0;
+  const budgetNote = Number.isFinite(budgetBytes) ? `, ${fmtMB(budgetBytes)} budget` : '';
+  console.log(`\nWaffle AI model fetch → .cache/waffle-ai/  (${wanted.length} model${wanted.length === 1 ? '' : 's'}${budgetNote})\n`);
+
+  // Learn every price first, then decide what fits: stopping at the first model
+  // that overflows would leave a smaller later one unserved for no reason.
   const failed = [];
-  for (const id of ids) {
+  const picks = [];
+  for (const id of wanted) {
     try {
-      await fetchOne(id);
-      ok++;
+      picks.push(await resolvePick(id));
     } catch (err) {
       failed.push({ id, message: String(err?.message || err) });
       console.error(`  ✗ ${id}: ${err?.message || err}`);
     }
   }
+  const plan = planBudget(picks, budgetBytes);
+  for (const skipped of plan.skip) {
+    console.log(`  – ${skipped.cfg.label}: ${skipped.reason} — it will load from Hugging Face instead`);
+  }
 
-  console.log(`\nDone: ${ok}/${ids.length} succeeded.`);
+  let ok = 0;
+  for (const pick of plan.take) {
+    try {
+      await downloadPick(pick);
+      ok++;
+    } catch (err) {
+      failed.push({ id: pick.modelId, message: String(err?.message || err) });
+      console.error(`  ✗ ${pick.modelId}: ${err?.message || err}`);
+    }
+  }
+
+  console.log(`\nDone: ${ok}/${plan.take.length} present${plan.skip.length ? `, ${plan.skip.length} left to Hugging Face by budget` : ''} (${fmtMB(plan.used)} self-hosted).`);
   if (failed.length) {
     console.log('\nFailed:');
     for (const f of failed) console.log(`  · ${f.id} — ${f.message}`);
@@ -182,6 +245,12 @@ async function main() {
     console.log('Restart the dev server if it is running, then open Waffle AI.\n');
   }
   process.exitCode = failed.length ? 1 : 0;
+  return { ok, failed, plan };
 }
 
-main();
+export { pickQuantFile, OUT_DIR };
+
+// Importable for tests: run only when executed as a script.
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
+  main();
+}

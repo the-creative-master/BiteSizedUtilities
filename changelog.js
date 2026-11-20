@@ -22,9 +22,9 @@ import { isBackupBuild } from './build-mode.js';
 export const APP_VERSION = '1.1';
 
 /** Test versions built after 1.1 shipped. Reset to 0 on every public release. */
-export const TVAR = 1;
+export const TVAR = 2;
 
-/** `1.1 TVAR 1` — the version string the backup kitchen reports. */
+/** `1.1 TVAR 2` — the version string the backup kitchen reports. */
 export const APP_VERSION_EXTENDED = `${APP_VERSION} TVAR ${TVAR}`;
 
 /** What the footer of the changelog should call this build. */
@@ -39,7 +39,82 @@ export function appVersionLabel() {
  */
 export const TVAR_LOG = [
   {
-    version: APP_VERSION_EXTENDED,
+    // The newest entry always spells the counter out literally, and a test
+    // pins it to APP_VERSION_EXTENDED, so history cannot quietly renumber
+    // itself when the counter moves.
+    version: `${APP_VERSION} TVAR 2`,
+    date: 'November 19, 2026',
+    title: 'The one that stops freezing, and stops blaming your network',
+    tvar: true,
+    groups: [
+      {
+        label: '\u{1F41B} What was actually wrong',
+        items: [
+          'Waffle AI would answer one question and then freeze on the next. The tab stayed open, the input stayed greyed out, and no error ever appeared, which made it look like the model had died. The model was fine.',
+          'A browser runtime answers one request at a time. WLlama holds a single inference slot per loaded model and only releases it when its own loop finishes or its own abort fires. Walking away from a stream \u2014 pressing Stop, closing the dialog, an engine error halfway through a reply \u2014 left that slot occupied, so the next prompt queued behind a runtime that was still busy with the one before it.',
+          'Nothing in the whole fallback chain had a timeout. That is what turned a wait into a freeze: the flag that disables the composer is only cleared when a reply finishes, and that reply was never going to finish.',
+          'A wedged runtime was also reused. The kitchen kept the loaded model between questions to save a reload, which is right for a healthy one and exactly wrong for one that stopped answering.'
+        ]
+      },
+      {
+        label: '\u{1F527} What changed',
+        items: [
+          'Stop now really stops. The abort signal is handed to WLlama itself, which cancels the request and releases the slot instead of generating into a queue nobody is reading any more.',
+          'A runtime that was walked away from is thrown away rather than reused, so the next question starts on a clean worker instead of inheriting a busy one.',
+          'Only one inference runs at a time anywhere in the kitchen. The chat, CodeHub\u2019s AI Error Diagnostics and the AI writing tools now share a single queue, so two overlapping requests can no longer deadlock each other.',
+          'Every attempt is watched for silence instead of for total time, with two windows because the phases fail differently: up to four minutes before the first token (downloading, compiling WASM and shaders \u2014 slow, but it reports progress), and 45 seconds once text is streaming, because a reply that goes quiet mid-sentence for 45 seconds is not thinking.',
+          'When the watchdog fires it says so in the reply \u2014 which runtime went quiet, for how long, and that it was discarded \u2014 and the next runtime in the fallback chain takes over. A permanent freeze became a message and a retry.',
+          'Pressing Stop while a runtime is wedged frees the input after five seconds instead of never. ONNX generation cannot be interrupted at all, so the page simply stops waiting for it.',
+          'A stall is classified as its own kind of failure, so a wedged runtime is never reported as a network problem or a broken model file, and it gets its own fix line.'
+        ]
+      },
+      {
+        label: '\u{1F50E} What the new error report caught in itself',
+        items: [
+          'A real failure came back from a real device: five runtimes, every one of them "Failed to fetch", and the kitchen concluded that huggingface.co was unreachable \u2014 blocked network, firewall, DNS, a privacy extension. Then the same report printed the evidence that this was wrong: the repository API had answered HTTP 200 from that browser moments earlier.',
+          'Metadata and weights are not the same request. Hugging Face serves the repository information from huggingface.co and redirects the file itself to its LFS CDN, so a firewall, proxy or extension can allow one and block the other. An engine only ever sees "Failed to fetch", which cannot tell those apart \u2014 and the report was not checking either.',
+          'It now asks for one byte of the file the loaders really download: the GGUF for the WLlama path and the .onnx weight for the browser path. It prints what came back \u2014 the HTTP status, the total size from the range answer, and the CDN host the request was redirected to. One byte, because a diagnostic has no business downloading 880 MB to make a point.',
+          'When the metadata answered and no file could be fetched, the headline is overruled: "Hugging Face answered, but the model file could not be downloaded", with the fix that actually applies \u2014 serve the weights from this site with `node scripts/fetch-model.mjs`, which takes the CDN redirect out of the path entirely.',
+          'It only overrules on a clean contradiction. If the file downloaded fine, or the metadata failed too, the original headline stands: a diagnosis that argues with its own evidence is worse than none.',
+          'The same report caught a wrong number in the model table. Qwen 2.5 1.5B was listed at about 700 MB; the file it would really load is 881.6 MB, so the "will this fit on this device?" check was being computed from a figure 26% too small. The table now carries the measured size, and says where it came from.'
+        ]
+      },
+      {
+        label: '\u{1F50D} What the next failure report taught it',
+        items: [
+          'The improved report came back from a real device and immediately showed two more of its own gaps. It said the ONNX repository was refused with HTTP 401 \u2014 but that was the repository in the model table, not the one the loader used. The loader walks a list of candidates and quietly falls through to the first that really holds .onnx weights, so the report was describing a repository nobody had asked for.',
+          'It now walks the same list in the same order, prints each candidate with its HTTP status, and names the one the loader would settle on \u2014 and it probes the files of *that* repository, not the configured one.',
+          'It also could not tell two very different blockages apart, because both look like "Failed to fetch". The loaders ask for model files with a Range header, and Range is not a CORS-simple header, so the browser has to preflight the request with an OPTIONS call before any byte is sent. A proxy, firewall or privacy extension that drops preflights therefore breaks every model download while leaving the plain API calls working.',
+          'So a failed download is now retried once as a plain, header-free request. If that gets through, the report says the host is reachable and the *ranged* request is what is being stopped, and the fix names OPTIONS, the CDN hosts and the extension \u2014 instead of telling the visitor their network is down.',
+          'It now says whether this browser already holds the model on *this origin*. Pre-cached copies belong to one origin, so the same model can be ready on the live site and missing on a preview host, a localhost port or a fresh deploy \u2014 which is the usual reason "it worked yesterday" stops being true.',
+          'And it caught a second wrong number in the model table: SmolLM2 135M was listed and badged at about 70 MB, while the file it actually loads measures 93.0 MB. Both figures are corrected, because that number is what the "will this fit on this device?" check is computed from.'
+        ]
+      },
+      {
+        label: '\u{1F9CA} Pre-caching now happens by itself',
+        items: [
+          'The model weights can now ship with the site. A deploy pre-caches the small models onto its own origin before it builds, so they are served from the same place as everything else \u2014 no third-party host, no CDN redirect, no cross-origin request for a firewall or a privacy extension to refuse.',
+          'And the loader was quietly ignoring them. A file this site served was step three of the WLlama load order: it was only reached when no Hugging Face repository was configured, and every model has one. So a site could be carrying the model and still send the visitor to a CDN that was blocked. The same-origin copy is now tried *first*, and the browser keeps it on the device on the way, so the next start needs no network at all.',
+          'A deployed site would have served them into a wall. The offline service worker answered *every* path under `api/` with a 501 \u2014 \u201Cno llama.cpp server on this static host\u201D \u2014 and the model files the build ships live under `api/`. So a site carrying the weights looked like it carried nothing, and every load went back to Hugging Face anyway. Those paths are passed through now; the chat API is still answered at once.',
+          'What the site carries, the kitchen now copies by itself. Once the page has settled it pre-caches those files in the background \u2014 same-origin only, at most once every twelve hours, skipped on a data-saver connection, and cancelled the instant a chat starts so the two never compete. Settings \u2192 AI Models shows it happening, and has a Stop button.',
+          'Those rows are marked \u{1F3E0} Served by this site with their real size, and pre-caching one takes the local file rather than asking Hugging Face for it.',
+          'An HTML page is no longer mistaken for a model. A static host with no such file answers 200 with its own index page, which the old probe counted as present \u2014 it would have tried to load four kilobytes of markup as a GGUF and reported a corrupt download. A served file now has to be a real one, and the error report says so when it is not.',
+          '`npm run precache` does what a deploy does (every model under 1B parameters, smallest first, up to a 160 MB budget so the published site stays well under the 1 GB Pages cap). `--max-mb` and `WAFFLE_SELF_HOST_MB` set that budget for the fetch and the build.',
+          'The error report follows: when this origin serves the file it says the WLlama path never needed Hugging Face, and when a blocked download is diagnosed on a site that carries the model, the advice points at this origin instead of the visitor\u2019s network.'
+        ]
+      },
+      {
+        label: '\u{26A0}\u{FE0F} Known rough edges',
+        items: [
+          'A wedged WASM or WebGPU worker cannot be revived from inside the tab. The kitchen recovers by discarding it and starting the next attempt clean, but if one model wedges every single time, reloading the page is still the real fix.',
+          'The watchdog measures silence, so a runtime that emits one token a minute forever would not be caught. That is deliberate: killing a slow reply that is still working is worse than waiting for it.',
+          'This was diagnosed from the runtime\u2019s own source rather than reproduced on a device, so the counters are conservative. If a healthy reply is ever cut off, the two windows are the numbers to change.'
+        ]
+      }
+    ]
+  },
+  {
+    version: `${APP_VERSION} TVAR 1`,
     date: 'November 18, 2026',
     title: 'First test build after 1.1',
     tvar: true,

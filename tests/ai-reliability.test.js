@@ -266,7 +266,9 @@ test('models can be self-hosted so no Hugging Face access is needed', () => {
   // server does, under a budget that respects the Pages size cap.
   const vite = fs.readFileSync('vite.config.js', 'utf8');
   assert.match(vite, /dist\/api\/waffle-ai\/gguf/, 'the build emits models to the served path');
-  assert.match(vite, /SELF_HOST_TOTAL_MAX = 400 \* 1024 \*\* 2/, 'with an explicit total budget');
+  assert.match(vite, /SELF_HOST_TOTAL_MAX = \(Number\(process\.env\.WAFFLE_SELF_HOST_MB\) > 0/,
+    'with an explicit total budget a deploy can tune');
+  assert.match(vite, /: 400\) \* 1024 \*\* 2;/, 'defaulting to 400 MB');
   assert.match(vite, /\.sort\(\(a, b\) => a\.size - b\.size\)/, 'smallest first, so a tight budget still yields a working model');
   assert.match(vite, /would exceed the/, 'and says so when it skips one');
 });

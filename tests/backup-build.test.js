@@ -32,18 +32,18 @@ test('the public kitchen reports a plain release version and knows nothing about
   assert.ok(!JSON.stringify(CHANGELOG).includes('TVAR'), 'and the public release notes never mention one');
 });
 
-test('the backup kitchen reports 1.1 TVAR 2 and gets the extended entries', () => {
+test('the backup kitchen reports 1.1 TVAR 3 and gets the extended entries', () => {
   pageWith({ backup: '1' });
-  assert.equal(TVAR, 2, 'this is the second test version after 1.1');
-  assert.equal(APP_VERSION_EXTENDED, '1.1 TVAR 2');
-  assert.equal(appVersionLabel(), '1.1 TVAR 2', 'backup.html reports the extended version');
+  assert.equal(TVAR, 3, 'this is the third test version after 1.1');
+  assert.equal(APP_VERSION_EXTENDED, '1.1 TVAR 3');
+  assert.equal(appVersionLabel(), '1.1 TVAR 3', 'backup.html reports the extended version');
   assert.equal(isBackupBuild(), true);
   assert.equal(isPublicBuild(), false);
 
-  assert.equal(TVAR_LOG.length, 2, 'both extended minor versions are documented');
+  assert.equal(TVAR_LOG.length, 3, 'every extended minor version is documented');
   assert.equal(TVAR_LOG[0].version, APP_VERSION_EXTENDED,
     'the newest entry spells out the counter, so bumping TVAR cannot leave it describing the wrong build');
-  assert.deepEqual(TVAR_LOG.map(e => e.version), [`${APP_VERSION} TVAR 2`, `${APP_VERSION} TVAR 1`],
+  assert.deepEqual(TVAR_LOG.map(e => e.version), [`${APP_VERSION} TVAR 3`, `${APP_VERSION} TVAR 2`, `${APP_VERSION} TVAR 1`],
     'newest first, and an old entry keeps its own number');
 
   for (const tvar of TVAR_LOG) {
@@ -62,10 +62,20 @@ test('the backup kitchen reports 1.1 TVAR 2 and gets the extended entries', () =
   assert.match(all, /Hugging Face/, 'and records the extended AI error report');
 
   const latest = textOf(TVAR_LOG[0]);
-  assert.match(latest, /freez/, 'TVAR 2 records the freeze it was built to fix');
-  assert.match(latest, /Only one inference runs at a time/, 'what replaced it');
-  assert.match(latest, /45 seconds/, 'the watchdog window a visitor would actually hit');
-  assert.match(latest, /cannot be revived/, 'and it is honest about what a watchdog cannot do');
+  assert.match(latest, /Huawei/, 'TVAR 3 records the devices it was built for');
+  assert.match(latest, /Kirin NPU cannot be reached from a web page/,
+    'and says plainly what the NPU cannot do instead of implying it works');
+  assert.match(latest, /WebNN/, 'naming the one web API that could');
+  assert.match(latest, /suspect/, 'an adapter is graded, not just detected');
+  assert.match(latest, /rankBrowserAttempts/, 'the ordering rule is written down');
+  assert.match(latest, /1\.8 GB/, 'so is the tighter heap budget on a tablet');
+  assert.match(latest, /ArkWeb/, 'and the mapping that dates a Huawei browser');
+
+  const tvar2 = textOf(TVAR_LOG[1]);
+  assert.match(tvar2, /freez/, 'TVAR 2 records the freeze it was built to fix');
+  assert.match(tvar2, /Only one inference runs at a time/, 'what replaced it');
+  assert.match(tvar2, /45 seconds/, 'the watchdog window a visitor would actually hit');
+  assert.match(tvar2, /cannot be revived/, 'and it is honest about what a watchdog cannot do');
 });
 
 test('TVAR entries reset with each release and are rendered only in the backup build', () => {

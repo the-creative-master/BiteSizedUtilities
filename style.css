@@ -2830,6 +2830,20 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   color: var(--ink-soft);
 }
 
+.waffle-device-note {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.045);
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--ink-soft);
+}
+
 .waffle-precache-auto {
   display: flex;
   align-items: center;

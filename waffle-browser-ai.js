@@ -249,7 +249,199 @@ export function setTempUnlocked(v) {
 }
 
 export const AI_DISCLAIMER_TEXT =
-  'DISCLAIMER: You might not be able to enjoy local/browser AI smoothly in BiteSizedUtilities if you are on an iPhone below iOS 26, an older phone/tablet, or a device that does not support WebGPU. Roughly 1 in 4 mobile devices lack WebGPU, which can cause browser AI models to crash, fail to load, or run slowly unless you have a capable device. Automatic fallbacks (WebGPU, WLlama, WASM CPU, and local server) are built in — you can adjust models and fallback mode in Settings.';
+  'DISCLAIMER: You might not be able to enjoy local/browser AI smoothly in BiteSizedUtilities if you are on an iPhone below iOS 26, a Huawei or HarmonyOS tablet, an older phone/tablet, or a device that does not support WebGPU. Roughly 1 in 4 mobile devices lack WebGPU, which can cause browser AI models to crash, fail to load, or run slowly unless you have a capable device. Automatic fallbacks (WebGPU, WLlama, WASM CPU, and local server) are built in — you can adjust models and fallback mode in Settings. Huawei and HarmonyOS browsers are profiled rather than assumed: the kitchen reads ArkWeb and Huawei Browser and their Chromium baseline, checks for WebNN (the only web API that can reach an NPU, and one those browsers do not have), and orders the runtimes by what the device can really do — so a WebGPU adapter that Chromium on Android cannot honour is tried last instead of first.';
+
+/* ------------------------------------------------------------------ *
+ * Platform profile — which browser this really is, and what that means
+ * for the runtimes. Written for Huawei/HarmonyOS tablets, where the
+ * answers are unusual and guessing them costs a failed model load.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Huawei documents ArkWeb's Chromium baseline per system version: 4.1–5.1 →
+ * M114, 6.0/6.1 → M132, 7.0 → M144. HarmonyOS NEXT user agents often carry no
+ * `Chrome/` token at all, so this mapping is the only way to know which web
+ * platform the page is running on — and that decides what can be attempted.
+ */
+export function chromiumForArkWeb(arkWebVersion) {
+  const major = Number(String(arkWebVersion || '').split('.')[0]);
+  if (!Number.isFinite(major) || major <= 0) return null;
+  if (major >= 7) return 144;
+  if (major >= 6) return 132;
+  if (major >= 4) return 114;
+  return null;
+}
+
+/**
+ * Chromium shipped WebGPU on desktop in 113 but on Android only from 144. An
+ * adapter handed back before that on a phone or tablet is a software or
+ * half-finished one, which is how a "WebGPU ready" device ends up hanging the
+ * whole tab instead of answering.
+ */
+export const ANDROID_WEBGPU_CHROMIUM = 144;
+
+/** The smallest WASM module that needs SIMD, so the answer comes from the engine. */
+export function detectWasmSimd() {
+  try {
+    return WebAssembly.validate(new Uint8Array([
+      0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11
+    ]));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Grade a WebGPU adapter instead of merely noticing one. On Android and
+ * HarmonyOS an adapter can be handed back by a Chromium that cannot really
+ * honour it (WebGPU reached Android in 144), and a runtime that trusts it does
+ * not fail cleanly — it hangs. An unverifiable version counts as suspect too:
+ * guessing "fine" is what puts a dead runtime first in the chain.
+ */
+export function gradeWebgpuAdapter({ hasWebGPU, profile }) {
+  if (!hasWebGPU) return 'absent';
+  if (!profile?.isAndroid) return 'verified';
+  const major = profile.chromiumMajor;
+  if (major === null || major === undefined || !Number.isFinite(major) || major < ANDROID_WEBGPU_CHROMIUM) return 'suspect';
+  return 'verified';
+}
+
+/** Does this browser expose WebNN, the only web API that can reach an NPU? */
+export function detectWebNN(nav) {
+  const n = nav || (typeof navigator !== 'undefined' ? navigator : null);
+  const ml = n?.ml;
+  return Boolean(ml && typeof ml.createContext === 'function');
+}
+
+/**
+ * Read a user agent into a platform profile. Pure and exported: the real user
+ * agents this was written against are in tests/ai-huawei.test.js, so a rule can
+ * be changed without guessing what a MatePad sends.
+ */
+/** Tokens that are part of the platform, never a device model. */
+const NOT_A_MODEL = /^(android|openharmony|harmonyos|harmony\d|hmscore|gmscore|build|linux|mobile|tablet|phone|safari|applewebkit|k|wv|hm5|deviceType)/i;
+
+/**
+ * Pull a device name out of a user agent, or return null rather than guess.
+ * Huawei names its hardware two ways — a marketing name ("HUAWEI MatePad Pro")
+ * and a model code ("CTR-LX3", "VYG-AL30") — and HarmonyOS pads both with
+ * platform tokens that must not be mistaken for the device.
+ */
+export function deviceModelFrom(ua) {
+  const s = String(ua || '');
+  const candidates = [
+    /;\s*(HUAWEI [^;)]+?)(?:\s+Build\/[^;)]*)?\s*[;)]/i,
+    /;\s*((?:MatePad|MateBook|Mate|P|Nova|MediaPad|Honor)[^;)]*?)(?:\s+Build\/[^;)]*)?\s*[;)]/i,
+    /(?:\(|;)\s*([A-Z]{2,4}-[A-Z0-9]{2,6})\s*(?:Build\/|[;)])/
+  ];
+  for (const re of candidates) {
+    const m = s.match(re);
+    const value = m?.[1]?.trim();
+    if (value && value.length > 2 && value.length < 48 && !NOT_A_MODEL.test(value)) return value;
+  }
+  return null;
+}
+
+export function parsePlatformProfile(ua) {
+  const s = String(ua || '');
+  const grab = re => { const m = s.match(re); return m ? m[1] : null; };
+
+  const arkWebVersion = grab(/ArkWeb\/([\d.]+)/i);
+  const huaweiBrowserVersion = grab(/HuaweiBrowser\/([\d.]+)/i);
+  const hmsCoreVersion = grab(/HMSCore[\s/]([\d.]+)/i);
+  const harmonyVersion = grab(/(?:OpenHarmony|HarmonyOS)\s*([\d.]+)/i);
+  // Some Huawei builds drop the `Chrome/` token and print the engine version
+  // bare just before `HuaweiBrowser/` — that number is the Chromium baseline.
+  const chromeToken = Number(grab(/Chrome\/(\d+)/i))
+    || Number(grab(/(?:AppleWebKit\/[\d.]+ \(KHTML, like Gecko\)\s+)?(\d{2,3})\.\d+\.\d+\.\d+\s+HuaweiBrowser/i))
+    || null;
+  const isHuawei = /HUAWEI|HarmonyOS|OpenHarmony|ArkWeb|HuaweiBrowser|HMSCore|EMUI/i.test(s);
+  const isIOS = /iPhone|iPad|iPod/i.test(s);
+  const isAndroid = /Android/i.test(s) || /OpenHarmony|HarmonyOS/i.test(s);
+
+  let platform = 'unknown';
+  if (arkWebVersion || harmonyVersion) platform = 'harmony';
+  else if (isHuawei && isAndroid) platform = 'huawei-android';
+  else if (isIOS) platform = 'ios';
+  else if (isAndroid) platform = 'android';
+  else if (chromeToken || /Safari|Firefox|Edg/i.test(s)) platform = 'desktop';
+
+  // No Chrome token (HarmonyOS NEXT often sends none) → Huawei's own mapping.
+  const chromiumMajor = chromeToken ?? chromiumForArkWeb(arkWebVersion);
+  const chromiumSource = chromeToken ? 'user-agent' : (arkWebVersion ? 'arkweb-mapping' : null);
+
+  let deviceType = 'desktop';
+  if (/DeviceType\/TV/i.test(s)) deviceType = 'tv';
+  else if (/iPad/i.test(s)) deviceType = 'tablet';
+  else if (/iPhone|iPod/i.test(s)) deviceType = 'phone';
+  else if (/\(\s*(?:Tablet|Phone)\s*;/i.test(s)) deviceType = /\(\s*Tablet\s*;/i.test(s) ? 'tablet' : 'phone';
+  else if (/Tablet/i.test(s)) deviceType = 'tablet';
+  else if (/Mobile/i.test(s)) deviceType = 'phone';
+  else if (isAndroid) deviceType = 'tablet';
+
+  const deviceModel = deviceModelFrom(s);
+
+  return {
+    platform,
+    isHuawei,
+    isIOS,
+    isAndroid,
+    harmonyVersion,
+    arkWebVersion,
+    huaweiBrowserVersion,
+    hmsCoreVersion,
+    chromiumMajor,
+    chromiumSource,
+    deviceType,
+    deviceModel: deviceModel ? deviceModel.trim() : null
+  };
+}
+
+/** One line naming the browser, for a pill, a report or a support message. */
+export function platformLabelFor(profile) {
+  if (!profile) return '';
+  const bits = [];
+  if (profile.platform === 'harmony') {
+    bits.push(`HarmonyOS${profile.harmonyVersion ? ` ${profile.harmonyVersion}` : ''}`);
+    if (profile.huaweiBrowserVersion) bits.push(`Huawei Browser ${profile.huaweiBrowserVersion}`);
+    if (profile.arkWebVersion) bits.push(`ArkWeb ${profile.arkWebVersion}`);
+  } else if (profile.platform === 'huawei-android') {
+    bits.push(`Huawei on Android${profile.huaweiBrowserVersion ? ` · Huawei Browser ${profile.huaweiBrowserVersion}` : ''}`);
+    if (profile.hmsCoreVersion) bits.push(`HMS Core ${profile.hmsCoreVersion}`);
+  } else if (profile.platform === 'ios') {
+    bits.push('iOS');
+  } else if (profile.platform === 'android') {
+    bits.push('Android');
+  } else if (profile.platform === 'desktop') {
+    bits.push('Desktop browser');
+  } else {
+    bits.push('Unknown platform');
+  }
+  if (profile.chromiumMajor) bits.push(`Chromium ${profile.chromiumMajor}${profile.chromiumSource === 'arkweb-mapping' ? ' (from the ArkWeb version)' : ''}`);
+  if (profile.deviceModel) bits.push(profile.deviceModel);
+  if (profile.deviceType && profile.deviceType !== 'desktop') bits.push(profile.deviceType);
+  return bits.join(' · ');
+}
+
+/**
+ * The ONNX WebNN provider lives in onnxruntime-web's JSPI build
+ * (`ort-wasm-simd-threaded.jspi.wasm`, ~18 MB). It is not shipped by default
+ * because no phone or tablet browser exposes WebNN — Chrome's is a desktop
+ * origin trial with Android excluded — so those bytes would be dead weight for
+ * every visitor. `WAFFLE_WEBNN=1 npm run build` ships them, and then the NPU
+ * path switches on by itself wherever `navigator.ml` exists.
+ */
+const WEBNN_RUNTIME_SHIPPED = (() => {
+  try {
+    return String(import.meta.env?.WAFFLE_WEBNN ?? '') === '1';
+  } catch {
+    return false;
+  }
+})();
+
+export function isWebnnRuntimeShipped() {
+  return WEBNN_RUNTIME_SHIPPED;
+}
 
 let cachedDiag = null;
 
@@ -257,14 +449,20 @@ let cachedDiag = null;
 // llama.cpp needs roughly: model weights + KV cache + compute buffers, and the
 // browser tab needs its own room on top of that. Over-committing here is what
 // makes a model "download perfectly" and then die during load/generation.
-function estimateWasmBudgetBytes({ hasWebGPU, deviceMemoryGB }) {
+export function estimateWasmBudgetBytes({ hasWebGPU, deviceMemoryGB, memoryTightPlatform = false }) {
   if (hasWebGPU) {
     // Weights live in GPU memory, the wasm heap only holds scratch buffers.
     return 2 * 1024 ** 3;
   }
-  // navigator.deviceMemory is coarse and capped at 8; assume 4 when unknown.
+  // navigator.deviceMemory is coarse, capped at 8, and absent on most Huawei and
+  // HarmonyOS browsers — so assume 4 when unknown. Phones and tablets kill a tab
+  // whose heap grows into the system's way long before the desktop limit, which
+  // is the "it downloaded fine and then died" failure; a model that fits beats a
+  // bigger one that gets the tab reaped.
   const reportedGB = Number(deviceMemoryGB) > 0 ? Number(deviceMemoryGB) : 4;
-  const usableGB = Math.max(0.9, Math.min(reportedGB * 0.45, 2.6));
+  const usableGB = memoryTightPlatform
+    ? Math.max(0.7, Math.min(reportedGB * 0.35, 1.8))
+    : Math.max(0.9, Math.min(reportedGB * 0.45, 2.6));
   return Math.floor(usableGB * 1024 ** 3);
 }
 
@@ -286,7 +484,8 @@ export async function detectDeviceDiagnostics() {
   }
 
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
-  const isIOS = /iPhone|iPad|iPod/i.test(ua);
+  const platform = parsePlatformProfile(ua);
+  const isIOS = platform.isIOS;
   const iosMatch = ua.match(/OS (\d+)[._]/i);
   const iosMajor = isIOS && iosMatch ? parseInt(iosMatch[1], 10) : null;
   const isOldIOS = Boolean(isIOS && iosMajor !== null && iosMajor < 26);
@@ -309,6 +508,39 @@ export async function detectDeviceDiagnostics() {
   } catch {}
   const wllamaUsesCompat = !hasJSPI || !hasMem64;
   const hasOPFS = typeof navigator !== 'undefined' && Boolean(navigator.storage?.getDirectory);
+  const hasWasmSimd = detectWasmSimd();
+
+  // WebNN is the only web API that reaches an NPU — the Kirin one included.
+  // Chrome's implementation is a desktop origin trial (M147+) with Android
+  // excluded, and ArkWeb/Huawei Browser does not ship it, so on a MatePad this
+  // is false and the NPU simply cannot be addressed from a web page. The
+  // provider also lives in onnxruntime-web's JSPI build, which is ~18 MB this
+  // app does not ship by default (WAFFLE_WEBNN=1 does), so "available" means all
+  // three: the API, the JSPI engine feature and the runtime.
+  const hasWebNN = detectWebNN();
+  const webnnUsable = Boolean(hasWebNN && hasJSPI && WEBNN_RUNTIME_SHIPPED);
+  let npuNote;
+  if (webnnUsable) {
+    npuNote = 'WebNN is available, so the ONNX runtimes will ask for the NPU first.';
+  } else if (hasWebNN && !WEBNN_RUNTIME_SHIPPED) {
+    npuNote = 'This browser exposes WebNN, but this build ships no WebNN runtime — rebuild with WAFFLE_WEBNN=1 to use the NPU.';
+  } else if (hasWebNN && !hasJSPI) {
+    npuNote = 'This browser exposes WebNN but no JSPI, which the ONNX WebNN provider needs; the NPU stays unused.';
+  } else {
+    npuNote = platform.isHuawei
+      ? 'No WebNN here (navigator.ml is absent), so the NPU — the Kirin one included — cannot be reached from a web page at all. It needs a native HarmonyOS app; a browser can only use the CPU and the GPU.'
+      : 'No WebNN in this browser (navigator.ml is absent), so no NPU is available — inference runs on the CPU, or the GPU when WebGPU works.';
+  }
+
+  // An adapter on Android/HarmonyOS Chromium older than 144 is not proof of a
+  // working WebGPU, so it is tried *after* the CPU runtimes rather than first:
+  // a suspect adapter that hangs costs the whole attempt chain, while a CPU
+  // model that answers is still an answer.
+  const gpuTrustLevel = gradeWebgpuAdapter({ hasWebGPU, profile: platform });
+  // "Prefer the GPU" means "do not distrust it": with no adapter at all there is
+  // nothing to order, and only a suspect one changes the chain.
+  const gpuPreferred = gpuTrustLevel !== 'suspect';
+  const memoryTightPlatform = Boolean(platform.isAndroid && !hasWebGPU);
 
   let storageQuotaMB = null;
   let storageUsageMB = null;
@@ -321,20 +553,44 @@ export async function detectDeviceDiagnostics() {
   // llama.cpp's WebGPU backend hard-aborts the whole module when the adapter
   // lacks shader-f16 (ngxson/wllama#241), so GPU offload is only safe with it.
   const wllamaGpuSafe = Boolean(hasWebGPU && hasF16);
-  const wasmBudgetBytes = estimateWasmBudgetBytes({ hasWebGPU, deviceMemoryGB });
+  const wasmBudgetBytes = estimateWasmBudgetBytes({ hasWebGPU, deviceMemoryGB, memoryTightPlatform });
 
-  const hasRisk = !hasWebGPU || isOldIOS || (deviceMemoryGB !== null && deviceMemoryGB < 4);
+  const hasRisk = !hasWebGPU || isOldIOS || gpuTrustLevel === 'suspect' || !hasWasmSimd
+    || (deviceMemoryGB !== null && deviceMemoryGB < 4);
 
   let summaryLabel = hasWebGPU
     ? `WebGPU Ready${hasF16 ? ' (FP16)' : ' · no FP16 → CPU offload'}`
     : 'WebGPU Unavailable — CPU WASM Fallback';
   if (isOldIOS) summaryLabel = `iOS ${iosMajor} (< iOS 26) — WebGPU/Memory Risk`;
+  else if (gpuTrustLevel === 'suspect') summaryLabel = `WebGPU present but unverified on Chromium ${platform.chromiumMajor} — CPU first`;
+  if (!hasWasmSimd) summaryLabel = ' · no WASM SIMD';
   if (!canThread) summaryLabel += ' · single-thread WASM';
+
+  const platformLabel = platformLabelFor(platform);
+  const deviceNote = [
+    platformLabel,
+    hasWebGPU
+      ? `WebGPU adapter: ${adapterName || 'present'} (${gpuTrustLevel}${hasF16 ? ', FP16' : ', no FP16 → CPU offload'})`
+      : 'WebGPU: no adapter',
+    `NPU: ${npuNote}`,
+    `WASM: ${hasWasmSimd ? 'SIMD yes' : 'SIMD no'}, threads ${canThread ? 'yes' : 'no'}, heap budget ~${Math.round(wasmBudgetBytes / 1024 ** 2)} MB, on-device storage ${hasOPFS ? 'yes' : 'no'}`
+  ].filter(Boolean).join('\n');
 
   cachedDiag = {
     hasWebGPU,
     hasF16,
     adapterName,
+    platform,
+    platformLabel,
+    deviceNote,
+    npuNote,
+    hasWebNN,
+    webnnUsable,
+    gpuTrustLevel,
+    gpuPreferred,
+    hasWasmSimd,
+    memoryTightPlatform,
+    isHuawei: platform.isHuawei,
     isIOS,
     iosMajor,
     isOldIOS,
@@ -355,6 +611,50 @@ export async function detectDeviceDiagnostics() {
     wasmBudgetBytes
   };
   return cachedDiag;
+}
+
+/**
+ * The order the browser runtimes should be tried in, given what this device
+ * actually is. The caller turns these tokens into real attempts.
+ *
+ * GPU-first is right when WebGPU is verified. On a device whose adapter cannot
+ * be trusted (Android or HarmonyOS Chromium older than 144) the CPU runtimes go
+ * first: a suspect adapter does not merely fail, it can hang the tab and take
+ * the whole chain with it, and a slower CPU answer still is an answer. A caller
+ * can force GPU-first with `gpuFirst: true` — that is what an explicit "WebGPU"
+ * choice in Settings means.
+ */
+export function rankBrowserAttempts(diag, { gpuFirst = null } = {}) {
+  const gpuOk = Boolean(diag?.hasWebGPU);
+  const wllamaGpuOk = Boolean(diag?.wllamaGpuSafe);
+  const npuOk = Boolean(diag?.webnnUsable);
+  const gpuPreferred = gpuFirst === null ? diag?.gpuPreferred !== false : Boolean(gpuFirst);
+
+  const gpuSteps = gpuPreferred
+    ? [...(gpuOk ? ['onnx-webgpu'] : []), ...(wllamaGpuOk ? ['wllama-gpu'] : [])]
+    : [...(wllamaGpuOk ? ['wllama-gpu'] : []), ...(gpuOk ? ['onnx-webgpu'] : [])];
+  const cpuSteps = ['wllama-cpu', 'onnx-wasm'];
+
+  return [
+    ...(npuOk ? ['onnx-npu'] : []),
+    ...(gpuPreferred ? gpuSteps : []),
+    ...cpuSteps,
+    ...(gpuPreferred ? [] : gpuSteps)
+  ];
+}
+
+/**
+ * Which ONNX device a request should run on. `preferredDevice` comes from the
+ * attempt chain, and a chain can name a device this browser turns out not to
+ * have: asking anyway fails with "WebNN is not supported in current
+ * environment" instead of running on something that works.
+ */
+export function resolveOnnxDevice(diag, preferredDevice) {
+  const auto = diag?.webnnUsable ? 'webnn-npu' : (diag?.hasWebGPU ? 'webgpu' : 'wasm');
+  if (!preferredDevice) return auto;
+  if (String(preferredDevice).startsWith('webnn') && !diag?.webnnUsable) return auto;
+  if (preferredDevice === 'webgpu' && !diag?.hasWebGPU) return auto;
+  return preferredDevice;
 }
 
 const pipeCache = new Map();
@@ -956,7 +1256,30 @@ export async function fetchModelSourceFacts(modelCfg, opts = {}) {
       : { present: false, repo: cfg.hfGgufRepo || null };
   } catch { deviceCache = null; }
 
+  // The device matters as much as the source: the same "Failed to fetch" has a
+  // different cause on a HarmonyOS tablet than on a desktop, and a report
+  // without the device in it sends whoever reads it after the wrong one.
+  const diagForReport = await detectDeviceDiagnostics().catch(() => null);
+  const platform = diagForReport ? {
+    label: diagForReport.platformLabel,
+    note: diagForReport.deviceNote,
+    platform: diagForReport.platform?.platform || null,
+    isHuawei: Boolean(diagForReport.isHuawei),
+    deviceType: diagForReport.platform?.deviceType || null,
+    deviceModel: diagForReport.platform?.deviceModel || null,
+    chromiumMajor: diagForReport.platform?.chromiumMajor ?? null,
+    hasWebGPU: Boolean(diagForReport.hasWebGPU),
+    gpuTrustLevel: diagForReport.gpuTrustLevel || 'absent',
+    hasWebNN: Boolean(diagForReport.hasWebNN),
+    webnnUsable: Boolean(diagForReport.webnnUsable),
+    npuNote: diagForReport.npuNote || null,
+    hasWasmSimd: Boolean(diagForReport.hasWasmSimd),
+    canThread: Boolean(diagForReport.canThread),
+    wasmBudgetBytes: diagForReport.wasmBudgetBytes || 0
+  } : null;
+
   const facts = {
+    platform,
     id: cfg.id || null,
     label: cfg.label || cfg.id || 'the selected model',
     budgetBytes: Number.isFinite(budgetBytes) ? budgetBytes : (cfg.ggufMB > 0 ? cfg.ggufMB * MB : null),
@@ -1337,6 +1660,11 @@ export function describeModelSourceFacts(facts) {
     } else {
       lines.push(`This origin holds no pre-cached copy of that GGUF, so every load from here has to download it. Pre-caches are per origin, which is why a model that already ran on the live site can still fail from scratch on a different host or port.`);
     }
+  }
+
+  const pf = facts.platform;
+  if (pf && (pf.label || pf.note)) {
+    lines.push(`This device: ${pf.label || 'unknown platform'}. ${String(pf.note || '').replace(/\s*\n\s*/g, ' ')}`);
   }
 
   const l = facts.selfHosted;
@@ -1766,7 +2094,7 @@ export async function streamBrowserChat({
   if (!cfg || !cfg.hfId) throw new Error(`No browser ONNX model configured for: ${modelId}`);
 
   const diag = await detectDeviceDiagnostics();
-  const device = preferredDevice || (diag.hasWebGPU ? 'webgpu' : 'wasm');
+  const device = resolveOnnxDevice(diag, preferredDevice);
   const useVision = cfg.loader === 'qwen3_5' && Array.isArray(imageUrls) && imageUrls.length > 0;
   const loaded = await getBrowserGenerator(cfg, device, onStatus, useVision);
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');

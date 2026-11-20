@@ -12,6 +12,7 @@ import {
   getSmartPromptEnabled,
   getAiTemperature,
   detectDeviceDiagnostics,
+  rankBrowserAttempts,
   AI_DISCLAIMER_TEXT,
   classifyAiFailure,
   summarizeAiFailures,
@@ -415,7 +416,9 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
   const cfg = TEXT_MODELS.find(m => m.id === chosenId) || TEXT_MODELS[0];
   const mode = getSelectedExecutionMode();
   const diag = await detectDeviceDiagnostics().catch(() => ({
-    hasWebGPU: false, wllamaGpuSafe: false, wasmBudgetBytes: 0, canThread: false
+    hasWebGPU: false, wllamaGpuSafe: false, wasmBudgetBytes: 0, canThread: false,
+    gpuPreferred: true, webnnUsable: false, hasWebNN: false, hasWasmSimd: true,
+    platform: null, platformLabel: '', deviceNote: '', npuNote: ''
   }));
   const hasImages = Array.isArray(imageUrls) && imageUrls.length > 0;
   const serverInfo = modelState.available?.find(a => a.id === cfg.id);
@@ -458,30 +461,41 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     pushWllama(false, tiny);
     pushBrowser('wasm', tiny.id);
   };
+  // Which browser runtime to try first is a question about the device, not
+  // about the model: GPU-first is right when WebGPU is verified, and wrong on a
+  // HarmonyOS or Android Chromium below 144, where an adapter can be handed back
+  // that then hangs the tab instead of answering. `rankBrowserAttempts` holds
+  // that rule, and it puts an NPU first on the rare browser that exposes WebNN.
+  const pushBrowserChain = (opts = {}) => {
+    for (const step of rankBrowserAttempts(diag, opts)) {
+      if (step === 'onnx-npu') pushBrowser('webnn-npu');
+      else if (step === 'onnx-webgpu') pushBrowser('webgpu');
+      else if (step === 'wllama-gpu') pushWllama(true);
+      else if (step === 'wllama-cpu') pushWllama(false);
+      else if (step === 'onnx-wasm') pushBrowser('wasm');
+    }
+  };
 
   if (hasImages) {
     // Images MUST go to multimodal Vision (Qwen 3.5 0.8B) — never fall back to blind text-only models
-    if (gpuOk) attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'webgpu', vision: true });
+    if (diag.webnnUsable) attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'webnn-npu', vision: true });
+    if (gpuOk && diag.gpuPreferred !== false) attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'webgpu', vision: true });
     attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'wasm', vision: true });
+    if (gpuOk && diag.gpuPreferred === false) attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'webgpu', vision: true });
   } else if (mode === 'server') {
     if (canTryServer) pushServer(cfg.kind === 'server' ? cfg.id : SERVER_FALLBACK_ID);
-    if (gpuOk) pushBrowser('webgpu');
-    pushWllama(true);
-    pushWllama(false);
-    pushBrowser('wasm');
+    pushBrowserChain();
     pushChromiumSafetyNet();
   } else if (mode === 'webgpu') {
-    if (gpuOk) pushBrowser('webgpu');
-    pushWllama(true);
-    pushWllama(false);
-    pushBrowser('wasm');
+    pushBrowserChain({ gpuFirst: true });
     if (canTryServer) pushServer();
     pushChromiumSafetyNet();
   } else if (mode === 'wllama') {
     pushWllama(true);
     pushWllama(false);
-    if (gpuOk) pushBrowser('webgpu');
+    if (gpuOk && diag.gpuPreferred !== false) pushBrowser('webgpu');
     pushBrowser('wasm');
+    if (gpuOk && diag.gpuPreferred === false) pushBrowser('webgpu');
     if (canTryServer) pushServer();
     pushChromiumSafetyNet();
   } else if (mode === 'wasm') {
@@ -493,23 +507,14 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     // Auto fallback chain — always try the user's chosen model on its best available runtime first
     if (cfg.kind === 'server' && canTryServer) {
       pushServer(cfg.id);
-      if (gpuOk) pushBrowser('webgpu');
-      pushWllama(true);
-      pushWllama(false);
-      pushBrowser('wasm');
+      pushBrowserChain();
       pushChromiumSafetyNet();
     } else if (cfg.kind === 'server') {
-      if (gpuOk) pushBrowser('webgpu');
-      pushWllama(true);
-      pushWllama(false);
-      pushBrowser('wasm');
+      pushBrowserChain();
       if (canTryServer) pushServer(cfg.id);
       pushChromiumSafetyNet();
     } else {
-      if (gpuOk) pushBrowser('webgpu');
-      pushWllama(true);
-      pushWllama(false);
-      pushBrowser('wasm');
+      pushBrowserChain();
       if (canTryServer) pushServer(SERVER_FALLBACK_ID);
       pushChromiumSafetyNet();
     }
@@ -670,6 +675,17 @@ function updateStatusBadge(customNote) {
   if (diagEl) {
     diagEl.textContent = deviceDiag.summaryLabel;
     diagEl.className = `waffle-device-pill ${deviceDiag.hasRisk ? 'is-risk' : 'is-ok'}`;
+    diagEl.title = deviceDiag.deviceNote || deviceDiag.summaryLabel;
+  }
+  const noteEl = overlayEl.querySelector('#waffle-ai-device-note');
+  if (noteEl) {
+    // The profile this device was recognised as, in plain words: which browser
+    // and Chromium baseline, whether an NPU is reachable at all, and what the
+    // WASM heap is allowed to be. When AI fails on a Huawei or HarmonyOS tablet
+    // this is the part that explains why.
+    const note = deviceDiag.deviceNote || '';
+    noteEl.textContent = note;
+    noteEl.hidden = !note;
   }
   if (!badge) return;
   if (customNote) {
@@ -1318,6 +1334,7 @@ function buildOverlay() {
             <span class="waffle-device-pill is-risk" id="waffle-ai-device-status">Checking WebGPU…</span>
           </div>
           <p class="waffle-disclaimer-copy">${esc(AI_DISCLAIMER_TEXT)}</p>
+          <pre class="waffle-device-note" id="waffle-ai-device-note" hidden></pre>
         </div>
       </div>
 

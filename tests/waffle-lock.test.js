@@ -62,7 +62,11 @@ function clearDOM() {
   delete globalThis.document;
 }
 
-test('Waffle AI is paused with the promised apology, and the pause is spelled correctly', () => {
+test('the pause machinery is still here, spelled correctly, and one line away', () => {
+  // 1.2 reopened the gate. Nothing below was deleted with it, on purpose: the
+  // message, the error class and the notice are what a future release needs in
+  // order to pause again by changing one return.
+
   assert.match(WAFFLE_AI_LOCK_MESSAGE, /^I apologize for the inconvenience but WaffleAI isn\u2019t available/);
   assert.match(WAFFLE_AI_LOCK_MESSAGE, /countless bugs with open-source AI models/);
   assert.match(WAFFLE_AI_LOCK_MESSAGE, /We will make it available in a later update\.$/);
@@ -72,54 +76,53 @@ test('Waffle AI is paused with the promised apology, and the pause is spelled co
   assert.match(waffleAiLockedNoticeHTML(), /waffle-ai-locked-note/);
 });
 
-test('the AI gate is locked by default and opens only for the backup build', async () => {
+test('the AI gate is open in both kitchens, and one function closes it again', () => {
   miniDOM({ backup: false });
   assert.equal(isBackupBuild(), false, 'index.html is not the backup build');
-  assert.equal(isWaffleAiLocked(), true, 'AI is paused in the public build');
-
-  await assert.rejects(
-    () => streamWaffleChat({ messages: [{ role: 'user', content: 'hello' }] }),
-    err => err.name === 'WaffleAiLocked' && err.message === WAFFLE_AI_LOCK_MESSAGE,
-    'streamWaffleChat refuses while paused'
-  );
+  assert.equal(isWaffleAiLocked(), false, '1.2 put Waffle AI back in the public kitchen');
 
   globalThis.document.documentElement.dataset.backup = '1';
-  assert.equal(isBackupBuild(), true, 'data-backup="1" switches AI back on');
-  assert.equal(isWaffleAiLocked(), false);
+  assert.equal(isBackupBuild(), true, 'backup.html is still the build with the test switches on');
+  assert.equal(isWaffleAiLocked(), false, 'and AI works there too, because it is the same kitchen');
   clearDOM();
+
+  // The pause is one line rather than a hunt: every entry point still asks the
+  // same function, so closing the gate again cannot miss a surface.
+  const src = fs.readFileSync('waffle-ai.js', 'utf8');
+  assert.match(src, /export function isWaffleAiLocked\(\) \{\n  return false;\n\}/,
+    'the gate is a single return');
+  assert.ok(src.split('isWaffleAiLocked()').length - 1 >= 4,
+    'and every AI surface still reads it');
 });
 
-test('no AI network work happens while the feature is paused', async () => {
-  miniDOM({ backup: false });
-  const calls = [];
-  const realFetch = globalThis.fetch;
-  globalThis.fetch = (url, opts) => { calls.push(String(url)); return Promise.resolve({ ok: false, json: async () => ({}) }); };
-  try {
-    await warmupWaffleAI();
-  } finally {
-    globalThis.fetch = realFetch;
-  }
-  assert.deepEqual(calls, [], 'warmup must not reach for a server or a model while paused');
-  clearDOM();
+test('a paused kitchen would still do no AI network work — the guards stayed wired', () => {
+  // Nothing is paused now, so there is no quiet behaviour left to observe. What
+  // is still worth pinning is that reopening the gate did not delete the checks:
+  // one returned `true` and every background entry point stops again.
+  const src = fs.readFileSync('waffle-ai.js', 'utf8');
+  assert.equal(src.split('if (isWaffleAiLocked()) return;').length - 1, 2,
+    'both background paths still check the gate before they touch the network');
+  assert.match(src, /if \(isWaffleAiLocked\(\)\) throw new WaffleAiLockedError\(\);/,
+    'and the chat path throws rather than half-working');
+  assert.match(src, /if \(isWaffleAiLocked\(\)\) \{ openLockedWaffleAI\(\); return; \}/,
+    'so a paused build shows the notice instead of a dead composer');
 });
 
-test('tapping Sir Waffle while paused shows the notice, not a dead chat', () => {
-  const doc = miniDOM({ backup: false });
-  openWaffleAI();
-  const overlay = doc.body.children.find(el => el.id === 'waffle-ai-overlay');
-  assert.ok(overlay, 'an overlay is appended to the body');
-  assert.match(overlay.className, /is-locked/);
-  assert.match(overlay.innerHTML, /Waffle AI is taking a break/);
-  // esc() only escapes &<>"', so the curly apostrophe in the message survives
-  // verbatim and the whole sentence must appear on screen.
-  assert.ok(overlay.innerHTML.includes(WAFFLE_AI_LOCK_MESSAGE), 'the apology is on screen');
-  assert.match(overlay.innerHTML, /data-waffle-tap/, 'Sir Waffle stays tappable as the hidden unlock gesture');
-  assert.ok(!overlay.innerHTML.includes('waffle-ai-input'), 'no composer is rendered while paused');
+test('the paused notice is still built, and only when the gate is closed', () => {
+  // With the gate open, opening the AI builds the real chat overlay, which needs
+  // a browser rather than this file's miniature DOM — the Playwright suites own
+  // that. What is pinned here is the branch: the notice still exists, it is
+  // still the thing a paused build shows, and an open build never reaches it.
+  const src = fs.readFileSync('waffle-ai.js', 'utf8');
+  assert.match(src, /function buildLockedOverlay\(\)/, 'the paused overlay is still built by the same function');
+  assert.match(src, /Waffle AI is taking a break/, 'with the copy visitors were promised');
+  assert.match(src, /data-waffle-tap/, 'and Sir Waffle stays tappable as the hidden unlock gesture');
 
-  closeWaffleAI();
-  assert.equal(overlay.hidden, true);
-  assert.equal(doc.body.classList.contains('waffle-modal-open'), false, 'scroll lock is released on close');
-  clearDOM();
+  const openFn = src.slice(src.indexOf('export function openWaffleAI()'), src.indexOf('export function openWaffleAI()') + 400);
+  assert.ok(openFn.length > 100, 'openWaffleAI was captured');
+  assert.match(openFn, /if \(isWaffleAiLocked\(\)\) \{ openLockedWaffleAI\(\); return; \}/,
+    'the notice is only reachable through the gate');
+  assert.equal(isWaffleAiLocked(), false, 'which 1.2 leaves open');
 });
 
 test('backup.html is the second build of the kitchen and is wired into the build', () => {
@@ -187,10 +190,10 @@ test('the paused dialog cannot swallow the taps meant for the unlock gesture', (
   assert.ok(!css.includes('waffle-ai-locked-tap-hint'), 'the hint styling went with the hint');
 });
 
-test('the changelog puts 1.1.1 above 1.1 above 1.0.1 above the original 1.0 release', () => {
-  assert.equal(APP_VERSION, '1.1.1');
-  assert.equal(CHANGELOG.length, 4, 'every release is documented');
-  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.1.1', '1.1', '1.0.1', '1.0'], 'newest release is listed first');
+test('the changelog puts 1.2 above 1.1.1 above 1.1 above 1.0.1 above the original 1.0 release', () => {
+  assert.equal(APP_VERSION, '1.2');
+  assert.equal(CHANGELOG.length, 5, 'every release is documented');
+  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.2', '1.1.1', '1.1', '1.0.1', '1.0'], 'newest release is listed first');
 
   for (const entry of CHANGELOG) {
     assert.match(entry.version, /^\d+\.\d+(\.\d+)?$/);
@@ -260,18 +263,26 @@ test('the changelog is reachable from the kitchen header and styled like the res
   assert.ok(!css.includes('backdrop-filter'), 'changelog keeps the strict 2.5D rules (no frosted blur)');
 });
 
-test('AI is out of Settings in the public build but back in the backup build', () => {
+test('AI is in Settings in both kitchens, and the probes follow the gate', () => {
+  // Until 1.2 the whole AI settings block sat inside `${isBackupBuild() ? ... }`,
+  // which would have left the public kitchen with AI it could not configure: the
+  // model menu, the device pill and the pre-cache panel all live in there.
   const appSrc = fs.readFileSync('app.js', 'utf8');
   const section = appSrc.slice(
-    appSrc.indexOf('${isBackupBuild() ? `'),
-    appSrc.indexOf('` : \'\'}\n      </div>\n    </div>\n\n    <div class="settings-overlay" id="english-warning-overlay"')
+    appSrc.indexOf('<div class="gfield settings-ai-section"'),
+    appSrc.indexOf('<div class="settings-overlay" id="english-warning-overlay"')
   );
-  assert.ok(section.length > 500, 'the whole AI settings block is inside the backup conditional');
+  assert.ok(section.length > 500, 'the whole AI settings block was captured');
   for (const id of ['settings-ai-section', 'settings-ai-text-list', 'settings-ai-image-list', 'settings-ai-exec-list', 'settings-ai-quant-list', 'settings-ai-precache', 'settings-temp-wrap']) {
-    assert.ok(section.includes(id), `${id} only renders in the backup build`);
+    assert.ok(section.includes(id), `${id} is part of the settings both builds render`);
   }
+  assert.ok(!section.includes('${isBackupBuild()'), 'and none of it is conditional on the build');
+  assert.equal(appSrc.split('${isBackupBuild() ? `').length - 1, 1,
+    'the only build-conditional markup left is the backup banner itself');
+
   assert.match(appSrc, /if \(!\$\('#settings-ai-precache'\)\) return;/, 'pre-cache state is not refreshed when the panel is gone');
-  assert.match(appSrc, /if \(!isBackupBuild\(\)\) return;\n\n  detectDeviceDiagnostics/, 'device probes are skipped while AI is paused');
+  assert.match(appSrc, /if \(isWaffleAiLocked\(\)\) return;\n\n  detectDeviceDiagnostics/,
+    'the device probes skip on the gate, not on the build');
 });
 
 test('Sir Waffle stops advertising Waffle AI while the feature is paused', () => {

@@ -16,6 +16,7 @@ import { APP_LANGUAGES, getAppLanguage, setAppLanguage, initAppI18n } from './i1
 import { gameSlider } from './ui-kit.js';
 import {
   TEXT_MODELS,
+  offeredTextModels,
   EXECUTION_MODES,
   QUANT_PRESETS,
   getSelectedTextModel,
@@ -118,7 +119,7 @@ app.innerHTML = `
     ${isBackupBuild() ? `
     <div class="backup-banner" id="backup-banner" data-no-i18n>
       <span class="gbadge backup-banner-badge">🧇 BACKUP KITCHEN</span>
-      <span class="backup-banner-copy">Waffle AI and every AI control are switched on in this build. Everything here is unfinished on purpose.</span>
+      <span class="backup-banner-copy">Waffle AI is in the main kitchen now. This build is where new behaviour gets tried first, so everything here is unfinished on purpose.</span>
       <a class="gbtn gbtn-chip backup-banner-exit" href="./index.html">Back to the kitchen</a>
     </div>` : ''}
     <header class="game-hud">
@@ -181,7 +182,9 @@ app.innerHTML = `
           <span class="gfield-label">Language</span>
           <div class="gtabs settings-lang-grid" id="settings-lang-list"></div>
         </div>
-        ${isBackupBuild() ? `
+        <!-- Rendered in both kitchens since 1.2: this is where the model menu,
+             the device pill and the pre-cache panel live, so AI in the main
+             kitchen without it would be AI nobody could point at another model. -->
         <div class="gfield settings-ai-section" id="settings-ai-section" data-no-i18n>
           <span class="gfield-label">AI Models &amp; Device Fallbacks</span>
           <div class="waffle-disclaimer-box">
@@ -205,7 +208,6 @@ app.innerHTML = `
           <div class="settings-sub-label">Temperature (Experienced Users Only)</div>
           <div id="settings-temp-wrap"></div>
         </div>
-        ` : ''}
       </div>
     </div>
 
@@ -815,7 +817,7 @@ function renderPrecachePanel() {
   const mb = b => (b > 0 ? `${Math.round(b / 1048576)} MB` : '?');
   const st = precacheState.storage;
 
-  const rows = TEXT_MODELS.filter(m => m.hfGgufRepo).map(m => {
+  const rows = offeredTextModels().filter(m => m.hfGgufRepo).map(m => {
     const entry = byRepo.get(m.hfGgufRepo);
     const cached = Boolean(entry?.usable);
     const busy = precacheState.busy === m.id;
@@ -974,7 +976,7 @@ function renderSettingsModal() {
   const textList = $('#settings-ai-text-list');
   if (textList) {
     const curText = getSelectedTextModel();
-    textList.innerHTML = TEXT_MODELS.map(m => `
+    textList.innerHTML = offeredTextModels().map(m => `
       <button type="button" class="gbtn waffle-model-pill ${curText === m.id ? 'selected' : ''}" data-set-text="${esc(m.id)}" title="${esc(m.desc)}">
         <strong>${esc(m.label)}</strong>
         <small>${esc(m.badge)}</small>
@@ -1101,7 +1103,9 @@ function renderSettingsModal() {
   }
 
   // Both probes only feed the AI panel, so skip them entirely while AI is paused.
-  if (!isBackupBuild()) return;
+  // It asked the build flag until 1.2, which meant the public kitchen never ran
+  // them — and the panel they feed is rendered there now.
+  if (isWaffleAiLocked()) return;
 
   detectDeviceDiagnostics().then(d => {
     const pill = $('#settings-device-pill');
@@ -1236,7 +1240,27 @@ setTimeout(() => {
 try {
   if ('serviceWorker' in navigator && navigator.serviceWorker) {
     if (import.meta.env.PROD) {
-      navigator.serviceWorker.register('./sw.js').catch(console.warn);
+      navigator.serviceWorker.register('./sw.js').then(() => {
+        // The document that registered the worker was served before the worker
+        // existed, so it has no COOP/COEP and this page is still one thread. Ask
+        // for it again once the worker is in control — and only ever once, or a
+        // browser that refuses the headers would reload forever. Idle, so the
+        // reload does not fight the kitchen booting.
+        const KEY = 'waffle-isolation-reload';
+        const reloadOnce = () => {
+          try {
+            if (globalThis.crossOriginIsolated) return;
+            if (!navigator.serviceWorker.controller) return;
+            if (localStorage.getItem(KEY)) return;
+            localStorage.setItem(KEY, '1');
+            const go = () => location.reload();
+            if (typeof requestIdleCallback === 'function') requestIdleCallback(go, { timeout: 8000 });
+            else setTimeout(go, 4000);
+          } catch {}
+        };
+        navigator.serviceWorker.addEventListener('controllerchange', reloadOnce, { once: true });
+        reloadOnce();
+      }).catch(console.warn);
     } else {
       navigator.serviceWorker.getRegistrations?.().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
       if ('caches' in window && window.caches?.keys) {

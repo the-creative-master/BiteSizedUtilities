@@ -51,19 +51,28 @@ export const TEXT_MODELS = [
   {
     id: 'smollm2-135m',
     label: 'SmolLM2 135M',
-    badge: 'Chromium Safe · ~93 MB',
+    badge: 'Default · F16 ~270 MB',
     kind: 'browser',
     hfId: 'HuggingFaceTB/SmolLM2-135M-Instruct-ONNX',
     hfIdAlts: ['onnx-community/SmolLM2-135M-Instruct', 'HuggingFaceTB/SmolLM2-135M-Instruct'],
     dtype: 'q4',
     hfGgufRepo: 'bartowski/SmolLM2-135M-Instruct-GGUF',
-    hfGgufQuant: 'Q3_K_L',
+    // Full 16-bit. A 3-bit quant of a 135M model throws away most of what the
+    // model knows, and this is the one every visitor meets first, so it is the
+    // one worth keeping lossless. The fetch script asks the repo for F16 and
+    // falls through its quant chain if the repo does not publish it.
+    hfGgufQuant: 'F16',
     ggufFile: 'smollm2-135m.gguf',
-    // Measured by the source report: SmolLM2-135M-Instruct-Q3_K_L.gguf is
-    // 93.0 MB in bartowski/SmolLM2-135M-Instruct-GGUF. The table said 70 MB,
-    // and this figure is what the "will it fit?" check is computed from.
-    ggufMB: 93,
-    desc: 'Ultra-compact ~93 MB model safe for low-RAM Chromium & mobile browsers'
+    // Arithmetic, not a measurement: 135M parameters at two bytes each. The
+    // sandbox this was written in cannot reach huggingface.co, so the real
+    // number was not available — and nothing here needs it to be exact. The
+    // fetch script prices every model from the repo tree before it downloads
+    // anything, and the source report on the device shows the measured size.
+    // What this figure does decide is the "will it fit?" gate and whether a
+    // deploy will self-host it, and 270 MB is the honest order of magnitude
+    // for both. (The Q3_K_L file it replaces measured 93.0 MB.)
+    ggufMB: 270,
+    desc: 'The default: SmolLM2 135M at full 16-bit (~270 MB), served from this site when the deploy pre-cached it'
   },
   {
     id: 'smollm2-360m',
@@ -78,6 +87,30 @@ export const TEXT_MODELS = [
     ggufFile: 'smollm2-360m.gguf',
     ggufMB: 170,
     desc: 'Compact in-browser WebGPU/WASM model (~170 MB in Q3_K_L / q4)'
+  },
+  {
+    id: 'smollm2-1.7b',
+    label: 'SmolLM2 1.7B',
+    badge: 'Biggest in-browser · ~1 GB',
+    kind: 'browser',
+    // Repo paths written down without being able to check them: this sandbox has
+    // no route to huggingface.co. If one is wrong the source report says
+    // "not found" and names the repo it tried, and hfIdAlts is the list the
+    // loader walks before it gives up — which is the machinery this table has
+    // always relied on for exactly this.
+    hfId: 'onnx-community/SmolLM2-1.7B-Instruct',
+    hfIdAlts: ['HuggingFaceTB/SmolLM2-1.7B-Instruct-ONNX', 'HuggingFaceTB/SmolLM2-1.7B-Instruct'],
+    dtype: 'q4',
+    hfGgufRepo: 'bartowski/SmolLM2-1.7B-Instruct-GGUF',
+    hfGgufQuant: 'Q4_K_M',
+    ggufFile: 'smollm2-1.7b.gguf',
+    // Arithmetic again: 1.7B parameters at the ~0.6 bytes a weight that Q4_K_M
+    // costs. At ~1 GB it is over the per-model ceiling for self-hosting, so it
+    // is deliberately never shipped inside the site — a visitor who picks it
+    // downloads it once, into their own storage, and the source report tells
+    // them the measured size before they do.
+    ggufMB: 1050,
+    desc: 'SmolLM2 1.7B in Q4_K_M (~1 GB) — the biggest model here; wants a GPU, or a patient CPU'
   },
   {
     id: 'qwen2.5-0.5b',
@@ -138,6 +171,28 @@ export const TEXT_MODELS = [
   }
 ];
 
+/**
+ * What 1.2 offers. The table above keeps every model it has ever had: CI, the
+ * pre-cache budget, the source reports and a dozen tests all read it by id, and
+ * deleting an entry breaks them for no benefit. So the menu lives here, and
+ * every list the UI renders — and every preference it honours — goes through it.
+ */
+export const OFFERED_TEXT_MODEL_IDS = ['smollm2-135m', 'qwen3-0.6b', 'qwen3.5-0.8b', 'qwen2.5-1.5b', 'smollm2-1.7b'];
+
+/**
+ * The offered models, in menu order. An id here that is not in the table is a
+ * typo, and a typo must not silently shorten the menu, so this throws instead of
+ * filtering it out.
+ */
+export function offeredTextModels(models = TEXT_MODELS) {
+  const byId = new Map(models.map(m => [m.id, m]));
+  return OFFERED_TEXT_MODEL_IDS.map(id => {
+    const m = byId.get(id);
+    if (!m) throw new Error(`OFFERED_TEXT_MODEL_IDS names "${id}", which is not in TEXT_MODELS`);
+    return m;
+  });
+}
+
 export const QUANT_PRESETS = [
   {
     id: 'compact',
@@ -193,12 +248,22 @@ function writePref(key, val) {
   }
 }
 
+/**
+ * The model a visitor starts with. It used to be Qwen 2.5 1.5B, a `server`
+ * model, which on a static host means the first message has to fall back through
+ * the whole chain before anything runs. The 135M is the one this site serves
+ * from its own origin, so it is the one that starts.
+ */
+export const DEFAULT_TEXT_MODEL_ID = 'smollm2-135m';
+
 export function getSelectedTextModel() {
-  const saved = readPref(KEY_TEXT, 'qwen2.5-1.5b');
-  return TEXT_MODELS.some(m => m.id === saved) ? saved : 'qwen2.5-1.5b';
+  const saved = readPref(KEY_TEXT, DEFAULT_TEXT_MODEL_ID);
+  // Checked against the menu rather than the table: a preference stored for a
+  // model 1.2 no longer offers must not be quietly honoured.
+  return offeredTextModels().some(m => m.id === saved) ? saved : DEFAULT_TEXT_MODEL_ID;
 }
 export function setSelectedTextModel(id) {
-  if (TEXT_MODELS.some(m => m.id === id)) writePref(KEY_TEXT, id);
+  if (offeredTextModels().some(m => m.id === id)) writePref(KEY_TEXT, id);
 }
 
 export function getSelectedImageModel() {
@@ -551,7 +616,13 @@ export async function detectDeviceDiagnostics() {
       if (adapter) {
         hasWebGPU = true;
         hasF16 = Boolean(adapter.features?.has('shader-f16'));
-        adapterName = adapter.info?.description || adapter.info?.architecture || 'WebGPU Adapter';
+        // Keep every field the browser offers: on a MatePad this is the only
+        // place a visitor ever sees "Maleoon 910" named, which is the difference
+        // between "the GPU was tried" and "the GPU was found".
+        const info = adapter.info || {};
+        adapterName = info.description
+          || [info.architecture, info.vendor].filter(Boolean).join(' ')
+          || 'WebGPU Adapter';
       }
     } catch {}
   }
@@ -613,7 +684,20 @@ export async function detectDeviceDiagnostics() {
   const gpuTrustLevel = gradeWebgpuAdapter({ hasWebGPU, profile: platform });
   // "Prefer the GPU" means "do not distrust it": with no adapter at all there is
   // nothing to order, and only a suspect one changes the chain.
-  const gpuPreferred = gpuTrustLevel !== 'suspect';
+  // A suspect adapter used to mean "CPU first", and on a MatePad that meant the
+  // Maleoon 910 was tried last — behind two CPU runtimes — on the one device in
+  // this kitchen whose GPU is worth reaching. ArkWeb reports Chromium versions
+  // that are not real Chrome releases, so no user agent can ever *verify* that
+  // adapter; refusing to use it is not caution, it is giving up. So on Huawei
+  // hardware an adapter that exists is an adapter we try first, with the CPU
+  // steps kept behind it exactly as they were, the stall guard still armed, and
+  // the WebGPU poisoning on a GPU-shaped abort still in place.
+  //
+  // Everywhere else a suspect adapter still means CPU first: an old Android
+  // Chrome can hang the tab rather than fail cleanly, and nobody has asked for
+  // that trade there. gpuTrustLevel keeps reporting 'suspect' and hasRisk keeps
+  // firing, because "we are trying it" is not the same claim as "we checked it".
+  const gpuPreferred = gpuTrustLevel !== 'suspect' || Boolean(hasWebGPU && platform.isHuawei);
   // Declared iPadOS/iOS counts as memory-tight too: mobile Safari and ArkWeb
   // both reap a big WASM heap, and neither says so in the user agent.
   const memoryTightPlatform = Boolean((platform.isAndroid || platform.isIOS) && !hasWebGPU);
@@ -638,7 +722,13 @@ export async function detectDeviceDiagnostics() {
     ? `WebGPU Ready${hasF16 ? ' (FP16)' : ' · no FP16 → CPU offload'}`
     : 'WebGPU Unavailable — CPU WASM Fallback';
   if (isOldIOS) summaryLabel = `iOS ${iosMajor} (< iOS 26) — WebGPU/Memory Risk`;
-  else if (gpuTrustLevel === 'suspect') summaryLabel = `WebGPU present but unverified on Chromium ${platform.chromiumMajor} — CPU first`;
+  else if (gpuTrustLevel === 'suspect') {
+    // The label has to agree with the order the chain actually runs in, or the
+    // note contradicts the evidence it is sitting on top of.
+    summaryLabel = gpuPreferred
+      ? `WebGPU unverified on Chromium ${platform.chromiumMajor} — trying the GPU first, CPU behind it`
+      : `WebGPU present but unverified on Chromium ${platform.chromiumMajor} — CPU first`;
+  }
   if (!hasWasmSimd) summaryLabel = ' · no WASM SIMD';
   if (!canThread) summaryLabel += ' · single-thread WASM';
 
@@ -649,7 +739,7 @@ export async function detectDeviceDiagnostics() {
   const deviceNote = [
     platformLabel,
     hasWebGPU
-      ? `WebGPU adapter: ${adapterName || 'present'} (${gpuTrustLevel}${hasF16 ? ', FP16' : ', no FP16 → CPU offload'})`
+      ? `WebGPU adapter: ${adapterName || 'present'} (${gpuTrustLevel}${hasF16 ? ', FP16' : ', no FP16 → CPU offload'})${gpuTrustLevel === 'suspect' && gpuPreferred ? ' — unverified, but this device tries the GPU first' : ''}`
       : 'WebGPU: no adapter',
     `NPU: ${npuNote}`,
     `WASM: ${hasWasmSimd ? 'SIMD yes' : 'SIMD no'}, threads ${canThread ? 'yes' : 'no'}, heap budget ~${Math.round(wasmBudgetBytes / 1024 ** 2)} MB, on-device storage ${hasOPFS ? 'yes' : 'no'}`

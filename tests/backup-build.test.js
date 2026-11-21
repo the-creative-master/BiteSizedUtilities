@@ -24,8 +24,8 @@ function pageWith(dataset) {
 
 test('the public kitchen reports a plain release version and knows nothing about TVAR', () => {
   pageWith({});
-  assert.equal(APP_VERSION, '1.1.1');
-  assert.equal(appVersionLabel(), '1.1.1', 'index.html says 1.1.1 and nothing else');
+  assert.equal(APP_VERSION, '1.2');
+  assert.equal(appVersionLabel(), '1.2', 'index.html says 1.2 and nothing else');
   assert.equal(isBackupBuild(), false);
   assert.equal(isPublicBuild(), true);
   assert.ok(!APP_VERSION.includes('TVAR'), 'the release version never carries a TVAR suffix');
@@ -35,7 +35,7 @@ test('the public kitchen reports a plain release version and knows nothing about
 test('the backup kitchen reports the release while no test version is open', () => {
   pageWith({ backup: '1' });
   assert.equal(TVAR, 0, 'a public release resets the test counter');
-  assert.equal(appVersionLabel(), '1.1.1', 'backup.html reports the release until the next TVAR is opened');
+  assert.equal(appVersionLabel(), '1.2', 'backup.html reports the release until the next TVAR is opened');
   assert.equal(isBackupBuild(), true);
   assert.equal(isPublicBuild(), false);
 

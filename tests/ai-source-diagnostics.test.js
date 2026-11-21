@@ -813,14 +813,22 @@ test('the report says whether this origin already holds the model, because brows
   assert.match(empty.lines.join('\n'), /This origin holds no pre-cached copy of that GGUF, so every load from here has to download it/);
 });
 
-test('the smallest model in the table carries the size this report measured', () => {
+test('the default model carries the size its quant actually costs', () => {
   const tiny = TEXT_MODELS.find(m => m.id === 'smollm2-135m');
   assert.ok(tiny);
-  // SmolLM2-135M-Instruct-Q3_K_L.gguf measured 93.0 MB in
-  // bartowski/SmolLM2-135M-Instruct-GGUF; the table claimed 70 MB, and the
-  // badge in the model picker quoted the same wrong figure.
-  assert.equal(tiny.ggufMB, 93);
-  assert.match(tiny.badge, /~93 MB/);
-  assert.match(tiny.desc, /~93 MB/);
-  assert.ok(!`${tiny.badge} ${tiny.desc}`.includes('70'), 'the old guess is gone from the picker copy too');
+  // 1.2 moved this model to full 16-bit. The table's number is arithmetic —
+  // 135M parameters at two bytes each — and says so in a comment, because the
+  // sandbox that wrote it has no route to huggingface.co and could not measure
+  // the file. Nothing depends on it being exact: the fetch script prices every
+  // model from the repo tree before it downloads anything, and the source report
+  // on the device shows the measured size. What it does decide is the "will it
+  // fit?" gate and whether a deploy self-hosts it, so the picker copy has to
+  // agree with it rather than quoting the 3-bit file it replaced.
+  assert.equal(tiny.hfGgufQuant, 'F16');
+  assert.equal(tiny.ggufMB, 270);
+  assert.match(tiny.badge, /F16 ~270 MB/);
+  assert.match(tiny.desc, /~270 MB/);
+  assert.ok(!`${tiny.badge} ${tiny.desc}`.includes('93'), 'the quant it replaced is gone from the picker copy');
+  assert.match(fs.readFileSync('waffle-browser-ai.js', 'utf8'), /Arithmetic, not a measurement/,
+    'and the entry says where its number came from');
 });

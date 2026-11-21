@@ -1,111 +1,25 @@
 <!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tic Tac Toe — BiteSizedUtilities</title>
 <script src="../arcade-controls.js"></script>
 
-
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>School Heaven</title>
-        <link href="style.css" rel="stylesheet" type="text/css" />
-        <link rel="icon" type="image/x-icon" href="images/logo.png"/>
-        <link rel="preconnect" href="https://fonts.gstatic.com">
-		<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;800&display=swap" rel="stylesheet">
-<script src="https://kit.fontawesome.com/5ea35be0ac.js" crossorigin="anonymous"></script>
-
-<body>
-<ul>
-<li><a href="index.html">Home</a></li>
-<li><a href="games.html">Arcade</a></li>
-<li><a href="music.html">Music</a></li>
-<li><a href="https://4anime.biz/" target="_blank" rel="noopener noreferrer">Anime</a></li>
-<li><a  class="unb" href="carrot.html">Unblocker</a></li>
-<li></li>
-<li><div class="dropdown">
-    <button class="dropbtn">More <i class="fas fa-caret-down"></i> 
-    </button>
-    <div class="dropdown-content">
-<a href="announcements.html">Announcements</a>
-<a href="setting.html">Settings</a>
-      <a href="help.html">Help</a>
-    </div>
-  </div> </li>
-
-<p font-size="22px" align="right">
-School Heaven
-</p>
-</ul>
-</body>
-
-
-	<meta name="viewport" content=
-		"width=device-width, initial-scale=1.0">
-
-	<!-- CSS file Included -->
-	<link rel="stylesheet"
-		type="text/css" href="tic.css">
-
-	<!-- JavaScript file included -->
-	<script src="tic.js"></script>
-</head>
-
-<body>
-	<div id="main">
-		<h1>TIC TAC TOE</h1>
-
-		<!-- Game Instructions -->
-		<p id="ins">Game starts by just Tap on
-			box<br><br>First Player starts as
-			<b>Player X</b><br>And<br>Second
-			Player as <b>Player 0</b>
-		</p>
-
-
-		<br><br>
-		<!-- 3*3 grid of Boxes -->
-		<input type="text" id="b1" onclick=
-			"myfunc_3(); myfunc();" readonly>
-
-		<input type="text" id="b2" onclick=
-			"myfunc_4(); myfunc();" readonly>
-
-		<input type="text" id="b3" onclick=
-			"myfunc_5(); myfunc();" readonly>
-		<br><br>
-
-		<input type="text" id="b4" onclick=
-			"myfunc_6(); myfunc();" readonly>
-			
-		<input type="text" id="b5" onclick=
-			"myfunc_7(); myfunc();" readonly>
-
-		<input type="text" id="b6" onclick=
-			"myfunc_8(); myfunc();" readonly>
-		<br><br>
-
-		<input type="text" id="b7" onclick=
-			"myfunc_9(); myfunc();" readonly>
-
-		<input type="text" id="b8" onclick=
-			"myfunc_10();myfunc();" readonly>
-
-		<input type="text" id="b9" onclick=
-			"myfunc_11();myfunc();" readonly>
-
-		<!-- Grid end here -->
-		<br><br><br>
-		<!-- Button to reset game -->
-		<button id="but" onclick="myfunc_2()">
-			RESET
-		</button>
-
-		<br><br>
-		<!-- Space to show player turn -->
-		<p id="print"></p>
-
-
-	</div>
+<!-- JavaScript file included -->
+<script src="tic.js"></script>
 
 <style>
 	/* CSS Code */
+	/* The page used to link a stylesheet that never shipped with it, and its
+	   white headings sat on the browser's white page. This is that stylesheet:
+	   the kitchen's own ink, so the white text has something to sit on. */
+	body {
+		background-color: #4f2f23;
+		margin: 0;
+		padding: 24px 0 40px;
+	}
+
 	/* Heading */
 	h1 {
 		color: white;
@@ -118,7 +32,7 @@ School Heaven
 		width: 80px;
 		height: 52px;
 		margin: auto;
-		border: 1px solid #dedfe0f;
+		border: 1px solid #dedfe0;
 		border-radius: 6px;
 		font-size: 30px;
 		text-align: center;
@@ -178,16 +92,6 @@ School Heaven
 		cursor: pointer;
 	}
 
-	/* Player turn space */
-	#print {
-		font-family: Verdana,
-			Geneva, Tahoma, sans-serif;
-
-		color: white;
-		font-size: 20px;
-	}
-
-
 	/* Main Container */
 	#main {
 		text-align: center;
@@ -202,8 +106,64 @@ School Heaven
 		font-size: 17px;
 	}
 </style>
+</head>
+
+<body>
+	<div id="main">
+		<h1>TIC TAC TOE</h1>
+
+		<!-- Game Instructions -->
+		<p id="ins">Game starts by just Tap on
+			box<br><br>First Player starts as
+			<b>Player X</b><br>And<br>Second
+			Player as <b>Player 0</b>
+		</p>
 
 
+		<br><br>
+		<!-- 3*3 grid of Boxes -->
+		<input type="text" id="b1" onclick=
+			"myfunc_3(); myfunc();" readonly>
+
+		<input type="text" id="b2" onclick=
+			"myfunc_4(); myfunc();" readonly>
+
+		<input type="text" id="b3" onclick=
+			"myfunc_5(); myfunc();" readonly>
+		<br><br>
+
+		<input type="text" id="b4" onclick=
+			"myfunc_6(); myfunc();" readonly>
+			
+		<input type="text" id="b5" onclick=
+			"myfunc_7(); myfunc();" readonly>
+
+		<input type="text" id="b6" onclick=
+			"myfunc_8(); myfunc();" readonly>
+		<br><br>
+
+		<input type="text" id="b7" onclick=
+			"myfunc_9(); myfunc();" readonly>
+
+		<input type="text" id="b8" onclick=
+			"myfunc_10();myfunc();" readonly>
+
+		<input type="text" id="b9" onclick=
+			"myfunc_11();myfunc();" readonly>
+
+		<!-- Grid end here -->
+		<br><br><br>
+		<!-- Button to reset game -->
+		<button id="but" onclick="myfunc_2()">
+			RESET
+		</button>
+
+		<br><br>
+		<!-- Space to show player turn -->
+		<p id="print"></p>
+
+
+	</div>
 </body>
 
 </html>

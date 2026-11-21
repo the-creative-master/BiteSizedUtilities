@@ -42,6 +42,12 @@ jobs:
       - name: Report the weights this deploy will serve
         run: ls -l .cache/waffle-ai/*.gguf || echo "no self-hosted model weights in this deploy"
       - run: npm run build
+      # The same question, asked of the thing that actually ships. The report above
+      # runs before the build, so all it can say is what the cache handed over: the
+      # build then copies .cache/waffle-ai/*.gguf into dist/api/waffle-ai/gguf/ under
+      # a size budget, and only this line says whether anything survived that copy.
+      - name: Report the weights inside the artifact
+        run: ls -l dist/api/waffle-ai/gguf/*.gguf || echo "the build shipped no model weights of its own"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

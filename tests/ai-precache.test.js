@@ -390,6 +390,16 @@ test('the Pages deploy pre-caches after the tests, before the build, and cannot 
   assert.match(yml, /path: \.cache\/waffle-ai/);
   assert.match(yml, /Report the weights this deploy will serve/,
     'and the log says whether any weights actually came with it');
+
+  // Asked again after the build, because the copy into dist/ has a size budget of
+  // its own: a cache full of weights can still produce an artifact with none in
+  // it, and the first report would have said everything was fine.
+  const upload = yml.indexOf('actions/upload-pages-artifact@v3');
+  const shipped = yml.indexOf('Report the weights inside the artifact');
+  assert.ok(upload > 0 && shipped > build && upload > shipped,
+    'and the log says whether the built site is carrying them');
+  assert.match(yml.slice(shipped, upload), /dist\/api\/waffle-ai\/gguf/,
+    'that second report looks inside the artifact, not the cache');
 });
 
 test('npm run precache is the same command the deploy runs', () => {

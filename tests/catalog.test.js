@@ -138,7 +138,12 @@ test('CodeHub runtimes (Luau, Haskell, Ruby, PHP, SQL, C++, Clojure, Prolog, Was
     'runtimes/vendor/markup-bundle.js'
   ];
   for (const file of vendoredFiles) assert.ok(fs.existsSync(file), `${file} exists`);
-  assert.ok(codeSrc.includes('qwen2.5-coder-1.5b') && codeSrc.includes('AI Error Diagnostics'), 'CodeHub uses Qwen 2.5 Coder 1.5B for AI error diagnostics');
+  // 1.2.1 pinned CodeHub's diagnostics to one small model instead of borrowing
+  // the largest one in the kitchen, which on a CPU-only tablet meant a ~700 MB
+  // download before it could say anything.
+  assert.ok(codeSrc.includes("'granite-code-0.5b'") && codeSrc.includes('AI Error Diagnostics'),
+    'CodeHub uses Granite Code 0.5B for AI error diagnostics');
+  assert.ok(!codeSrc.includes("'qwen2.5-coder-1.5b'"), 'and no longer borrows the coder model');
   assert.ok(!appSrc.includes('await import('), 'app.js uses static imports for instant loading');
 });
 
@@ -193,6 +198,21 @@ test('Waffle AI chatbot, streaming code boxes, DOCX creation/parsing, single Waf
   assert.ok(browserAiSrc.includes('Qwen3_5ForCausalLM') && browserAiSrc.includes('decoder_model_merged'), 'Qwen 3.5 0.8B uses Qwen3_5ForCausalLM with split ONNX dtype');
   assert.ok(TEXT_MODELS.some(m => m.id === 'qwen2.5-coder-1.5b'), 'Qwen 2.5 Coder 1.5B available');
   for (const m of TEXT_MODELS) {
+    // Two exceptions, both deliberate and both documented where they are written:
+    //   falcon3-1b is GGUF-only, because no ONNX repo for it could be verified
+    //     from here and a guessed one costs a failed attempt on the device before
+    //     the runtime that would have worked gets its turn;
+    //   granite-code-0.5b is reserved for CodeHub's diagnostics and its weights
+    //     have not arrived, so it names no source at all rather than a wrong one.
+    if (m.id === 'falcon3-1b') {
+      assert.ok(!m.hfId && m.hfGgufRepo && m.ggufFile, 'Falcon 3 1B is GGUF-only on purpose');
+      continue;
+    }
+    if (m.arrivesIn) {
+      assert.equal(m.id, 'granite-code-0.5b', 'exactly one entry is waiting for weights');
+      assert.ok(!m.hfId && !m.hfGgufRepo, 'and it invents no source to fail against');
+      continue;
+    }
     assert.ok(m.hfId && m.hfGgufRepo, `${m.id} has its own browser ONNX (hfId) and GGUF (hfGgufRepo) fallback so it never falls back to a different model`);
   }
   assert.ok(!/attempts\.push\(\{\s*kind:\s*'browser',\s*id:\s*'qwen3\.5-0\.8b',\s*dev:\s*'webgpu'\s*\}\)/.test(uiSrc), 'Text chat fallback does not force server models onto qwen3.5-0.8b');

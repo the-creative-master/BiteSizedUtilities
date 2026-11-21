@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  APP_VERSION, TVAR, APP_VERSION_EXTENDED, TVAR_LOG, CHANGELOG, appVersionLabel
+  APP_VERSION, TVAR, TVAR_CYCLE, APP_VERSION_EXTENDED, TVAR_LOG, CHANGELOG, appVersionLabel
 } from '../changelog.js';
 import { isBackupBuild, isPublicBuild } from '../build-mode.js';
 import { cupboards, allTools, backupToolAdditions, resolveTools } from '../catalog.js';
@@ -24,25 +24,32 @@ function pageWith(dataset) {
 
 test('the public kitchen reports a plain release version and knows nothing about TVAR', () => {
   pageWith({});
-  assert.equal(APP_VERSION, '1.2');
-  assert.equal(appVersionLabel(), '1.2', 'index.html says 1.2 and nothing else');
+  assert.equal(APP_VERSION, '1.2.1');
+  assert.equal(appVersionLabel(), '1.2.1', 'index.html says 1.2.1 and nothing else');
   assert.equal(isBackupBuild(), false);
   assert.equal(isPublicBuild(), true);
   assert.ok(!APP_VERSION.includes('TVAR'), 'the release version never carries a TVAR suffix');
   assert.ok(!JSON.stringify(CHANGELOG).includes('TVAR'), 'and the public release notes never mention one');
 });
 
-test('the backup kitchen reports the release while no test version is open', () => {
+test('the backup kitchen reports the test build it is, not the release beside it', () => {
   pageWith({ backup: '1' });
-  assert.equal(TVAR, 0, 'a public release resets the test counter');
-  assert.equal(appVersionLabel(), '1.2', 'backup.html reports the release until the next TVAR is opened');
+  // 1.2.1 is what the public kitchen says. This build is a test version on top
+  // of 1.2, so it says so — and the two labels are allowed to disagree, which is
+  // the whole reason the cycle is its own constant instead of APP_VERSION.
+  assert.equal(TVAR, 1, 'one test build is open');
+  assert.equal(TVAR_CYCLE, '1.2', 'on the 1.2 cycle');
+  assert.equal(APP_VERSION, '1.2.1', 'while the release has moved on without it');
+  assert.equal(appVersionLabel(), '1.2 TVAR 1', 'backup.html reports the build it is');
   assert.equal(isBackupBuild(), true);
   assert.equal(isPublicBuild(), false);
 
   // The 1.1 test versions stay documented as history; they are not this build.
-  assert.equal(TVAR_LOG.length, 3, 'every extended minor version of 1.1 is still documented');
-  assert.deepEqual(TVAR_LOG.map(e => e.version), ['1.1 TVAR 3', '1.1 TVAR 2', '1.1 TVAR 1'],
+  assert.equal(TVAR_LOG.length, 4, 'every extended minor version is still documented');
+  assert.deepEqual(TVAR_LOG.map(e => e.version), ['1.2 TVAR 1', '1.1 TVAR 3', '1.1 TVAR 2', '1.1 TVAR 1'],
     'newest first, and an old entry keeps its own number');
+  assert.equal(TVAR_LOG[0].version, APP_VERSION_EXTENDED,
+    'the newest entry spells out the label this build reports, so it cannot be renumbered behind its own back');
 
   for (const tvar of TVAR_LOG) {
     assert.equal(tvar.tvar, true, `${tvar.version} is marked so the renderer can style it apart`);
@@ -59,7 +66,13 @@ test('the backup kitchen reports the release while no test version is open', () 
   assert.match(all, /test version after release/, 'the log explains what TVAR stands for');
   assert.match(all, /Hugging Face/, 'and records the extended AI error report');
 
-  const latest = textOf(TVAR_LOG[0]);
+  const open = textOf(TVAR_LOG[0]);
+  assert.match(open, /Falcon 3 1B/, '1.2 TVAR 1 names the model it added');
+  assert.match(open, /DONTASKMEWHATTHATIS\.txt/, 'and the file the build now ships as');
+  assert.match(open, /obfuscation and not encryption/, 'without pretending the disguise is a secret');
+  assert.ok(!open.includes('BACKUPKITCHEN'), 'and without printing the string that opens it');
+
+  const latest = textOf(TVAR_LOG[1]);
   assert.match(latest, /Huawei/, 'TVAR 3 records the devices it was built for');
   assert.match(latest, /Kirin NPU cannot be reached from a web page/,
     'and says plainly what the NPU cannot do instead of implying it works');
@@ -69,7 +82,7 @@ test('the backup kitchen reports the release while no test version is open', () 
   assert.match(latest, /1\.8 GB/, 'so is the tighter heap budget on a tablet');
   assert.match(latest, /ArkWeb/, 'and the mapping that dates a Huawei browser');
 
-  const tvar2 = textOf(TVAR_LOG[1]);
+  const tvar2 = textOf(TVAR_LOG[2]);
   assert.match(tvar2, /freez/, 'TVAR 2 records the freeze it was built to fix');
   assert.match(tvar2, /Only one inference runs at a time/, 'what replaced it');
   assert.match(tvar2, /45 seconds/, 'the watchdog window a visitor would actually hit');
@@ -79,8 +92,10 @@ test('the backup kitchen reports the release while no test version is open', () 
 test('TVAR entries reset with each release and are rendered only in the backup build', () => {
   pageWith({});
   const src = fs.readFileSync('changelog.js', 'utf8');
-  assert.match(src, /export const APP_VERSION_EXTENDED = `\$\{APP_VERSION\} TVAR \$\{TVAR\}`;/,
+  assert.match(src, /export const APP_VERSION_EXTENDED = `\$\{TVAR_CYCLE\} TVAR \$\{TVAR\}`;/,
     'the extended label is derived, so bumping TVAR is a one-character change');
+  assert.match(src, /export const TVAR_CYCLE = '1\.2';/,
+    'from the cycle it belongs to, which is a literal: APP_VERSION has moved on to 1.2.1 and deriving from it would announce a build that has never existed');
   assert.match(src, /Reset to 0 on every public release/, 'the reset rule is written down where the counter lives');
   assert.match(src, /const releases = isBackupBuild\(\) \? \[\.\.\.TVAR_LOG, \.\.\.CHANGELOG\] : CHANGELOG;/,
     'the renderer only prepends TVAR entries in the backup build');
@@ -91,10 +106,11 @@ test('TVAR entries reset with each release and are rendered only in the backup b
   // that release in the combined list, which is what makes "newest first" true.
   // The counter resets on release, so what is left is history: these are 1.1's
   // test builds, not 1.1.1's, and they say so.
-  assert.equal(TVAR, 0, 'the counter is reset for the new release');
+  assert.equal(TVAR, Number(TVAR_LOG[0].version.split(' TVAR ')[1]), 'the counter and the newest entry agree');
   for (const entry of TVAR_LOG) {
     assert.match(entry.version, /^\d+\.\d+(\.\d+)? TVAR \d+$/, `${entry.version} names its cycle and its counter`);
-    assert.ok(entry.version.startsWith('1.1 TVAR '), `${entry.version} belongs to the 1.1 cycle it was built from`);
+    assert.ok(entry.version.startsWith('1.2 TVAR ') || entry.version.startsWith('1.1 TVAR '),
+      `${entry.version} belongs to a cycle that really shipped`);
     assert.equal(entry.tvar, true, 'and is still marked so the renderer can style it apart');
   }
 });
@@ -110,7 +126,13 @@ test('backup.html is the only page that switches the extra build on', () => {
   assert.match(backup, /<script type="module" src="\.\/app\.js"><\/script>/, 'both pages run the same app');
   // The backup page also asks not to be indexed, which is the only other
   // difference: same app, same shell, same fallback loader.
+  // index.html carries one thing backup.html does not: the four-line head script
+  // that reads the door's stash and writes the decoded page. It has to be inline
+  // and it has to be in the head, and it belongs on the public page only — the
+  // backup kitchen has no door to open into itself.
+  const DOOR_SCRIPT = /<script>\(function\(\)\{try\{var h=sessionStorage[\s\S]*?<\/script>/;
   const strip = (html, flag) => html
+    .replace(DOOR_SCRIPT, '')
     .replace(flag ? / data-backup="1"/g : /\u0000/g, '')
     .replace(/<meta name="robots" content="noindex,nofollow">/g, '')
     .replace(/<title>[^<]*<\/title>/g, '')
@@ -186,31 +208,39 @@ test('the retired wording for the second build is gone from the whole repository
   assert.match(studio, /LEGACY_PROJECT_MAGIC/, 'the one surviving mention is the legacy project magic');
 });
 
-test('the unlock gesture is reachable but never explained', () => {
+test('the tap gesture is gone, and nothing explains the door that replaced it', () => {
   const appSrc = fs.readFileSync('app.js', 'utf8');
-  assert.match(appSrc, /const UNLOCK_TAP_TARGET = 10;/, 'the gesture still exists');
-  assert.match(appSrc, /const UNLOCK_TAP_WINDOW_MS = 3000;/);
-  assert.match(appSrc, /openBackupKitchen\(\)/, 'and still opens the backup kitchen');
-  assert.match(appSrc, /new URL\('backup\.html', document\.baseURI\)/);
+  // Ten taps inside three seconds was a door anybody could be told about and
+  // anybody could hit by accident while bouncing the waffle wall, and it
+  // navigated to an address sitting in the bundle in plain text. None of it is
+  // left: no counter, no window, no redirect, no tap targets.
+  for (const gone of ['UNLOCK_TAP_TARGET', 'UNLOCK_TAP_WINDOW_MS', 'unlockTaps', 'registerWaffleTap',
+    'openBackupKitchen', 'data-waffle-tap']) {
+    assert.ok(!appSrc.includes(gone), `app.js no longer carries ${gone}`);
+  }
+  assert.ok(!/new URL\('backup\.html'/.test(appSrc), 'and nothing in the page navigates to the backup URL');
 
-  // What must not exist: anything a visitor could read and then repeat.
+  // What must not exist anywhere a visitor can read: the recipe, the string, or
+  // a hint that counts anything out loud.
   const readable = [
     ['app.js', appSrc],
     ['waffle-ai.js', fs.readFileSync('waffle-ai.js', 'utf8')],
     ['changelog.js', fs.readFileSync('changelog.js', 'utf8')],
+    ['backup-door.js', fs.readFileSync('backup-door.js', 'utf8')],
     ['index.html', fs.readFileSync('index.html', 'utf8')]
   ];
   for (const [name, src] of readable) {
     assert.ok(!/ten (times|taps)|tap him|10 taps|tap anywhere here ten/i.test(src),
-      `${name} does not spell out the recipe`);
+      `${name} does not spell out the old recipe`);
+    assert.ok(!src.includes('BACKUPKITCHEN'), `${name} does not print the string that opens the door`);
   }
   const css = fs.readFileSync('style.css', 'utf8');
   assert.ok(!css.includes('waffle-ai-locked-tap-hint'), 'the hint that used to count taps out loud is gone, styling and all');
-  assert.ok(!appSrc.includes('waffle-unlock-progress'), 'and nothing broadcasts the run for a hint to render');
+  assert.ok(!appSrc.includes('waffle-unlock-progress'), 'and nothing broadcasts a run for a hint to render');
 
   // The banner in the backup build describes the build, not how to find it.
   assert.match(appSrc, /BACKUP KITCHEN/);
-  assert.ok(!/how to (get|reach) here|ten taps/i.test(appSrc), 'the banner does not leak the recipe either');
+  assert.ok(!/how to (get|reach) here|ten taps/i.test(appSrc), 'the banner does not leak the way in either');
 });
 
 test('the paused-AI notice quotes the current cabinet and keeps its promise', () => {

@@ -1,6 +1,7 @@
 import { gEl, gameBtn, gameTabs, gameToggle, gameField, gameFilePill, copyToClipboard } from './ui-kit.js';
 import { playPop, playSparkle, playBoing } from './sfx.js';
 import { streamWaffleChat, formatWaffleMarkdown, isWaffleAiLocked, waffleAiLockedNoticeHTML } from './waffle-ai.js';
+import { TEXT_MODELS, getSelectedTextModel, detectDeviceDiagnostics, aiSpeedProfile, clipToCharBudget } from './waffle-browser-ai.js';
 import { createDocxBlob, extractTextFromUpload, triggerFileDownload } from './file-tools-client.js';
 import { getAppLanguage } from './i18n.js';
 
@@ -10,6 +11,40 @@ const ENGLISH_IDS = [
   'idiom-decoder', 'story-starter', 'email-polisher', 'eli5-explainer',
   'flashcard-maker', 'pronunciation-coach', 'dialogue-practice'
 ];
+
+/**
+ * What each tool's answer is worth, in generated tokens.
+ *
+ * Every tool in this cupboard used to ask for the same 560, which is roughly
+ * right for an essay draft and roughly four times too much for an idiom. On a
+ * device generating three or four tokens a second that difference is the whole
+ * wait: a tool that only needed 260 tokens was prepared to sit there for two and
+ * a half minutes producing padding. These numbers are the length of a good
+ * answer to each question, not a ration — the runtime still clamps against its
+ * own context, and `aiSpeedProfile` clamps again on a tight device.
+ */
+const TOKEN_BUDGETS = {
+  'waffle-translate': 400,
+  'sentence-corrector': 260,
+  'tone-rewriter': 320,
+  'grammar-explainer': 420,
+  'summarizer-pro': 400,
+  'vocab-builder': 380,
+  'essay-outliner': 520,
+  'rhyme-poetry': 300,
+  'idiom-decoder': 260,
+  'story-starter': 420,
+  'email-polisher': 320,
+  'eli5-explainer': 300,
+  'flashcard-maker': 380,
+  'pronunciation-coach': 220,
+  'dialogue-practice': 260
+};
+
+/** The budget for a tool, so a new entry cannot silently fall back to the largest one. */
+export function tokenBudgetFor(id) {
+  return TOKEN_BUDGETS[id] ?? 400;
+}
 
 const LANGUAGES = [
   'Spanish', 'French', 'German', 'Japanese', 'Korean',
@@ -108,15 +143,28 @@ function createRunner(form) {
     outActions.hidden = true;
     outBody.innerHTML = '<span class="waffle-thinking">Sir Waffle is thinking…</span><span class="waffle-cursor" aria-hidden="true">▌</span>';
 
+    // "(Speak in English)" is a dozen tokens asking for what would have happened
+    // anyway, and it went into every request from every tool in this cupboard.
+    // It only belongs there when the kitchen is genuinely set to another language.
     const appLang = getAppLanguage();
-    const finalPrompt = skipSpeakHint ? userPrompt : `${userPrompt}\n\n(Speak in ${appLang})`;
+    const wantsLangHint = !skipSpeakHint && Boolean(appLang) && appLang !== 'English';
+
+    // What this device should be asked to read and to say. Both come from the
+    // diagnostics rather than the user agent, and both are ceilings: the runtime
+    // fits the conversation into its own context afterwards, so this can only
+    // ever take work away.
+    const diag = await detectDeviceDiagnostics().catch(() => null);
+    const profile = aiSpeedProfile(diag);
+    const budget = Math.max(96, Math.min(maxTokens, profile.maxTokens));
+    const asked = wantsLangHint ? `${userPrompt}\n\n(Speak in ${appLang})` : userPrompt;
+    const finalPrompt = clipToCharBudget(asked, profile.promptChars);
 
     try {
       const full = await streamWaffleChat({
         messages: [{ role: 'user', content: finalPrompt }],
         systemPrompt,
         temperature,
-        maxTokens,
+        maxTokens: budget,
         signal: ac.signal,
         onToken(_, acc) {
           lastText = acc;
@@ -443,9 +491,13 @@ export function mountEnglish(id, root) {
   root.replaceChildren();
 
   const form = gEl('section', { class: 'game-panel tool-form' });
+  // The banner used to name a model — Qwen 2.5 1.5B — that these tools have not
+  // used since the model became a choice in Settings. It reads the choice now, so
+  // the cupboard cannot advertise something other than what is about to run.
+  const chosenLabel = TEXT_MODELS.find(m => m.id === getSelectedTextModel())?.label || 'the selected model';
   const badgeText = id === 'waffle-translate'
     ? '🌐 Powered by Google Translate API'
-    : (isWaffleAiLocked() ? '🔒 AI writing helpers are paused' : '✨ Powered by Qwen 2.5 1.5B');
+    : (isWaffleAiLocked() ? '🔒 AI writing helpers are paused' : `✨ Powered by ${chosenLabel}`);
   const badge = gEl('div', { class: 'eng-ai-banner' },
     gEl('span', { class: 'gbadge' }, badgeText)
   );
@@ -604,7 +656,10 @@ export function mountEnglish(id, root) {
   const goBtn = gameBtn(cfg.btn, 'primary', () => {
     const req = cfg.build();
     playPop(560);
-    run.ask(req);
+    // A config may still name its own budget; otherwise the cupboard's table
+    // decides, because "whatever the default is" is how eleven tools ended up
+    // asking for the same 560 tokens.
+    run.ask({ maxTokens: tokenBudgetFor(id), ...req });
   });
 
   form.append(...cfg.controls, goBtn, run.outBox);

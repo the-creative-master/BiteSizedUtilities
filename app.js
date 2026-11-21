@@ -251,8 +251,8 @@ app.innerHTML = `
 
     <aside class="waffle-corner" aria-label="${aiLocked ? 'Sir Waffle' : 'Waffle AI Button'}">
       <div class="counter-plate-wrap">
-        <button type="button" class="waffle-speech" id="waffle-speech" data-waffle-tap aria-label="${aiLocked ? 'Say hello to Sir Waffle' : 'Open Waffle AI chatbot'}">${aiLocked ? 'Tap Sir Waffle!' : 'Touch me for Waffle AI!'}</button>
-        <button type="button" class="waffle-mascot-btn" id="waffle-mascot" data-waffle-tap aria-label="${aiLocked ? 'Sir Waffle' : 'Open Waffle AI chatbot'}" title="${aiLocked ? 'Sir Waffle' : 'Open Waffle AI!'}">
+        <button type="button" class="waffle-speech" id="waffle-speech" aria-label="${aiLocked ? 'Say hello to Sir Waffle' : 'Open Waffle AI chatbot'}">${aiLocked ? 'Tap Sir Waffle!' : 'Touch me for Waffle AI!'}</button>
+        <button type="button" class="waffle-mascot-btn" id="waffle-mascot" aria-label="${aiLocked ? 'Sir Waffle' : 'Open Waffle AI chatbot'}" title="${aiLocked ? 'Sir Waffle' : 'Open Waffle AI!'}">
           ${waffleMascotSVG()}
           ${aiLocked ? '' : '<span class="waffle-ai-tag" aria-hidden="true">Waffle AI</span>'}
         </button>
@@ -349,38 +349,17 @@ function handleOpenWaffleAI(e) {
 $('#waffle-mascot').addEventListener('click', handleOpenWaffleAI);
 $('#waffle-speech').addEventListener('click', handleOpenWaffleAI);
 
-/* The hidden unlock gesture: a fast run of taps on Sir Waffle opens the backup
- * kitchen, where Waffle AI and every AI control are switched on. The recipe
- * lives only in these two constants and is not printed anywhere in the UI or in
- * the changelog. Listened for in the capture phase because the mascot's own
- * handler calls stopPropagation(), and it also counts taps on Sir Waffle inside
- * the "Waffle AI is paused" notice, so the run does not have to restart. */
-const UNLOCK_TAP_TARGET = 10;
-const UNLOCK_TAP_WINDOW_MS = 3000;
-let unlockTaps = [];
-
-function openBackupKitchen() {
-  playSparkle();
-  toast('🧇 Unlocked — opening the backup kitchen');
-  // Resolved against the document so it works from a GitHub Pages sub-path.
-  setTimeout(() => { window.location.href = new URL('backup.html', document.baseURI).href; }, 260);
-}
-
-function registerWaffleTap() {
-  if (isBackupBuild()) { unlockTaps = []; return; }
-  const now = Date.now();
-  unlockTaps = unlockTaps.filter(t => now - t <= UNLOCK_TAP_WINDOW_MS).concat(now);
-  // The run is deliberately not broadcast or counted out loud anywhere. The only
-  // feedback is the paused-AI notice opening on the first tap and one toast when
-  // the run lands — an unlock that narrates its own recipe is not an unlock.
-  if (unlockTaps.length < UNLOCK_TAP_TARGET) return;
-  unlockTaps = [];
-  openBackupKitchen();
-}
-
-document.addEventListener('click', e => {
-  if (e.target.closest?.('[data-waffle-tap]')) registerWaffleTap();
-}, true);
+/* There is no unlock gesture here any more, and nothing on this page counts taps.
+ *
+ * There used to be one: a fast run of taps on Sir Waffle, which was a door
+ * anybody could be told about and anybody could stumble into while bouncing the
+ * waffle wall — and it navigated to a URL that sat in this bundle in plain
+ * text, so the page was one guess away from anyone who cared to try it.
+ *
+ * The way in now is a string typed at Waffle AI. `backup-door.js` recognises it,
+ * fetches the file the backup kitchen actually ships as, decodes it with the
+ * string as the key, and mounts it over this document. `/backup.html` is not on
+ * the deployed host at all, so there is no address to try. */
 
 $('#sound-toggle').addEventListener('click', () => {
   const nowMuted = toggleMute();

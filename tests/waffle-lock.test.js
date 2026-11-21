@@ -116,7 +116,7 @@ test('the paused notice is still built, and only when the gate is closed', () =>
   const src = fs.readFileSync('waffle-ai.js', 'utf8');
   assert.match(src, /function buildLockedOverlay\(\)/, 'the paused overlay is still built by the same function');
   assert.match(src, /Waffle AI is taking a break/, 'with the copy visitors were promised');
-  assert.match(src, /data-waffle-tap/, 'and Sir Waffle stays tappable as the hidden unlock gesture');
+  assert.ok(!src.includes('data-waffle-tap'), 'and nothing is marked tappable any more — the gesture that needed it is retired');
 
   const openFn = src.slice(src.indexOf('export function openWaffleAI()'), src.indexOf('export function openWaffleAI()') + 400);
   assert.ok(openFn.length > 100, 'openWaffleAI was captured');
@@ -141,59 +141,77 @@ test('backup.html is the second build of the kitchen and is wired into the build
   assert.ok(!indexSrc.includes('data-backup'), 'the public page is never the backup build');
 });
 
-test('the unlock gesture still works, and nothing in the UI explains it', () => {
+test('the way in is a string typed at Waffle AI, and nothing in the UI explains it', () => {
   const appSrc = fs.readFileSync('app.js', 'utf8');
-  assert.match(appSrc, /const UNLOCK_TAP_TARGET = 10;/, 'the recipe still lives in one constant');
-  assert.match(appSrc, /const UNLOCK_TAP_WINDOW_MS = 3000;/);
-  assert.match(appSrc, /new URL\('backup\.html', document\.baseURI\)/, 'the redirect is resolved against the document so GitHub Pages sub-paths work');
-  assert.match(appSrc, /data-waffle-tap/, 'the corner mascot and the paused notice are both tap targets');
-  // The mascot handler calls stopPropagation(), so the counter must listen in
-  // the capture phase or taps would never reach it.
-  assert.match(appSrc, /document\.addEventListener\('click'[\s\S]{0,120}?\}, true\);/, 'tap counter listens in the capture phase');
-  assert.match(appSrc, /if \(isBackupBuild\(\)\) \{ unlockTaps = \[\]; return; \}/, 'the backup page does not redirect to itself');
-
-  // The gesture is hidden on purpose: it used to be spelled out in the
-  // changelog, on a banner, and in a hint that counted taps out loud.
   const aiSrc = fs.readFileSync('waffle-ai.js', 'utf8');
-  const changelogSrc = fs.readFileSync('changelog.js', 'utf8');
-  for (const [name, src] of [['app.js', appSrc], ['waffle-ai.js', aiSrc], ['changelog.js', changelogSrc]]) {
-    assert.ok(!/ten times|ten taps|tap him ten|10 taps/i.test(src), `${name} does not print the recipe`);
+  const doorSrc = fs.readFileSync('backup-door.js', 'utf8');
+  const cipherSrc = fs.readFileSync('backup-cipher.js', 'utf8');
+
+  // The gesture is gone from the page: no counter, no window, no tap targets and
+  // no redirect. What replaced it lives in two modules the page never renders.
+  for (const gone of ['UNLOCK_TAP_TARGET', 'UNLOCK_TAP_WINDOW_MS', 'unlockTaps', 'registerWaffleTap', 'data-waffle-tap']) {
+    assert.ok(!appSrc.includes(gone), `app.js no longer carries ${gone}`);
   }
-  assert.ok(!appSrc.includes('waffle-unlock-progress'), 'and the run is not broadcast for a hint to display');
+  assert.ok(!/new URL\('backup\.html'/.test(appSrc), 'and no longer navigates to a URL a visitor could type');
+
+  // The string is checked before anything else reads the message, and the text
+  // never reaches the transcript — a key in the chat history gets copy-pasted.
+  assert.match(aiSrc, /if \(!attachments\.length && backupDoorMatches\(text\)\) \{/, 'the chat checks the door');
+  const send = aiSrc.slice(aiSrc.indexOf('async function sendMessage(rawText) {'));
+  const doorAt = send.indexOf('backupDoorMatches(text)');
+  const imageAt = send.indexOf('parseImageIntent(text)');
+  assert.ok(doorAt > 0 && imageAt > 0 && doorAt < imageAt,
+    'before it checks anything else about the message');
+  assert.match(aiSrc, /await runBackupDoor\(\);\s*return;/, 'and stops there instead of asking a model about it');
+  assert.ok(!aiSrc.slice(aiSrc.indexOf('async function sendMessage'), aiSrc.indexOf('async function sendMessage') + 1400)
+    .includes('messages.push'), 'the string is never pushed into the transcript');
+
+  // Neither the string nor a tap count is printed anywhere a visitor can read.
+  for (const [name, src] of [['app.js', appSrc], ['waffle-ai.js', aiSrc], ['changelog.js', fs.readFileSync('changelog.js', 'utf8')],
+    ['backup-door.js', doorSrc], ['index.html', fs.readFileSync('index.html', 'utf8')]]) {
+    assert.ok(!/ten times|ten taps|tap him ten|10 taps/i.test(src), `${name} does not print the old recipe`);
+    assert.ok(!src.includes('BACKUPKITCHEN'), `${name} does not print the string`);
+  }
+  assert.ok(!appSrc.includes('waffle-unlock-progress'), 'nothing broadcasts a run for a hint to display');
   assert.ok(!aiSrc.includes('waffle-ai-locked-tap-hint'), 'the paused notice has no tap hint');
+
+  // The string itself is stored ciphered, so it is not in the source as text.
+  assert.match(cipherSrc, /const PASSPHRASE_OBF = '[A-Za-z0-9+/=]{20,}';/, 'the passphrase is a ciphertext constant');
+  assert.match(cipherSrc, /export function backupPassphrase\(\)/, 'recovered by one function');
+  assert.match(doorSrc, /export function backupDoorMatches/, 'and matched through the door module');
 });
 
-test('the paused dialog cannot swallow the taps meant for the unlock gesture', () => {
-  // Regression: the dialog opens on the FIRST tap and covers the whole viewport
-  // (position fixed, inset 0, z-index 90) including the corner mascot (45). A
-  // second tap in the same place landed on the backdrop, which closed the dialog
-  // without counting, so the run alternated open/close and could never reach ten
-  // — which reads exactly like a timeout.
+test('the paused dialog is still dismissible, and counts nothing', () => {
+  // This used to be a regression test for the unlock gesture: the dialog opened
+  // on the first tap and covered the whole viewport, so the second tap landed on
+  // the backdrop and closed it without counting, and the run could never finish.
+  // The gesture is retired — the way in is a string typed at Waffle AI — so what
+  // is left to pin is that the dialog this build no longer shows is still a
+  // dialog a person can get out of, and that none of the counting machinery
+  // survived with it.
   const aiSrc = fs.readFileSync('waffle-ai.js', 'utf8');
   const lockedFn = aiSrc.slice(aiSrc.indexOf('function buildLockedOverlay()'), aiSrc.indexOf('export function openLockedWaffleAI()'));
+  assert.ok(lockedFn.length > 400, 'the paused overlay was captured');
 
-  assert.match(lockedFn, /wrap\.dataset\.waffleTap = ''/,
-    'the whole dialog is a tap target, so a tap anywhere in it counts');
-  assert.ok(!/if \(e\.target === wrap\) closeWaffleAI\(\)/.test(lockedFn),
-    'the backdrop no longer closes the dialog mid-run');
   // Dismissal must still be reachable, or the dialog becomes a trap.
   assert.match(lockedFn, /#waffle-ai-locked-close/, 'the ✕ still closes it');
   assert.match(lockedFn, /#waffle-ai-locked-done/, 'the button still closes it');
   assert.match(lockedFn, /e\.key === 'Escape'/, 'and so does Escape');
 
-  // The dialog still has to stay out of the way, but it no longer narrates the
-  // run: no hint, no counter, no styling for either.
-  assert.ok(!/waffle-unlock-progress/.test(lockedFn), 'the dialog does not listen for a tap count');
+  // No tap targets, no counter, no hint: the gesture is gone from the markup and
+  // from the styling alike, not merely unreachable.
+  assert.ok(!/waffleTap/.test(lockedFn), 'the dialog is not a tap target');
+  assert.ok(!/waffle-unlock-progress/.test(lockedFn), 'and does not listen for a tap count');
   assert.ok(!/taps/.test(lockedFn), 'and never prints one');
 
   const css = fs.readFileSync('style.css', 'utf8');
   assert.ok(!css.includes('waffle-ai-locked-tap-hint'), 'the hint styling went with the hint');
 });
 
-test('the changelog puts 1.2 above 1.1.1 above 1.1 above 1.0.1 above the original 1.0 release', () => {
-  assert.equal(APP_VERSION, '1.2');
-  assert.equal(CHANGELOG.length, 5, 'every release is documented');
-  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.2', '1.1.1', '1.1', '1.0.1', '1.0'], 'newest release is listed first');
+test('the changelog puts 1.2.1 above 1.2 above 1.1.1 above 1.1 above 1.0.1 above the original 1.0 release', () => {
+  assert.equal(APP_VERSION, '1.2.1');
+  assert.equal(CHANGELOG.length, 6, 'every release is documented');
+  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.2.1', '1.2', '1.1.1', '1.1', '1.0.1', '1.0'], 'newest release is listed first');
 
   for (const entry of CHANGELOG) {
     assert.match(entry.version, /^\d+\.\d+(\.\d+)?$/);
@@ -306,15 +324,27 @@ test('every AI feature inside tools is gated, not silently broken', () => {
   assert.match(codeSrc, /isWaffleAiLocked, waffleAiLockedNoticeHTML/);
   const diagnose = codeSrc.slice(codeSrc.indexOf('async function diagnoseWithCoderAI'), codeSrc.indexOf('function buildMoreChips'));
   assert.match(diagnose, /if \(isWaffleAiLocked\(\)\) \{[\s\S]*?waffleAiLockedNoticeHTML\(\);[\s\S]*?return;/, 'CodeHub diagnostics show the notice instead of calling a model');
-  assert.ok(codeSrc.includes('AI Error Diagnostics') && codeSrc.includes('qwen2.5-coder-1.5b'), 'the backup build keeps the real diagnostics wiring');
+  assert.ok(codeSrc.includes('AI Error Diagnostics'), 'the diagnostics toggle is still wired');
+  // 1.2.1 pinned the helper to one model. The pin is a named constant rather than
+  // a string at the call site, so the thing that decides is in one place.
+  assert.match(codeSrc, /const CODE_DIAGNOSTIC_MODEL_ID = 'granite-code-0\.5b';/, 'and it is pinned to Granite Code 0.5B');
+  assert.match(codeSrc, /modelId: CODE_DIAGNOSTIC_MODEL_ID/, 'through the constant, at the call');
+  assert.match(codeSrc, /err\.name === 'WaffleModelPending'/, 'a model that has not arrived is handled, not swallowed');
+  assert.ok(!codeSrc.includes("'qwen2.5-coder-1.5b'"), 'and nothing still asks for the old one');
 
   const engSrc = fs.readFileSync('tools-english.js', 'utf8');
   assert.match(engSrc, /isWaffleAiLocked, waffleAiLockedNoticeHTML/);
   assert.match(engSrc, /if \(isWaffleAiLocked\(\)\) \{[\s\S]{0,400}?waffleAiLockedNoticeHTML\(\);\s*return;/, 'every AI writing helper funnels through the gate');
   assert.match(engSrc, /isWaffleAiLocked\(\) \? \['Google Translate'\] : \['Google Translate', 'Waffle AI \(Strict\)'\]/, 'the strict-AI engine is only offered in the backup build');
-  assert.match(engSrc, /isWaffleAiLocked\(\) \? '🔒 AI writing helpers are paused' : '✨ Powered by Qwen 2\.5 1\.5B'/, 'badges stop naming a model that cannot run');
+  assert.match(engSrc, /isWaffleAiLocked\(\) \? '🔒 AI writing helpers are paused' : `✨ Powered by \$\{chosenLabel\}`/,
+    'the banner names the model that is actually selected, not one hard-coded three releases ago');
+  assert.match(engSrc, /const chosenLabel = TEXT_MODELS\.find\(m => m\.id === getSelectedTextModel\(\)\)\?\.label/, 'read from the choice');
   assert.ok(engSrc.includes('translate.googleapis.com/translate_a/single'), 'Google Translate keeps working without AI');
   assert.ok(engSrc.includes('(Speak in ${appLang})'), 'language hint survives in the backup build');
+  assert.match(engSrc, /appLang !== 'English'/, 'but is not appended when the kitchen is already in English');
+  assert.match(engSrc, /maxTokens: budget,/, 'and every tool asks for a device-sized answer');
+  assert.match(engSrc, /const TOKEN_BUDGETS = \{/, 'each one from a table of its own');
+  assert.equal(engSrc.match(/'[a-z0-9-]+': \d+,?/g)?.length >= 15, true, 'one budget per tool in the cupboard');
 
   for (const f of ['tools-code.js', 'tools-english.js', 'app.js', 'waffle-ai.js', 'changelog.js']) {
     assert.ok(!fs.readFileSync(f, 'utf8').includes('iframe'), `${f} embeds no iframes`);

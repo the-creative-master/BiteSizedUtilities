@@ -227,7 +227,7 @@ export const CHANGELOG = [
       {
         label: '\u{1F4F1} The device question',
         items: [
-          '"Which device is this?" — Android, iOS, iPadOS, macOS, Windows, Linux, HarmonyOS — is its own window now, asked once, instead of a strip inside the chat that changed the shape of the chat window on every device that had not answered it yet.',
+          '"Which device is this?" — Android, iOS, iPadOS, macOS, Windows, Linux, HarmonyOS — is its own window now, asked once per release instead of a strip inside the chat that changed the shape of the chat window on every device that had not answered it yet. A new release asks again with your last answer marked, because what the answer does can change between them: this one put the GPU first.',
           'The pill in the AI header reopens that window with your current answer marked, so HarmonyOS can be corrected rather than only cleared.',
           'SmolLM2 135M is served at full 16-bit. It is the model everyone meets first, and a 3-bit quant of a 135M model throws away most of what it knows. That costs about three times the download — roughly 270 MB instead of 93 — so a deploy pre-caches it, and the download comes from this site rather than from Hugging Face.'
         ]

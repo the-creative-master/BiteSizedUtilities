@@ -1,3 +1,4 @@
+import { APP_VERSION } from './changelog.js';
 import { waffleMascotSVG } from './icons-25d.js';
 import { playPop, playBoing, playSquish, playSparkle } from './sfx.js';
 import { copyToClipboard } from './ui-kit.js';
@@ -677,8 +678,25 @@ function activeImageCfg() {
   return IMAGE_MODELS.find(m => m.id === id) || IMAGE_MODELS[0];
 }
 
-/** Asked once per tab: a modal that reappears on every open is a nag. */
+/**
+ * Asked once per *release*, not once ever — and the stamp is the version.
+ *
+ * It used to be suppressed by having an answer at all, which meant anybody who
+ * answered under 1.1.1 never saw the question again. That is exactly wrong for
+ * 1.2: the answer now does something it did not do before (a HarmonyOS answer
+ * puts the GPU first instead of last), and the window that asks it moved out of
+ * the chat into its own dialog. So a release that changes what the answer means
+ * asks once more, with the previous answer marked and one tap from being kept.
+ */
 const KEY_OS_ASKED = 'waffle-ai-os-asked';
+
+function osAskedThisRelease() {
+  try { return localStorage.getItem(KEY_OS_ASKED) === APP_VERSION; } catch { return false; }
+}
+
+function markOsAsked() {
+  try { localStorage.setItem(KEY_OS_ASKED, APP_VERSION); } catch {}
+}
 
 // Set while the question is open because somebody asked for it back from the
 // device pill. Without it the next status update would re-render the question,
@@ -703,14 +721,15 @@ function renderOsAsk() {
   if (!box || !choices) return;
   if (osAskReopened) return;
   const declared = getDeclaredOS();
-  let asked = false;
-  try { asked = sessionStorage.getItem(KEY_OS_ASKED) === '1'; } catch {}
-  box.hidden = Boolean(declared || asked);
-  if (box.hidden) return;
+  if (osAskedThisRelease()) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
 
   const answered = () => {
     osAskReopened = false;
-    try { sessionStorage.setItem(KEY_OS_ASKED, '1'); } catch {}
+    markOsAsked();
     box.hidden = true;
     detectDeviceDiagnostics().then(d => { deviceDiag = d; updateStatusBadge(); }).catch(() => {});
   };
@@ -744,14 +763,13 @@ function reopenOsAsk() {
   const choices = overlayEl.querySelector('#waffle-ai-os-choices');
   if (!box || !choices) return;
   osAskReopened = true;
-  try { sessionStorage.removeItem(KEY_OS_ASKED); } catch {}
   const declared = getDeclaredOS();
   choices.innerHTML = OS_CHOICES.map(c =>
     `<button type="button" class="gbtn waffle-os-btn${c.id === declared ? ' is-current' : ''}" data-os="${c.id}"${c.id === declared ? ' aria-pressed="true"' : ''}>${esc(c.label)}</button>`
   ).join('') + '<button type="button" class="gbtn waffle-mini-btn" id="waffle-os-skip">Let it detect</button>';
   const answered = () => {
     osAskReopened = false;
-    try { sessionStorage.setItem(KEY_OS_ASKED, '1'); } catch {}
+    markOsAsked();
     box.hidden = true;
     detectDeviceDiagnostics().then(d => { deviceDiag = d; updateStatusBadge(); }).catch(() => {});
   };
@@ -777,7 +795,7 @@ function updateStatusBadge(customNote) {
   }
   if (diagEl) {
     diagEl.textContent = deviceDiag.summaryLabel;
-    diagEl.className = `waffle-device-pill ${deviceDiag.hasRisk ? 'is-risk' : 'is-ok'}`;
+    diagEl.className = `waffle-device-pill is-door ${deviceDiag.hasRisk ? 'is-risk' : 'is-ok'}`;
     diagEl.title = `${deviceDiag.deviceNote || deviceDiag.summaryLabel}\n\nTap to say which device this is.`;
     // The pill is the way back to the device question once it has been answered
     // or dismissed, so it has to look and act like something you can press.
@@ -1586,6 +1604,10 @@ export function openWaffleAI() {
   if (!overlayEl) overlayEl = buildOverlay();
   overlayEl.hidden = false;
   document.body.classList.add('waffle-modal-open');
+  // Asked on open rather than left to the badge: every other path into
+  // renderOsAsk() runs after something async settles, and a question that
+  // depends on a probe resolving is a question that sometimes never gets asked.
+  renderOsAsk();
   renderAttachments();
   renderMessages();
   syncComposerState();

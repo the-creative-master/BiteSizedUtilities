@@ -2886,8 +2886,18 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   font-weight: 700;
 }
 
-/* The pill in the header is the door back to that question. */
-.waffle-device-pill { cursor: pointer; }
+/* The pill in the AI header is the door back to that question. Only that one:
+   the same pill in Settings is a readout, so the affordance is a class of its
+   own rather than something every pill inherits. */
+.waffle-device-pill.is-door {
+  cursor: pointer;
+  border-style: dashed;
+}
+
+.waffle-device-pill.is-door::after {
+  content: ' \\25BE';
+  opacity: 0.7;
+}
 
 .waffle-device-note {
   margin: 6px 0 0;

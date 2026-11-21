@@ -119,7 +119,7 @@ app.innerHTML = `
     ${isBackupBuild() ? `
     <div class="backup-banner" id="backup-banner" data-no-i18n>
       <span class="gbadge backup-banner-badge">🧇 BACKUP KITCHEN</span>
-      <span class="backup-banner-copy">Waffle AI and every AI control are switched on in this build. Everything here is unfinished on purpose.</span>
+      <span class="backup-banner-copy">Waffle AI is in the main kitchen now. This build is where new behaviour gets tried first, so everything here is unfinished on purpose.</span>
       <a class="gbtn gbtn-chip backup-banner-exit" href="./index.html">Back to the kitchen</a>
     </div>` : ''}
     <header class="game-hud">
@@ -182,7 +182,9 @@ app.innerHTML = `
           <span class="gfield-label">Language</span>
           <div class="gtabs settings-lang-grid" id="settings-lang-list"></div>
         </div>
-        ${isBackupBuild() ? `
+        <!-- Rendered in both kitchens since 1.2: this is where the model menu,
+             the device pill and the pre-cache panel live, so AI in the main
+             kitchen without it would be AI nobody could point at another model. -->
         <div class="gfield settings-ai-section" id="settings-ai-section" data-no-i18n>
           <span class="gfield-label">AI Models &amp; Device Fallbacks</span>
           <div class="waffle-disclaimer-box">
@@ -206,7 +208,6 @@ app.innerHTML = `
           <div class="settings-sub-label">Temperature (Experienced Users Only)</div>
           <div id="settings-temp-wrap"></div>
         </div>
-        ` : ''}
       </div>
     </div>
 
@@ -1102,7 +1103,9 @@ function renderSettingsModal() {
   }
 
   // Both probes only feed the AI panel, so skip them entirely while AI is paused.
-  if (!isBackupBuild()) return;
+  // It asked the build flag until 1.2, which meant the public kitchen never ran
+  // them — and the panel they feed is rendered there now.
+  if (isWaffleAiLocked()) return;
 
   detectDeviceDiagnostics().then(d => {
     const pill = $('#settings-device-pill');

@@ -263,18 +263,26 @@ test('the changelog is reachable from the kitchen header and styled like the res
   assert.ok(!css.includes('backdrop-filter'), 'changelog keeps the strict 2.5D rules (no frosted blur)');
 });
 
-test('AI is out of Settings in the public build but back in the backup build', () => {
+test('AI is in Settings in both kitchens, and the probes follow the gate', () => {
+  // Until 1.2 the whole AI settings block sat inside `${isBackupBuild() ? ... }`,
+  // which would have left the public kitchen with AI it could not configure: the
+  // model menu, the device pill and the pre-cache panel all live in there.
   const appSrc = fs.readFileSync('app.js', 'utf8');
   const section = appSrc.slice(
-    appSrc.indexOf('${isBackupBuild() ? `'),
-    appSrc.indexOf('` : \'\'}\n      </div>\n    </div>\n\n    <div class="settings-overlay" id="english-warning-overlay"')
+    appSrc.indexOf('<div class="gfield settings-ai-section"'),
+    appSrc.indexOf('<div class="settings-overlay" id="english-warning-overlay"')
   );
-  assert.ok(section.length > 500, 'the whole AI settings block is inside the backup conditional');
+  assert.ok(section.length > 500, 'the whole AI settings block was captured');
   for (const id of ['settings-ai-section', 'settings-ai-text-list', 'settings-ai-image-list', 'settings-ai-exec-list', 'settings-ai-quant-list', 'settings-ai-precache', 'settings-temp-wrap']) {
-    assert.ok(section.includes(id), `${id} only renders in the backup build`);
+    assert.ok(section.includes(id), `${id} is part of the settings both builds render`);
   }
+  assert.ok(!section.includes('${isBackupBuild()'), 'and none of it is conditional on the build');
+  assert.equal(appSrc.split('${isBackupBuild() ? `').length - 1, 1,
+    'the only build-conditional markup left is the backup banner itself');
+
   assert.match(appSrc, /if \(!\$\('#settings-ai-precache'\)\) return;/, 'pre-cache state is not refreshed when the panel is gone');
-  assert.match(appSrc, /if \(!isBackupBuild\(\)\) return;\n\n  detectDeviceDiagnostics/, 'device probes are skipped while AI is paused');
+  assert.match(appSrc, /if \(isWaffleAiLocked\(\)\) return;\n\n  detectDeviceDiagnostics/,
+    'the device probes skip on the gate, not on the build');
 });
 
 test('Sir Waffle stops advertising Waffle AI while the feature is paused', () => {

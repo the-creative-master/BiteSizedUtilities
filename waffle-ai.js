@@ -13,6 +13,10 @@ import {
   getAiTemperature,
   detectDeviceDiagnostics,
   rankBrowserAttempts,
+  OS_CHOICES,
+  getDeclaredOS,
+  setDeclaredOS,
+  clearDeclaredOS,
   AI_DISCLAIMER_TEXT,
   classifyAiFailure,
   summarizeAiFailures,
@@ -662,6 +666,38 @@ function activeImageCfg() {
   return IMAGE_MODELS.find(m => m.id === id) || IMAGE_MODELS[0];
 }
 
+/**
+ * Ask which device this is — backup kitchen only, until it has been answered.
+ * Detection fills in the version and the capabilities, but a browser can hide or
+ * rewrite its agent, and on HarmonyOS it often does; being told outranks
+ * guessing, and the answer is what decides which runtimes get tried.
+ */
+function renderOsAsk() {
+  if (!overlayEl || !isBackupBuild()) return;
+  const box = overlayEl.querySelector('#waffle-ai-os-ask');
+  const choices = overlayEl.querySelector('#waffle-ai-os-choices');
+  if (!box || !choices) return;
+  const declared = getDeclaredOS();
+  box.hidden = Boolean(declared);
+  if (declared) return;
+  choices.innerHTML = OS_CHOICES.map(c =>
+    `<button type="button" class="gbtn waffle-os-btn" data-os="${c.id}">${esc(c.label)}</button>`
+  ).join('') + '<button type="button" class="gbtn waffle-mini-btn" id="waffle-os-skip">Let it detect</button>';
+  choices.querySelectorAll('[data-os]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      playPop?.(620);
+      setDeclaredOS(btn.dataset.os);
+      box.hidden = true;
+      detectDeviceDiagnostics().then(d => { deviceDiag = d; updateStatusBadge(); }).catch(() => {});
+    });
+  });
+  choices.querySelector('#waffle-os-skip')?.addEventListener('click', () => {
+    clearDeclaredOS();
+    box.hidden = true;
+    detectDeviceDiagnostics().then(d => { deviceDiag = d; updateStatusBadge(); }).catch(() => {});
+  });
+}
+
 function updateStatusBadge(customNote) {
   if (!overlayEl) return;
   const badge = overlayEl.querySelector('#waffle-ai-badge');
@@ -677,6 +713,7 @@ function updateStatusBadge(customNote) {
     diagEl.className = `waffle-device-pill ${deviceDiag.hasRisk ? 'is-risk' : 'is-ok'}`;
     diagEl.title = deviceDiag.deviceNote || deviceDiag.summaryLabel;
   }
+  renderOsAsk();
   const noteEl = overlayEl.querySelector('#waffle-ai-device-note');
   if (noteEl) {
     // The profile this device was recognised as, in plain words: which browser
@@ -1332,6 +1369,11 @@ function buildOverlay() {
           <div class="waffle-disclaimer-head">
             <strong>⚠ DEVICE &amp; WEBGPU DISCLAIMER</strong>
             <span class="waffle-device-pill is-risk" id="waffle-ai-device-status">Checking WebGPU…</span>
+          </div>
+          <div class="waffle-os-ask" id="waffle-ai-os-ask" hidden>
+            <strong>Which device is this?</strong>
+            <span class="waffle-os-why">So the kitchen picks runtimes it can actually use here.</span>
+            <div class="waffle-os-choices" id="waffle-ai-os-choices"></div>
           </div>
           <p class="waffle-disclaimer-copy">${esc(AI_DISCLAIMER_TEXT)}</p>
           <pre class="waffle-device-note" id="waffle-ai-device-note" hidden></pre>

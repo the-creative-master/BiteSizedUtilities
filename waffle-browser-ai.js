@@ -298,6 +298,75 @@ export function detectWasmSimd() {
  * not fail cleanly — it hangs. An unverifiable version counts as suspect too:
  * guessing "fine" is what puts a dead runtime first in the chain.
  */
+/**
+ * The operating systems the kitchen can be told about. A browser can hide or
+ * rewrite its user agent — HarmonyOS ones often carry no version at all — so on
+ * the backup build the visitor is simply asked, and the answer outranks the
+ * guess. Detection still runs first: it fills in the browser version, the model
+ * and the capabilities, which no amount of asking can supply.
+ */
+export const OS_CHOICES = [
+  { id: 'android', label: 'Android', mobile: true },
+  { id: 'ios', label: 'iOS', mobile: true },
+  { id: 'ipados', label: 'iPadOS', mobile: true },
+  { id: 'macos', label: 'macOS', mobile: false },
+  { id: 'windows', label: 'Windows', mobile: false },
+  { id: 'linux', label: 'Linux', mobile: false },
+  { id: 'harmonyos', label: 'HarmonyOS', mobile: true }
+];
+
+const KEY_DECLARED_OS = 'bite-ai-declared-os';
+
+export function getDeclaredOS() {
+  const raw = readCachePref(KEY_DECLARED_OS, null);
+  return OS_CHOICES.some(c => c.id === raw) ? raw : null;
+}
+
+export function setDeclaredOS(os) {
+  const id = OS_CHOICES.some(c => c.id === os) ? os : null;
+  if (id) writeCachePref(KEY_DECLARED_OS, id);
+  else clearDeclaredOS();
+  cachedDiag = null;   // the answer changes what the runtimes are, so re-measure
+  return id;
+}
+
+export function clearDeclaredOS() {
+  try { localStorage.removeItem(KEY_DECLARED_OS); } catch {}
+  cachedDiag = null;
+}
+
+/**
+ * Fold a declared OS into a measured profile. The declaration decides the
+ * family (phone/tablet memory pressure, and whether a WebGPU adapter can be
+ * believed); the user agent still decides the version.
+ */
+export function applyDeclaredOS(profile, declaredOS) {
+  if (!declaredOS || !profile) return profile;
+  const choice = OS_CHOICES.find(c => c.id === declaredOS);
+  if (!choice) return profile;
+  const out = { ...profile, declaredOS, platform: profile.platform };
+  if (declaredOS === 'harmonyos') {
+    if (out.platform === 'unknown' || out.platform === 'android') out.platform = 'harmony';
+    out.isHuawei = true;
+    out.isAndroid = true;
+  } else if (declaredOS === 'android') {
+    out.isAndroid = true;
+    out.isIOS = false;
+    if (out.platform === 'unknown') out.platform = 'android';
+  } else if (declaredOS === 'ios' || declaredOS === 'ipados') {
+    out.isIOS = true;
+    out.isAndroid = false;
+    if (out.platform === 'unknown') out.platform = 'ios';
+  } else {
+    out.isAndroid = false;
+    out.isIOS = false;
+    if (out.platform === 'unknown' || out.platform === 'harmony' || out.platform === 'huawei-android' || out.platform === 'android') out.platform = 'desktop';
+  }
+  if (choice.mobile && out.deviceType === 'desktop') out.deviceType = declaredOS === 'ipados' ? 'tablet' : 'phone';
+  if (!choice.mobile) out.deviceType = 'desktop';
+  return out;
+}
+
 export function gradeWebgpuAdapter({ hasWebGPU, profile }) {
   if (!hasWebGPU) return 'absent';
   if (!profile?.isAndroid) return 'verified';
@@ -488,7 +557,8 @@ export async function detectDeviceDiagnostics() {
   }
 
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
-  const platform = parsePlatformProfile(ua);
+  const declaredOS = getDeclaredOS();
+  const platform = applyDeclaredOS(parsePlatformProfile(ua), declaredOS);
   const isIOS = platform.isIOS;
   const iosMatch = ua.match(/OS (\d+)[._]/i);
   const iosMajor = isIOS && iosMatch ? parseInt(iosMatch[1], 10) : null;
@@ -544,7 +614,9 @@ export async function detectDeviceDiagnostics() {
   // "Prefer the GPU" means "do not distrust it": with no adapter at all there is
   // nothing to order, and only a suspect one changes the chain.
   const gpuPreferred = gpuTrustLevel !== 'suspect';
-  const memoryTightPlatform = Boolean(platform.isAndroid && !hasWebGPU);
+  // Declared iPadOS/iOS counts as memory-tight too: mobile Safari and ArkWeb
+  // both reap a big WASM heap, and neither says so in the user agent.
+  const memoryTightPlatform = Boolean((platform.isAndroid || platform.isIOS) && !hasWebGPU);
 
   let storageQuotaMB = null;
   let storageUsageMB = null;
@@ -570,7 +642,10 @@ export async function detectDeviceDiagnostics() {
   if (!hasWasmSimd) summaryLabel = ' · no WASM SIMD';
   if (!canThread) summaryLabel += ' · single-thread WASM';
 
-  const platformLabel = platformLabelFor(platform);
+  const declaredNote = declaredOS
+    ? `You told the kitchen this is ${OS_CHOICES.find(c => c.id === declaredOS)?.label || declaredOS}.`
+    : '';
+  const platformLabel = [platformLabelFor(platform), declaredNote].filter(Boolean).join(' — ');
   const deviceNote = [
     platformLabel,
     hasWebGPU

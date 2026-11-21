@@ -2830,6 +2830,36 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   color: var(--ink-soft);
 }
 
+.waffle-os-ask {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 7px 8px;
+  border-radius: 9px;
+  background: #fff8e8;
+  border: 1px solid #e7d3a8;
+  font-size: 11.5px;
+}
+
+.waffle-os-ask[hidden] { display: none; }
+
+.waffle-os-why { color: var(--ink-soft); }
+
+.waffle-os-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  width: 100%;
+}
+
+.waffle-os-btn {
+  padding: 3px 9px;
+  font-size: 11px;
+  border-radius: 999px;
+}
+
 .waffle-device-note {
   margin: 6px 0 0;
   padding: 6px 8px;

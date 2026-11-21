@@ -19,17 +19,18 @@ import { isBackupBuild } from './build-mode.js';
  * visitors on GitHub Pages never see repo files, and the release notes belong
  * where the kitchen is.
  */
-export const APP_VERSION = '1.1';
+export const APP_VERSION = '1.1.1';
 
 /** Test versions built after 1.1 shipped. Reset to 0 on every public release. */
-export const TVAR = 3;
+export const TVAR = 0;
 
-/** `1.1 TVAR 3` — the version string the backup kitchen reports. */
+/** `1.1.1 TVAR 0` — the extended label, used only while a test version is open. */
 export const APP_VERSION_EXTENDED = `${APP_VERSION} TVAR ${TVAR}`;
 
 /** What the footer of the changelog should call this build. */
 export function appVersionLabel() {
-  return isBackupBuild() ? APP_VERSION_EXTENDED : APP_VERSION;
+  // TVAR 0 means "no test version is open", so both builds report the release.
+  return isBackupBuild() && TVAR > 0 ? APP_VERSION_EXTENDED : APP_VERSION;
 }
 
 /**
@@ -42,7 +43,7 @@ export const TVAR_LOG = [
     // The newest entry always spells the counter out literally, and a test
     // pins it to APP_VERSION_EXTENDED, so history cannot quietly renumber
     // itself when the counter moves.
-    version: `${APP_VERSION} TVAR 3`,
+    version: '1.1 TVAR 3',  // history: a test build of the 1.1 cycle
     date: 'November 20, 2026',
     title: 'The one that knows what a Huawei tablet is',
     tvar: true,
@@ -87,7 +88,7 @@ export const TVAR_LOG = [
     ]
   },
   {
-    version: `${APP_VERSION} TVAR 2`,
+    version: '1.1 TVAR 2',  // history: a test build of the 1.1 cycle
     date: 'November 19, 2026',
     title: 'The one that stops freezing, and stops blaming your network',
     tvar: true,
@@ -159,7 +160,7 @@ export const TVAR_LOG = [
     ]
   },
   {
-    version: `${APP_VERSION} TVAR 1`,
+    version: '1.1 TVAR 1',  // history: a test build of the 1.1 cycle
     date: 'November 18, 2026',
     title: 'First test build after 1.1',
     tvar: true,
@@ -202,6 +203,38 @@ export const TVAR_LOG = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: '1.1.1',
+    date: 'November 20, 2026',
+    title: 'Layers for everyone, and a kitchen that knows your device',
+    groups: [
+      {
+        label: '\u{1F3A8} Art Studio',
+        items: [
+          'Art Studio now has layers. The separate "Art Studio (with layers)" tool is gone — its whole studio, 18 brushes (10 of them pressure-aware), per-layer opacity and blend modes, a 4096px canvas and per-layer undo, is what opens when you tap Art Studio, in both kitchens.',
+          'Drawings saved from the layered studio still open, and the old link to it still works: it just opens Art Studio.'
+        ]
+      },
+      {
+        label: '\u{1F4F1} Devices',
+        items: [
+          'Waffle AI in the backup kitchen now asks which device you are on — Android, iOS, iPadOS, macOS, Windows, Linux or HarmonyOS — and uses the answer to decide what to run. A browser can hide or rewrite its user agent, and HarmonyOS ones often carry no version at all, so being told beats guessing.',
+          'Huawei and HarmonyOS tablets are profiled properly: ArkWeb and Huawei Browser versions, the Chromium baseline behind them, the device model, and whether a WebGPU adapter can be believed. An adapter that cannot be verified is tried last instead of first, so it cannot hang the tab before the runtimes that work get a turn.',
+          'The AI panel shows the profile it recognised — browser, Chromium baseline, adapter trust, NPU, WASM SIMD, threading, heap budget and on-device storage — and every AI failure report ends with the device it happened on.',
+          'Phones and tablets keep a wider memory margin, because a model that fits beats a bigger one that gets the tab closed.',
+          'About the NPU, plainly: no browser on a phone or tablet exposes WebNN, the only web API that can reach one, so a Kirin NPU cannot be used from a web page. The kitchen detects it, uses it first where it exists, and says so where it does not.'
+        ]
+      },
+      {
+        label: '\u{1F9F0} Under the counter',
+        items: [
+          'Models are pre-cached: a deploy serves the small ones from its own origin, the browser loads that copy before it ever asks Hugging Face, and it keeps a copy on the device in the background while idle — no cross-origin request, no CORS preflight, no CDN to be blocked.',
+          'AI no longer freezes on a second question. Every browser runtime has a watchdog, one inference runs at a time, and a runtime that stops answering is discarded instead of reused.',
+          'AI failures explain themselves with evidence checked live from the model hosts, and never contradict it: a report that says a host answered will not blame your network for the download.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.1',
     date: 'November 18, 2026',

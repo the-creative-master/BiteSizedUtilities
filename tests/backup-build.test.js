@@ -24,26 +24,24 @@ function pageWith(dataset) {
 
 test('the public kitchen reports a plain release version and knows nothing about TVAR', () => {
   pageWith({});
-  assert.equal(APP_VERSION, '1.1');
-  assert.equal(appVersionLabel(), '1.1', 'index.html says 1.1 and nothing else');
+  assert.equal(APP_VERSION, '1.1.1');
+  assert.equal(appVersionLabel(), '1.1.1', 'index.html says 1.1.1 and nothing else');
   assert.equal(isBackupBuild(), false);
   assert.equal(isPublicBuild(), true);
   assert.ok(!APP_VERSION.includes('TVAR'), 'the release version never carries a TVAR suffix');
   assert.ok(!JSON.stringify(CHANGELOG).includes('TVAR'), 'and the public release notes never mention one');
 });
 
-test('the backup kitchen reports 1.1 TVAR 3 and gets the extended entries', () => {
+test('the backup kitchen reports the release while no test version is open', () => {
   pageWith({ backup: '1' });
-  assert.equal(TVAR, 3, 'this is the third test version after 1.1');
-  assert.equal(APP_VERSION_EXTENDED, '1.1 TVAR 3');
-  assert.equal(appVersionLabel(), '1.1 TVAR 3', 'backup.html reports the extended version');
+  assert.equal(TVAR, 0, 'a public release resets the test counter');
+  assert.equal(appVersionLabel(), '1.1.1', 'backup.html reports the release until the next TVAR is opened');
   assert.equal(isBackupBuild(), true);
   assert.equal(isPublicBuild(), false);
 
-  assert.equal(TVAR_LOG.length, 3, 'every extended minor version is documented');
-  assert.equal(TVAR_LOG[0].version, APP_VERSION_EXTENDED,
-    'the newest entry spells out the counter, so bumping TVAR cannot leave it describing the wrong build');
-  assert.deepEqual(TVAR_LOG.map(e => e.version), [`${APP_VERSION} TVAR 3`, `${APP_VERSION} TVAR 2`, `${APP_VERSION} TVAR 1`],
+  // The 1.1 test versions stay documented as history; they are not this build.
+  assert.equal(TVAR_LOG.length, 3, 'every extended minor version of 1.1 is still documented');
+  assert.deepEqual(TVAR_LOG.map(e => e.version), ['1.1 TVAR 3', '1.1 TVAR 2', '1.1 TVAR 1'],
     'newest first, and an old entry keeps its own number');
 
   for (const tvar of TVAR_LOG) {
@@ -89,10 +87,15 @@ test('TVAR entries reset with each release and are rendered only in the backup b
   assert.match(src, /\$\{esc\(appVersionLabel\(\)\)\}/, 'and the footer prints the label for this build');
   assert.match(src, /entry\.tvar \? ' is-tvar' : ''/, 'TVAR entries are marked in the markup');
 
-  // Every TVAR entry has to sit above the release it was built from, which is
-  // what makes "newest first" true for the combined list.
+  // A TVAR entry belongs to the release cycle it was built from and sits above
+  // that release in the combined list, which is what makes "newest first" true.
+  // The counter resets on release, so what is left is history: these are 1.1's
+  // test builds, not 1.1.1's, and they say so.
+  assert.equal(TVAR, 0, 'the counter is reset for the new release');
   for (const entry of TVAR_LOG) {
-    assert.ok(entry.version.startsWith(`${APP_VERSION} TVAR `), `${entry.version} belongs to the ${APP_VERSION} release`);
+    assert.match(entry.version, /^\d+\.\d+(\.\d+)? TVAR \d+$/, `${entry.version} names its cycle and its counter`);
+    assert.ok(entry.version.startsWith('1.1 TVAR '), `${entry.version} belongs to the 1.1 cycle it was built from`);
+    assert.equal(entry.tvar, true, 'and is still marked so the renderer can style it apart');
   }
 });
 
@@ -116,24 +119,18 @@ test('backup.html is the only page that switches the extra build on', () => {
     'apart from the flag, the title, the description and the noindex tag, the two pages are the same document');
 });
 
-test('the extra tools still only exist in the backup build, and are named for what they do', () => {
+test('no tool is backup-only any more, and both kitchens hold the same 115', () => {
   pageWith({});
   assert.equal(resolveTools(false), allTools, 'the public list is the shipped array itself');
   assert.equal(resolveTools(false).length, 115);
-  assert.equal(backupToolAdditions.length, 1);
+  assert.equal(backupToolAdditions.length, 0, '1.1.1 folded the layered studio into Art Studio');
+  assert.equal(resolveTools(true).length, 115);
+  assert.ok(!resolveTools(true).some(t => t.backup), 'nothing is gated behind the backup page');
+  assert.ok(cupboards.find(c => c.id === 'art'), 'the Art & Coloring cupboard still exists');
 
-  const tile = resolveTools(true).find(t => t.backup);
-  assert.equal(tile.id, 'art-studio-layers');
-  assert.equal(tile.name, 'Art Studio (with layers)');
-  assert.ok(!/beta/i.test(tile.name), 'the tile is not named after a release stage');
-  assert.equal(tile.cupboard, 'art');
-  assert.ok(cupboards.find(c => c.id === 'art'), 'and that cupboard still exists');
-
-  // The name in the catalogue, the icon map and the dispatch all agree.
-  const icons = fs.readFileSync('icons-25d.js', 'utf8');
-  assert.ok(icons.includes("'art-studio-layers': wrapTile("), 'the tile has its own drawn icon');
   const ui = fs.readFileSync('tools-text-art.js', 'utf8');
-  assert.ok(ui.includes('artStudioLayers(ctx)'), 'and a mount path');
+  assert.ok(ui.includes('artStudioLayers(ctx)'), 'Art Studio mounts the layered studio');
+  assert.match(ui, /id === 'art-studio' \|\| id === LAYERS_STUDIO_ID/, 'and the retired id still reaches it');
 });
 
 /* ============================== nothing advertises it ============================== */

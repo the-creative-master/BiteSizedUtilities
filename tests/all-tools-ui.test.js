@@ -198,19 +198,19 @@ const pointerEvent = (type, x, y, extra = {}) => ({
   preventDefault() {}, ...extra
 });
 
-test('Art Studio (with layers) refuses to mount on the public page and mounts on backup.html', () => {
+test('Art Studio is the layered studio on the public page too, and the old id still opens it', () => {
   const { FakeElement } = makeDOMShim();
-  const layersId = backupToolAdditions[0].id;
-  assert.equal(layersId, 'art-studio-layers');
+  assert.equal(backupToolAdditions.length, 0, '1.1.1 folded the extra studio into Art Studio');
 
   document.documentElement.dataset.backup = '0';
   const publicRoot = new FakeElement('div');
-  assert.equal(mountTextArt(layersId, publicRoot), false, 'index.html must not be able to open the layered studio');
+  assert.equal(mountTextArt('art-studio', publicRoot), true, 'index.html mounts it now');
+  assert.equal(byClass(publicRoot, 'studio-stage').length, 1, 'and it is the layered studio, not the old one');
 
   document.documentElement.dataset.backup = '1';
   const root = new FakeElement('div');
-  assert.equal(mountTextArt(layersId, root), true, 'backup.html mounts it');
-  assert.equal(resolveTools(true).some(t => t.id === layersId), true);
+  assert.equal(mountTextArt('art-studio-layers', root), true, 'a saved link to the retired tool still opens it');
+  assert.equal(resolveTools(true).some(t => t.id === 'art-studio'), true);
   assert.ok(root.querySelectorAll('.game-panel').length >= 1, 'it uses the shared cozy panel');
   for (const banned of ['select', 'input[type="range"]', 'input[type="checkbox"]', 'input[type="color"]']) {
     assert.equal(root.querySelectorAll(banned).length, 0, `no default ${banned}`);

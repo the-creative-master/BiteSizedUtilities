@@ -1853,11 +1853,10 @@ export function mountTextArt(id, root) {
   const ctx = init(root);
   try {
     if (TEXT_IDS.includes(id)) textTools(id, ctx);
-    else if (id === 'art-studio' || id === 'pixel-art') artStudio(ctx, id === 'pixel-art');
-    else if (id === LAYERS_STUDIO_ID) {
-      if (!isBackupPage()) { ctx.say('Art Studio (with layers) only runs in the backup kitchen.'); return false; }
-      artStudioLayers(ctx);
-    }
+    // 1.1.1: the layered studio *is* Art Studio now, on every build. The old
+    // separate id still opens the same thing, so saved links and drawings work.
+    else if (id === 'art-studio' || id === LAYERS_STUDIO_ID) artStudioLayers(ctx);
+    else if (id === 'pixel-art') artStudio(ctx, true);
     else if (['color-picker', 'palette-generator', 'gradient-maker', 'contrast-checker', 'color-converter'].includes(id)) colorTools(id, ctx);
     else if (['image-resizer', 'image-cropper', 'image-filters'].includes(id)) imageTools(id, ctx);
     else if (id === 'svg-editor') svgEditor(ctx);

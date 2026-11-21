@@ -67,33 +67,28 @@ test('the shipped catalogue is untouched: 8 cupboards, 115 utilities, 15 in Art 
   assert.equal(cupboardToolCount('art'), 15);
 });
 
-test('resolveTools(false) is the identical shipped array, resolveTools(true) adds exactly one tile', () => {
+test('resolveTools(false) is the identical shipped array, and 1.1.1 adds no extra tiles', () => {
   assert.equal(resolveTools(false), allTools, 'the public kitchen must not get a copy or a re-sort');
   assert.equal(resolveTools(false).length, 115);
   const withExtras = resolveTools(true);
-  assert.equal(withExtras.length, 116);
-  assert.equal(new Set(withExtras.map(t => t.id)).size, 116, 'backup-only ids stay unique');
-  assert.equal(withExtras.filter(t => t.backup).length, 1);
-  assert.equal(cupboardToolCount('art', true), 16);
+  assert.equal(withExtras.length, 115, 'the layered studio is Art Studio now, so both kitchens hold the same tools');
+  assert.equal(new Set(withExtras.map(t => t.id)).size, 115, 'and no id is duplicated to get there');
+  assert.equal(withExtras.filter(t => t.backup).length, 0, 'no tool is backup-only any more');
+  assert.equal(cupboardToolCount('art', true), 15);
   assert.equal(cupboardToolCount('math', true), 10, 'cupboards with no extra are unchanged');
 });
 
-test('the layered studio tile sits directly after Art Studio and inherits its cupboard identity', () => {
-  const withExtras = resolveTools(true);
-  const art = withExtras.filter(t => t.cupboard === 'art').map(t => t.id);
-  const at = art.indexOf(LAYERS_STUDIO_ID);
-  assert.ok(at > 0, 'the layered studio is in the Art & Coloring cupboard');
-  assert.equal(art[at - 1], 'art-studio', 'it sits right after the tool it upgrades');
-  const tile = withExtras.find(t => t.id === LAYERS_STUDIO_ID);
+test('Art Studio itself is the layered studio, and no separate tile remains', () => {
   const shipped = allTools.find(t => t.id === 'art-studio');
-  assert.equal(tile.star, false, 'a backup-only tool never becomes the cupboard star');
-  assert.equal(tile.backup, true);
-  assert.equal(tile.icon, shipped.icon);
-  assert.equal(tile.color, shipped.color);
-  assert.equal(tile.name, 'Art Studio (with layers)', 'the name says what the tool does');
-  assert.ok(!/beta/i.test(tile.name), 'and not which stage of release it is at');
-  assert.ok(tile.description.length > 10, 'the tile explains itself');
-  assert.equal(backupToolAdditions.length, 1);
+  assert.ok(!allTools.some(t => t.id === LAYERS_STUDIO_ID), 'the separate tile is gone from the catalogue');
+  assert.ok(!resolveTools(true).some(t => t.id === LAYERS_STUDIO_ID), 'and from the backup kitchen too');
+  assert.equal(shipped.name, 'Art Studio');
+  assert.equal(shipped.star, true, 'and it is still the cupboard star');
+  assert.equal(shipped.cupboard, 'art');
+  assert.match(shipped.description, /Layers/, 'the tile says what it now does');
+  assert.match(shipped.description, /4096/, 'and what it can hold');
+  assert.ok(!/beta/i.test(shipped.name), 'no release stage in the name');
+  assert.equal(backupToolAdditions.length, 0, 'nothing is held back for the backup kitchen any more');
 });
 
 test('the layered studio gets its own hand-drawn 2.5D icon, distinct from all 115', () => {
@@ -119,12 +114,12 @@ test('app.js resolves the tool list through the backup flag and never reads allT
   assert.ok(!/beta/i.test(appSrc), 'app.js does not use the retired word anywhere');
 });
 
-test('the layered studio refuses to mount anywhere but backup.html', () => {
-  assert.ok(uiSrc.includes("import {\n  LAYERS_STUDIO_ID, isBackupPage,"), 'the tool imports the page gate');
-  assert.ok(uiSrc.includes('const ART_LAYERS_IDS = [LAYERS_STUDIO_ID];'), 'backup-only ids are kept out of ART_IDS');
-  assert.match(uiSrc, /else if \(id === LAYERS_STUDIO_ID\) \{\s*\n\s*if \(!isBackupPage\(\)\)/,
-    'mounting is gated on which page this is');
-  assert.ok(uiSrc.includes('Art Studio (with layers) only runs in the backup kitchen.'), 'a refused mount says why');
+test('the layered studio mounts on both builds, and the old id still opens it', () => {
+  assert.ok(uiSrc.includes("else if (id === 'art-studio' || id === LAYERS_STUDIO_ID) artStudioLayers(ctx);"),
+    'Art Studio is the layered studio, and the retired id is an alias for it');
+  assert.ok(uiSrc.includes('const ART_LAYERS_IDS = [LAYERS_STUDIO_ID];'), 'the alias is still routed, so old links open');
+  assert.ok(!uiSrc.includes('only runs in the backup kitchen'), 'no refusal message is left behind');
+  assert.ok(!/isBackupPage\(\)\s*\)\s*\{\s*ctx\.say/.test(uiSrc), 'and no page gate is left on the studio');
 });
 
 test('isBackupPage reads the same flag as isBackupBuild, and both fail closed', () => {

@@ -187,10 +187,10 @@ test('the paused dialog cannot swallow the taps meant for the unlock gesture', (
   assert.ok(!css.includes('waffle-ai-locked-tap-hint'), 'the hint styling went with the hint');
 });
 
-test('the changelog puts 1.1 above 1.0.1 above the original 1.0 release', () => {
-  assert.equal(APP_VERSION, '1.1');
-  assert.equal(CHANGELOG.length, 3, 'exactly three releases are documented');
-  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.1', '1.0.1', '1.0'], 'newest release is listed first');
+test('the changelog puts 1.1.1 above 1.1 above 1.0.1 above the original 1.0 release', () => {
+  assert.equal(APP_VERSION, '1.1.1');
+  assert.equal(CHANGELOG.length, 4, 'every release is documented');
+  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.1.1', '1.1', '1.0.1', '1.0'], 'newest release is listed first');
 
   for (const entry of CHANGELOG) {
     assert.match(entry.version, /^\d+\.\d+(\.\d+)?$/);

@@ -19,17 +19,18 @@ import { isBackupBuild } from './build-mode.js';
  * visitors on GitHub Pages never see repo files, and the release notes belong
  * where the kitchen is.
  */
-export const APP_VERSION = '1.1';
+export const APP_VERSION = '1.1.1';
 
 /** Test versions built after 1.1 shipped. Reset to 0 on every public release. */
-export const TVAR = 2;
+export const TVAR = 0;
 
-/** `1.1 TVAR 2` — the version string the backup kitchen reports. */
+/** `1.1.1 TVAR 0` — the extended label, used only while a test version is open. */
 export const APP_VERSION_EXTENDED = `${APP_VERSION} TVAR ${TVAR}`;
 
 /** What the footer of the changelog should call this build. */
 export function appVersionLabel() {
-  return isBackupBuild() ? APP_VERSION_EXTENDED : APP_VERSION;
+  // TVAR 0 means "no test version is open", so both builds report the release.
+  return isBackupBuild() && TVAR > 0 ? APP_VERSION_EXTENDED : APP_VERSION;
 }
 
 /**
@@ -42,7 +43,52 @@ export const TVAR_LOG = [
     // The newest entry always spells the counter out literally, and a test
     // pins it to APP_VERSION_EXTENDED, so history cannot quietly renumber
     // itself when the counter moves.
-    version: `${APP_VERSION} TVAR 2`,
+    version: '1.1 TVAR 3',  // history: a test build of the 1.1 cycle
+    date: 'November 20, 2026',
+    title: 'The one that knows what a Huawei tablet is',
+    tvar: true,
+    groups: [
+      {
+        label: '\u{1F41B} What was actually wrong',
+        items: [
+          'The kitchen asked a device two questions \u2014 "is there a WebGPU adapter?" and "is it an iPhone?" \u2014 and treated every other answer as a desktop browser. On a Huawei MatePad that is wrong in both directions. Chromium shipped WebGPU on desktop in 113 but on Android only in 144, and ArkWeb is Chromium 114\u2013144 depending on the HarmonyOS version, so an adapter handed back there is not proof of one. A runtime that tries it first can hang the tab instead of failing cleanly.',
+          'Every device got the same order: ONNX WebGPU \u2192 WLlama with GPU layers \u2192 WLlama on the CPU \u2192 ONNX WASM. On a tablet whose GPU cannot be trusted, that puts the least reliable runtime first and the most reliable one third, so two failures were watched before anything had a chance to work.',
+          'The memory budget was a desktop number. HarmonyOS and Android reap a tab whose WebAssembly heap grows into the system\u2019s way, and those browsers rarely report deviceMemory at all \u2014 so the kitchen chose models that downloaded perfectly and died during load, which reads as a broken model rather than a tight one.',
+          'And nothing said which browser this actually was. A failure report from a MatePad and one from a Windows desktop looked identical, while their causes were different.'
+        ]
+      },
+      {
+        label: '\u{1F9E0} What the NPU question turned out to be',
+        items: [
+          'The Kirin NPU cannot be reached from a web page \u2014 not by this kitchen, and not by any page in any browser. The one web API that can address an NPU is WebNN; Chrome\u2019s implementation is a desktop origin trial (M147\u2013M149) with Android explicitly excluded, and ArkWeb and Huawei Browser do not ship it. On HarmonyOS the NPU belongs to native apps through HiAI and MindSpore Lite, and a web page has no door to it.',
+          'What changed is that the door is now wired properly, and the kitchen says plainly whether it is open. `navigator.ml` is detected; where a browser does expose WebNN \u2014 with JSPI, and with an ONNX runtime that contains the provider \u2014 the NPU is tried *first*, ahead of the GPU. Where it does not, the report and the AI panel say so in words instead of leaving the visitor to guess why an NPU-equipped tablet is running on its CPU.',
+          'The ONNX WebNN provider lives in onnxruntime-web\u2019s JSPI build, about 18 MB. Sending that to every visitor for a path no phone can take would be dead weight, so `WAFFLE_WEBNN=1 npm run build` ships the runtime and switches the NPU path on; the default build carries neither.',
+          'The AI panel now shows the profile it recognised: browser and Chromium baseline, adapter status and trust, the NPU sentence, WASM SIMD, threading, heap budget and on-device storage. When AI fails on a Huawei tablet, that block is the part that explains why \u2014 and it is what a pasted report carries home.'
+        ]
+      },
+      {
+        label: '\u{1F527} What changed for Huawei and HarmonyOS tablets',
+        items: [
+          'A real platform profile is read from the user agent: HarmonyOS/OpenHarmony version, ArkWeb version, Huawei Browser version, HMS Core, the device model in either form Huawei uses ("HUAWEI MatePad Pro 13.2" and the CTR-LX3 style codes), phone/tablet/TV, and the Chromium baseline \u2014 including Huawei\u2019s own ArkWeb mapping (4.1\u20135.1 \u2192 M114, 6.0/6.1 \u2192 M132, 7.0 \u2192 M144) for the user agents that carry no Chrome token, and the bare engine version some Huawei builds print instead of one.',
+          'A WebGPU adapter is graded rather than merely detected: `verified` on desktop and on Android Chromium 144+, `suspect` below that, `absent` when there is none. Suspect does not mean removed \u2014 it means tried *last*, after the CPU runtimes, so a hang cannot cost the whole chain.',
+          'The order now comes from the device. `rankBrowserAttempts()` returns NPU \u2192 GPU \u2192 CPU on a verified one and NPU \u2192 CPU \u2192 GPU on a suspect one, and asking for WebGPU explicitly in Settings still forces GPU first, because that is what was asked for.',
+          'WASM SIMD is probed with a real module instead of assumed, since both llama.cpp and ONNX Runtime need it and an engine without it fails in ways that look like a corrupt download.',
+          'The heap budget on a phone or tablet with no verified GPU keeps a wider margin \u2014 35% of reported memory, capped at 1.8 GB \u2014 because a model that fits beats a bigger one that gets the tab reaped.',
+          'A device that cannot be recognised is reported as an unknown platform and falls back to the old conservative order, rather than being given a guess.'
+        ]
+      },
+      {
+        label: '\u{26A0}\u{FE0F} Known rough edges',
+        items: [
+          'No current phone or tablet browser exposes WebNN, so a MatePad runs on its CPU (or its GPU, when WebGPU is real). That is slower than the silicon is capable of, and no web page can change it \u2014 the honest fix is a native app.',
+          'The profile is read from a user agent, which a browser can rewrite, trim or omit. In-app ArkWeb views (Lark, WeChat) announce themselves differently from Huawei Browser, and both are handled, but a browser that hides its version simply gets the conservative path.',
+          'The ArkWeb\u2192Chromium mapping is Huawei\u2019s documented one, not a measurement of the device in front of you; a vendor build can differ from the baseline it claims.'
+        ]
+      }
+    ]
+  },
+  {
+    version: '1.1 TVAR 2',  // history: a test build of the 1.1 cycle
     date: 'November 19, 2026',
     title: 'The one that stops freezing, and stops blaming your network',
     tvar: true,
@@ -114,7 +160,7 @@ export const TVAR_LOG = [
     ]
   },
   {
-    version: `${APP_VERSION} TVAR 1`,
+    version: '1.1 TVAR 1',  // history: a test build of the 1.1 cycle
     date: 'November 18, 2026',
     title: 'First test build after 1.1',
     tvar: true,
@@ -157,6 +203,38 @@ export const TVAR_LOG = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: '1.1.1',
+    date: 'November 20, 2026',
+    title: 'Layers for everyone, and a kitchen that knows your device',
+    groups: [
+      {
+        label: '\u{1F3A8} Art Studio',
+        items: [
+          'Art Studio now has layers. The separate "Art Studio (with layers)" tool is gone — its whole studio, 18 brushes (10 of them pressure-aware), per-layer opacity and blend modes, a 4096px canvas and per-layer undo, is what opens when you tap Art Studio, in both kitchens.',
+          'Drawings saved from the layered studio still open, and the old link to it still works: it just opens Art Studio.'
+        ]
+      },
+      {
+        label: '\u{1F4F1} Devices',
+        items: [
+          'Waffle AI in the backup kitchen now asks which device you are on — Android, iOS, iPadOS, macOS, Windows, Linux or HarmonyOS — and uses the answer to decide what to run. A browser can hide or rewrite its user agent, and HarmonyOS ones often carry no version at all, so being told beats guessing.',
+          'Huawei and HarmonyOS tablets are profiled properly: ArkWeb and Huawei Browser versions, the Chromium baseline behind them, the device model, and whether a WebGPU adapter can be believed. An adapter that cannot be verified is tried last instead of first, so it cannot hang the tab before the runtimes that work get a turn.',
+          'The AI panel shows the profile it recognised — browser, Chromium baseline, adapter trust, NPU, WASM SIMD, threading, heap budget and on-device storage — and every AI failure report ends with the device it happened on.',
+          'Phones and tablets keep a wider memory margin, because a model that fits beats a bigger one that gets the tab closed.',
+          'About the NPU, plainly: no browser on a phone or tablet exposes WebNN, the only web API that can reach one, so a Kirin NPU cannot be used from a web page. The kitchen detects it, uses it first where it exists, and says so where it does not.'
+        ]
+      },
+      {
+        label: '\u{1F9F0} Under the counter',
+        items: [
+          'Models are pre-cached: a deploy serves the small ones from its own origin, the browser loads that copy before it ever asks Hugging Face, and it keeps a copy on the device in the background while idle — no cross-origin request, no CORS preflight, no CDN to be blocked.',
+          'AI no longer freezes on a second question. Every browser runtime has a watchdog, one inference runs at a time, and a runtime that stops answering is discarded instead of reused.',
+          'AI failures explain themselves with evidence checked live from the model hosts, and never contradict it: a report that says a host answered will not blame your network for the download.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.1',
     date: 'November 18, 2026',

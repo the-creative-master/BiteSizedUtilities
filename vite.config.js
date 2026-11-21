@@ -62,7 +62,15 @@ function resolveOrtRuntimes() {
   return { image: withDist(image), chat: withDist(chat) };
 }
 
-const ORT_RUNTIME_FILES = /^ort-wasm-simd-threaded(\.asyncify)?\.(wasm|mjs)$/;
+// WebNN — the only web API that can reach an NPU — lives in onnxruntime-web's
+// JSPI build, which is ~18 MB more per deploy. No phone or tablet browser
+// exposes WebNN (Chrome's is a desktop origin trial, Android excluded), so those
+// bytes stay out of the default build. `WAFFLE_WEBNN=1 npm run build` ships them
+// and flips the client-side flag that turns the NPU path on.
+const SHIP_WEBNN = process.env.WAFFLE_WEBNN === '1';
+const ORT_RUNTIME_FILES = SHIP_WEBNN
+  ? /^ort-wasm-simd-threaded(\.asyncify|\.jspi)?\.(wasm|mjs)$/
+  : /^ort-wasm-simd-threaded(\.asyncify)?\.(wasm|mjs)$/;
 const HASHED_ORT_ASSET = /^(ort-wasm-simd-threaded(?:\.asyncify|\.jsep|\.jspi)?)-[\w-]{8}\.(wasm|mjs)$/;
 
 /**
@@ -226,6 +234,9 @@ function attachLocalModelRoutes(middlewares) {
 
 export default defineConfig({
   base: './',
+  define: {
+    'import.meta.env.WAFFLE_WEBNN': JSON.stringify(process.env.WAFFLE_WEBNN || '')
+  },
   resolve: {
     alias: {
       'onnxruntime-node': path.resolve('waffle-ort-empty.js')

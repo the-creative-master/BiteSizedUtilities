@@ -382,7 +382,13 @@ test('the device question is its own window, not a strip inside the chat', () =>
 
   // Asked once per tab, reopenable from the pill, and not backup-build only any
   // more — 1.2 put AI in the main kitchen, so the question belongs there too.
-  assert.match(src, /sessionStorage\.setItem\(KEY_OS_ASKED, '1'\)/);
+  // Asked once per release rather than once ever: an answer stored under a
+  // previous release must not suppress a question whose answer now does
+  // something different. tests/ai-overlay-dom.test.js drives the real thing.
+  assert.match(src, /localStorage\.getItem\(KEY_OS_ASKED\) === APP_VERSION/,
+    'the stamp is the release version');
+  assert.match(src, /function markOsAsked\(\)/);
+  assert.ok(!/sessionStorage\.setItem\(KEY_OS_ASKED/.test(src), 'and not a per-tab flag');
   assert.match(src, /function reopenOsAsk\(\)/, 'the pill in the header is the way back');
   assert.match(src, /diagEl\.addEventListener\('click'/, 'and it is wired to the pill');
   assert.ok(!/if \(!overlayEl \|\| !isBackupBuild\(\)\) return;/.test(src), 'the question is no longer backup-only');
@@ -399,6 +405,10 @@ test('the device question is its own window, not a strip inside the chat', () =>
   assert.match(css, /\.waffle-os-modal\[hidden\] \{ display: none; \}/);
   assert.match(css, /\.waffle-os-card \{/, 'with the house card around it');
   assert.match(css, /\.waffle-os-btn\.is-current \{/);
-  assert.match(css, /\.waffle-device-pill \{ cursor: pointer; \}/, 'the pill looks pressable, because it is');
+  // Only the pill in the AI header is a door; the same pill in Settings is a
+  // readout, so the affordance is a class of its own rather than inherited.
+  assert.match(css, /\.waffle-device-pill\.is-door \{[\s\S]{0,80}?cursor: pointer;/, 'the pill looks pressable, because it is');
+  assert.match(css, /\.waffle-device-pill\.is-door::after \{/, 'and carries a caret so it reads as one');
+  assert.match(src, /waffle-device-pill is-door/, 'the AI header pill wears that class');
   assert.ok(!css.includes('.waffle-os-ask {'), 'and the inline strip styling went with the strip');
 });

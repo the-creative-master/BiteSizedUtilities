@@ -1,0 +1,115 @@
+// The AI overlay in a real DOM. Everything else about Waffle AI is pinned by
+// reading source, which is good for rules and useless for this: a window that is
+// rendered by one function, suppressed by another and reopened by a third is a
+// behaviour. 1.2 shipped one that never asked anybody who had answered the
+// previous release, and no amount of source-matching would have said so. jsdom
+// is a dev dependency for exactly this file.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { JSDOM } from 'jsdom';
+
+const dom = new JSDOM('<!DOCTYPE html><html lang="en"><body></body></html>', {
+  url: 'https://the-creative-master.github.io/BiteSizedUtilities/',
+  pretendToBeVisual: true
+});
+const { window } = dom;
+for (const key of ['document', 'localStorage', 'sessionStorage', 'CustomEvent', 'Event', 'HTMLElement', 'Node', 'requestAnimationFrame', 'cancelAnimationFrame']) {
+  if (window[key] !== undefined) globalThis[key] = window[key];
+}
+globalThis.getComputedStyle = window.getComputedStyle.bind(window);
+globalThis.window = window;
+Object.defineProperty(globalThis, 'navigator', { value: window.navigator, configurable: true });
+// Nothing here may reach the network: opening the overlay probes a llama.cpp
+// server and the model hosts, and a test that waits on a timeout is a slow test.
+globalThis.fetch = () => Promise.resolve({ ok: false, status: 501, json: async () => ({}), headers: new Map() });
+
+const { openWaffleAI, closeWaffleAI, isWaffleAiLocked } = await import('../waffle-ai.js');
+const { APP_VERSION } = await import('../changelog.js');
+const { getDeclaredOS, OS_CHOICES } = await import('../waffle-browser-ai.js');
+
+const $ = sel => window.document.querySelector(sel);
+const modal = () => $('#waffle-ai-os-ask');
+const buttons = () => [...window.document.querySelectorAll('#waffle-ai-os-choices [data-os]')];
+const marked = () => buttons().filter(b => b.classList.contains('is-current'));
+const stamp = () => window.localStorage.getItem('waffle-ai-os-asked');
+const reopen = () => { closeWaffleAI(); openWaffleAI(); };
+const click = el => el.dispatchEvent(new window.Event('click', { bubbles: true }));
+
+test('opening Waffle AI asks which device this is, in its own window', () => {
+  assert.equal(isWaffleAiLocked(), false, '1.2 opened the gate in both kitchens');
+  openWaffleAI();
+
+  const box = modal();
+  assert.ok(box, 'the window exists');
+  assert.equal(box.hidden, false, 'and it is showing on a first visit');
+  assert.deepEqual(buttons().map(b => b.dataset.os), OS_CHOICES.map(c => c.id), 'every OS is offered');
+  assert.ok($('#waffle-os-skip'), 'so is "let it detect"');
+  assert.ok($('#waffle-os-close'), 'and so is a way to dismiss it');
+
+  // The reason it moved: inside the chat dialog it changed the dialog's height,
+  // so the window was a different shape on every device that had not answered.
+  assert.equal($('.waffle-ai-dialog #waffle-ai-os-ask'), null, 'it is not inside the chat dialog');
+  assert.equal(box.parentElement.id, 'waffle-ai-overlay', 'it is a sibling of it');
+});
+
+test('answering stores the OS, closes the window, and stamps this release', () => {
+  const harmony = buttons().find(b => b.dataset.os === 'harmonyos');
+  assert.ok(harmony, 'HarmonyOS is one of the choices');
+  click(harmony);
+
+  assert.equal(getDeclaredOS(), 'harmonyos', 'the answer is stored');
+  assert.equal(modal().hidden, true, 'the window closes');
+  assert.equal(stamp(), APP_VERSION, 'and this release is marked as having asked');
+});
+
+test('the same release does not ask twice', () => {
+  reopen();
+  assert.equal(modal().hidden, true, 'opening again in the same release keeps it closed');
+  assert.equal(getDeclaredOS(), 'harmonyos', 'and the answer is still the answer');
+});
+
+test('a new release asks again, even with an answer already stored', () => {
+  // The bug this file exists for. Suppression was keyed on "has an answer"
+  // instead of "has this release asked", so everybody who answered under 1.1.1 —
+  // which is everybody who was told to, the question being new — never saw the
+  // window again, and never learned that 1.2 changed what answering does: a
+  // HarmonyOS answer now puts the GPU first instead of last.
+  window.localStorage.setItem('waffle-ai-os-asked', '1.1.1');
+  reopen();
+
+  assert.equal(getDeclaredOS(), 'harmonyos', 'the stored answer survived');
+  assert.equal(modal().hidden, false, 'and the new release asks anyway');
+  assert.equal(marked().length, 1, 'with the previous answer marked');
+  assert.equal(marked()[0].dataset.os, 'harmonyos');
+  assert.equal(marked()[0].getAttribute('aria-pressed'), 'true', 'so keeping it is one tap');
+});
+
+test('the pill in the header is the way back, and looks like one', () => {
+  click($('#waffle-os-close'));
+  assert.equal(modal().hidden, true, 'the ✕ closes it');
+  assert.equal(stamp(), APP_VERSION, 'and counts as having been asked');
+  assert.equal(getDeclaredOS(), null, 'it means "let it detect", so the answer is cleared');
+
+  const pill = $('#waffle-ai-device-status');
+  assert.ok(pill, 'the pill is there');
+  assert.equal(pill.getAttribute('role'), 'button', 'it is a control, not a readout');
+  assert.equal(pill.tabIndex, 0, 'and reachable by keyboard');
+  assert.match(pill.className, /is-door/, 'styled as the door it is');
+  assert.match(pill.title, /Tap to say which device this is/, 'with the tooltip saying so');
+
+  click(pill);
+  assert.equal(modal().hidden, false, 'it reopens the window');
+  assert.equal(buttons().length, OS_CHOICES.length, 'full of choices');
+  assert.equal(marked().length, 0, 'none of them marked, because the answer was cleared');
+});
+
+test('a reopened window survives the next status update', () => {
+  // renderOsAsk() runs on every badge refresh, and it closes the question when
+  // this release has already asked — which is the state a reopened window is in.
+  // Without its own flag the window closed itself the moment anything updated.
+  assert.equal(stamp(), APP_VERSION, 'this release has asked');
+  assert.equal(modal().hidden, false, 'the window is open because it was asked for');
+  click(buttons().find(b => b.dataset.os === 'android'));
+  assert.equal(getDeclaredOS(), 'android', 'answering it works from here too');
+  assert.equal(modal().hidden, true);
+});

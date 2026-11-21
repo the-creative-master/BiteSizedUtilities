@@ -578,6 +578,146 @@ test('the four original cabinet games are complete, self-contained HTML document
   }
 });
 
+test('no cabinet page loads a script, style or tracker from someone else\u2019s origin', () => {
+  // These games are vendored, and three of them arrived still wired to the sites
+  // they were copied from: a Google Analytics pixel in two, a Font Awesome kit and
+  // a Google Fonts stylesheet in a third, and that third one also carried the nav
+  // bar of a proxy site, including a link out to an anime pirate. Every one of
+  // those is a request a visitor pays for before the game draws its first frame,
+  // and on a filtered school network each one hangs until it times out.
+  //
+  // One exception stays, on purpose, and only for a font file inside a @font-face
+  // src. Two vendored games carry a display face \u2014 a Japanese one, a Garamond \u2014
+  // as unicode-range slices on Google's font CDN. Those are type rather than a
+  // tracker, both pages declare a fallback face, and offline they render in the
+  // system serif. Re-hosting the slices is worth doing; it is not something this
+  // change can verify, so it is named here instead of quietly allowed.
+  const loads = [];
+  const trackers = [];
+  // Recursive: seven of the catalogued games are Unity or js13k exports that live
+  // in a folder of their own, and those are the likeliest to have arrived wired to
+  // a CDN.
+  const files = fs.readdirSync(CABINET, { recursive: true })
+    .map(f => f.replaceAll('\\', '/'))
+    .filter(f => /\.html?$/i.test(f))   // one catalogued game is a bare .htm
+    .sort();
+  // Not a magic count: prove the sweep reaches every page the arcade can open.
+  const catalogued = JSON.parse(fs.readFileSync('games/catalog.json', 'utf8'))
+    .map(g => g.entrypoint.replace(/^games\/cabinet\//, ''));
+  for (const page of new Set(catalogued)) {
+    assert.ok(files.includes(page), `${page} is in the cabinet and gets checked`);
+  }
+
+  for (const file of files) {
+    const html = fs.readFileSync(`${CABINET}/${file}`, 'utf8');
+    // Anything the browser will fetch on its own: a tag attribute, or a url() in
+    // the page's own CSS. Links a visitor has to click are their own business.
+    for (const m of html.matchAll(/<(?:script|link|iframe|img|embed|source)\b[^>]*?\b(?:src|href)\s*=\s*["'](https?:\/\/[^"']+)["']/gi)) {
+      loads.push(`${file} loads ${m[1]}`);
+    }
+    for (const m of html.matchAll(/url\(\s*["']?(https?:\/\/[^)"']+)["']?\s*\)/gi)) {
+      if (!/\.(?:woff2?|ttf|otf)$/i.test(m[1])) loads.push(`${file} loads ${m[1]}`);
+    }
+    // Trackers are banned outright, however they are wired in: the classic
+    // analytics snippet builds its script src by string concatenation, which no
+    // attribute regex can see. Host names, not bare words \u2014 three of the games
+    // ship a Construct 3 runtime whose own double-click handling would otherwise
+    // look like an ad network.
+    if (/google-analytics\.com|googletagmanager\.com|googlesyndication\.com|doubleclick\.net|kit\.fontawesome\.com|fonts\.googleapis\.com|4anime\./i.test(html)) {
+      trackers.push(file);
+    }
+  }
+
+  assert.deepEqual(loads, [], 'every cabinet page fetches its own scripts and styles from this origin');
+  assert.deepEqual(trackers, [], 'no cabinet page reports its visitors to a third party');
+});
+
+test('Tic Tac Toe arrived wearing another site\u2019s clothes, and now wears the kitchen\u2019s', () => {
+  const file = 'tic-tac-toe.html';
+  const html = fs.readFileSync(`${CABINET}/${file}`, 'utf8');
+  const script = fs.readFileSync(`${CABINET}/tic.js`, 'utf8');
+
+  // It was two documents stapled together: a proxy site's nav bar in the first
+  // <body>, pointing at seven pages and two assets that were never vendored with
+  // it, then the actual game in a second one.
+  assert.equal(html.match(/<body\b/g).length, 1, 'one body');
+  assert.equal(html.match(/<\/body>/g).length, 1, 'one closing body');
+  assert.ok(html.startsWith('<!DOCTYPE html>'), 'starts with a doctype');
+  assert.ok(html.includes('<html lang="en">'), 'declares its language');
+  assert.ok(html.includes('<meta charset="utf-8">'), 'declares its charset');
+  assert.ok(html.includes('<title>Tic Tac Toe \u2014 BiteSizedUtilities</title>'), 'titles itself as this kitchen\u2019s game');
+
+  // Nothing left of the site it was copied from.
+  for (const gone of ['School Heaven', 'carrot.html', 'Unblocker', 'announcements.html', 'music.html']) {
+    assert.ok(!html.includes(gone), `${gone} is gone`);
+  }
+
+  // The game's own wiring survives: the shared back-to-arcade control, its
+  // script, and every element and handler that script drives.
+  assert.ok(html.includes('<script src="../arcade-controls.js"></script>'), 'keeps the shared arcade control');
+  assert.ok(html.includes('<script src="tic.js"></script>'), 'keeps the game');
+  const ids = [...new Set([...script.matchAll(/getElementById\((["'])([^"']+)\1\)/g)].map(m => m[2]))];
+  assert.ok(ids.length >= 10, `the game looks up its own elements (${ids.length})`);
+  for (const id of ids) assert.ok(html.includes(`id="${id}"`), `#${id} is in the markup`);
+  const handlers = [...new Set([...html.matchAll(/(myfunc_?\d*)\s*\(/g)].map(m => m[1]))];
+  assert.ok(handlers.length >= 11, `the markup calls the game's handlers (${handlers.length})`);
+  for (const fn of handlers) assert.ok(script.includes(`function ${fn}(`), `${fn}() is defined in tic.js`);
+
+  // Its stylesheet never shipped with it, so the white headings sat on the
+  // browser's white page and the grid's border colour was a seven-digit hex that
+  // no browser parses. Both are fixed here rather than by re-adding the dead link.
+  assert.ok(html.includes('#4f2f23'), 'the white text sits on the kitchen\u2019s ink');
+  assert.ok(!html.includes('#dedfe0f'), 'no seven-digit hex colour');
+  assert.ok(!/href="tic\.css"/.test(html), 'does not link the stylesheet that is not there');
+});
+
+test('Tic Tac Toe still plays after losing the other site\u2019s shell', () => {
+  const html = fs.readFileSync(`${CABINET}/tic-tac-toe.html`, 'utf8');
+  const script = fs.readFileSync(`${CABINET}/tic.js`, 'utf8');
+
+  // The game's whole DOM surface is nine boxes with a value, the line that
+  // announces the turn, and an alert when somebody wins. Take the handlers
+  // straight out of the markup rather than writing them down again, so this
+  // drives the page a visitor gets and not a copy of it.
+  const taps = new Map([...html.matchAll(/id="(b\d)"\s+onclick=\s*"([^"]+)"/g)].map(m => [m[1], m[2]]));
+  const reset = html.match(/id="but"\s+onclick=\s*"([^"]+)"/);
+  assert.equal(taps.size, 9, 'every box in the markup carries its own handler');
+  assert.ok(reset, 'the reset button carries its handler');
+
+  const els = new Map([...html.matchAll(/id="([^"]+)"/g)]
+    .map(m => [m[1], { id: m[1], value: '', innerHTML: '', disabled: false }]));
+  const alerts = [];
+  let reloads = 0;
+  const sandbox = {
+    document: { getElementById: id => els.get(id) ?? null },
+    window: { alert: message => alerts.push(String(message)) },
+    location: { reload() { reloads++; } }
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(script, sandbox, { filename: 'tic.js' });
+  const tap = box => vm.runInContext(taps.get(box), sandbox, { filename: `${box} onclick` });
+
+  // X takes the top row while 0 collects the middle of the left column.
+  tap('b1');
+  assert.equal(els.get('b1').value, 'X', 'X opens');
+  assert.equal(els.get('b1').disabled, true, 'a taken box locks');
+  tap('b4');
+  assert.equal(els.get('b4').value, '0', 'the turn alternates');
+  tap('b2');
+  tap('b5');
+  tap('b3');
+
+  assert.equal(els.get('print').innerHTML, 'Player X won', 'the top row wins');
+  assert.ok(alerts.includes('Player X won'), 'and says so out loud');
+  for (const box of ['b6', 'b7', 'b8', 'b9']) {
+    assert.equal(els.get(box).disabled, true, `${box} locks once the game is over`);
+  }
+
+  vm.runInContext(reset[1], sandbox, { filename: 'reset onclick' });
+  assert.equal(reloads, 1, 'reset asks for a fresh page');
+  for (const box of taps.keys()) assert.equal(els.get(box).value, '', `${box} clears`);
+});
+
 test('every cabinet game in the catalogue exists, and no entry points outside the cabinet', () => {
   const games = JSON.parse(fs.readFileSync('games/catalog.json', 'utf8'));
   for (const g of games) {

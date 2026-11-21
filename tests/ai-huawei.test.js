@@ -385,8 +385,8 @@ test('the device question is its own window, not a strip inside the chat', () =>
   // Asked once per release rather than once ever: an answer stored under a
   // previous release must not suppress a question whose answer now does
   // something different. tests/ai-overlay-dom.test.js drives the real thing.
-  assert.match(src, /localStorage\.getItem\(KEY_OS_ASKED\) === APP_VERSION/,
-    'the stamp is the release version');
+  assert.match(src, /localStorage\.getItem\(KEY_OS_ASKED\) === appVersionLabel\(\)/,
+    'the stamp is this build' + '\u2019s label, so a test build and its release each ask once');
   assert.match(src, /function markOsAsked\(\)/);
   assert.ok(!/sessionStorage\.setItem\(KEY_OS_ASKED/.test(src), 'and not a per-tab flag');
   assert.match(src, /function reopenOsAsk\(\)/, 'the pill in the header is the way back');

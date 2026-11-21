@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import {
   TEXT_MODELS,
   offeredTextModels,
+  allOfferedTextModels,
   planAutoPrecache,
   probeServedModels,
   autoPrecacheServedModels,
@@ -335,14 +336,15 @@ test('--all-small selects by measured size, smallest first', () => {
   // 1.2 stopped offering, and pre-caching weights nobody can pick would spend
   // the Pages budget on them.
   const script = fs.readFileSync('scripts/fetch-model.mjs', 'utf8');
-  assert.match(script, /selectSmallModels\(offeredTextModels\(TEXT_MODELS\)\)/,
-    'the deploy pre-caches what the menu offers');
+  assert.match(script, /selectSmallModels\(allOfferedTextModels\(TEXT_MODELS\)\)/,
+    'the deploy pre-caches what either menu offers');
 
-  const sel = selectSmallModels(offeredTextModels(TEXT_MODELS));
+  const sel = selectSmallModels(allOfferedTextModels(TEXT_MODELS));
   assert.ok(sel.includes('smollm2-135m'), 'the default model, which every visitor uses, is in');
   assert.ok(!sel.includes('qwen2.5-1.5b'), 'and the 882 MB one is not');
   assert.ok(!sel.includes('smollm2-1.7b'), 'nor the ~1 GB one — it is over the per-model ceiling');
-  assert.ok(!sel.includes('smollm2-360m'), 'nor a model the menu no longer offers');
+  assert.ok(!sel.includes('smollm2-360m'), 'nor the 360M, which went to 16-bit and over the ceiling with it');
+  assert.ok(!sel.includes('falcon3-1b'), 'nor Falcon 3 1B at ~460 MB');
   assert.ok(sel.every(id => TEXT_MODELS.find(m => m.id === id).ggufMB > 0),
     'selection uses the measured ggufMB, not a field the table does not carry');
 
@@ -455,6 +457,6 @@ test('a model too big to serve from a static site is left to Hugging Face, out l
   assert.match(script, /per-model ceiling/, 'and the log says why it was skipped');
   assert.match(script, /maxModelMB = MAX_MODEL_MB/, 'selection and the ceiling are the same number');
 
-  assert.ok(!selectSmallModels(offeredTextModels(TEXT_MODELS)).includes('smollm2-1.7b'),
+  assert.ok(!selectSmallModels(allOfferedTextModels(TEXT_MODELS)).includes('smollm2-1.7b'),
     'the 1.7B is over it by design — a visitor who picks it downloads it once, into their own storage');
 });

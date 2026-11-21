@@ -1,4 +1,5 @@
-import { APP_VERSION } from './changelog.js';
+import { backupDoorMatches, openBackupKitchenDoor, BACKUP_DOOR_FILE } from './backup-door.js';
+import { appVersionLabel } from './changelog.js';
 import { waffleMascotSVG } from './icons-25d.js';
 import { playPop, playBoing, playSquish, playSparkle } from './sfx.js';
 import { copyToClipboard } from './ui-kit.js';
@@ -123,6 +124,38 @@ export function isWaffleAiLocked() {
 }
 
 /** Thrown by every AI entry point while paused, so callers can tell "locked" apart from "failed". */
+/**
+ * Thrown for a model the table reserves but the kitchen cannot fetch yet.
+ *
+ * `arrivesIn` on a TEXT_MODELS entry is what marks one, and there is exactly one
+ * today: Granite Code 0.5B, which CodeHub's AI Error Helper is pinned to and
+ * which IBM's weights have not reached the kitchen for. A caller can catch this
+ * by name and say "not yet" in its own words; everything else about the failure
+ * machinery — the classifier, the source report, the retry chain — is for models
+ * that exist and did not load, and running it here would report a 404 from a repo
+ * nobody has as though the kitchen had broken something.
+ */
+export class WaffleModelPendingError extends Error {
+  constructor(cfg) {
+    super(`${cfg?.label || 'That model'} is not in the kitchen yet — it arrives in ${cfg?.arrivesIn || 'a later update'}.`);
+    this.name = 'WaffleModelPending';
+    this.modelId = cfg?.id || null;
+    this.label = cfg?.label || null;
+    this.arrivesIn = cfg?.arrivesIn || 'a later update';
+  }
+}
+
+/** The notice a surface shows for a model that has been promised, not shipped. */
+export function waffleModelPendingNoticeHTML(cfg) {
+  const label = esc(cfg?.label || 'That model');
+  const when = esc(cfg?.arrivesIn || 'a later update');
+  return `
+    <div class="waffle-ai-locked-note">
+      <span class="waffle-ai-locked-icon" aria-hidden="true">🕒</span>
+      <p class="waffle-ai-locked-copy">${label} arrives in ${when}. Nothing else is substituted for it, so there is no answer here yet.</p>
+    </div>`;
+}
+
 export class WaffleAiLockedError extends Error {
   constructor(message = WAFFLE_AI_LOCK_MESSAGE) {
     super(message);
@@ -430,6 +463,9 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
   if (isWaffleAiLocked()) throw new WaffleAiLockedError();
   const chosenId = modelId || getSelectedTextModel();
   const cfg = TEXT_MODELS.find(m => m.id === chosenId) || TEXT_MODELS[0];
+  // Reserved but not shipped. Checked before a single probe runs: there is no
+  // device fact, no repo and no runtime that changes the answer.
+  if (cfg.arrivesIn) throw new WaffleModelPendingError(cfg);
   const mode = getSelectedExecutionMode();
   const diag = await detectDeviceDiagnostics().catch(() => ({
     hasWebGPU: false, wllamaGpuSafe: false, wasmBudgetBytes: 0, canThread: false,
@@ -466,7 +502,9 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     // Never invent a filename: a guessed GGUF name would quietly run a
     // different model than the one the user picked.
     if (!m.hfGgufRepo && !m.ggufFile) return;
-    attempts.push({ kind: 'wllama', gguf: m.ggufFile, hfRepo: m.hfGgufRepo, hfQuant: m.hfGgufQuant, webgpu, label: m.label });
+    // ggufQuants travels with the attempt: the range is a property of the model,
+    // and the loader that resolves the file is three modules away from the table.
+    attempts.push({ kind: 'wllama', gguf: m.ggufFile, hfRepo: m.hfGgufRepo, hfQuant: m.hfGgufQuant, ggufQuants: m.ggufQuants || null, webgpu, label: m.label });
   };
   const pushServer = (id = cfg.kind === 'server' ? cfg.id : SERVER_FALLBACK_ID) => {
     attempts.push({ kind: 'server', id, label: cfg.label });
@@ -582,7 +620,7 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
           return streamServerChat({ modelId: step.id, messages: msgList, systemPrompt, maxTokens, temperature, signal, onStatus: beatStatus, onToken: beatToken });
         }
         if (step.kind === 'wllama') {
-          return streamWllamaChat({ ggufFile: step.gguf, hfRepo: step.hfRepo, hfQuant: step.hfQuant, messages: msgList, systemPrompt, maxTokens, temperature, useWebGPU: step.webgpu, signal, onStatus: beatStatus, onToken: beatToken });
+          return streamWllamaChat({ ggufFile: step.gguf, hfRepo: step.hfRepo, hfQuant: step.hfQuant, ggufQuants: step.ggufQuants, messages: msgList, systemPrompt, maxTokens, temperature, useWebGPU: step.webgpu, signal, onStatus: beatStatus, onToken: beatToken });
         }
         return streamBrowserChat({ modelId: step.id, messages: msgList, imageUrls: step.vision ? imageUrls : [], systemPrompt, maxTokens, temperature, preferredDevice: step.dev, signal, onStatus: beatStatus, onToken: beatToken });
       }, { kind: step.kind, signal });
@@ -687,15 +725,20 @@ function activeImageCfg() {
  * puts the GPU first instead of last), and the window that asks it moved out of
  * the chat into its own dialog. So a release that changes what the answer means
  * asks once more, with the previous answer marked and one tap from being kept.
+ *
+ * The stamp is `appVersionLabel()` rather than the release number, so a test
+ * build and the release it was built from each ask once: they are different
+ * builds asking about different behaviour, and 1.2 TVAR 1 changes what an answer
+ * decides just as much as 1.2 did.
  */
 const KEY_OS_ASKED = 'waffle-ai-os-asked';
 
 function osAskedThisRelease() {
-  try { return localStorage.getItem(KEY_OS_ASKED) === APP_VERSION; } catch { return false; }
+  try { return localStorage.getItem(KEY_OS_ASKED) === appVersionLabel(); } catch { return false; }
 }
 
 function markOsAsked() {
-  try { localStorage.setItem(KEY_OS_ASKED, APP_VERSION); } catch {}
+  try { localStorage.setItem(KEY_OS_ASKED, appVersionLabel()); } catch {}
 }
 
 // Set while the question is open because somebody asked for it back from the
@@ -1176,12 +1219,51 @@ async function runImageGeneration(promptText, displayPrompt = promptText, allowE
   }
 }
 
+async function runBackupDoor() {
+  playSparkle();
+  isGenerating = true;
+  messages.push({
+    role: 'assistant',
+    authorLabel: 'Sir Waffle',
+    content: `🧇 That is the door. Reading ${BACKUP_DOOR_FILE}…`
+  });
+  renderMessages();
+  try {
+    // On success this call replaces the document under us, so the success path
+    // has nothing left to render into and no reason to try.
+    await openBackupKitchenDoor({
+      onStatus: detail => {
+        const last = messages[messages.length - 1];
+        if (last?.role === 'assistant') last.content = `🧇 ${detail}`;
+        renderMessages();
+      }
+    });
+  } catch (err) {
+    const last = messages[messages.length - 1];
+    if (last?.role === 'assistant') {
+      last.content = `The door did not open: ${err?.message || err}`;
+      renderMessages();
+    }
+  } finally {
+    isGenerating = false;
+  }
+}
+
 async function sendMessage(rawText) {
   const text = String(rawText || '').trim();
   if ((!text && !attachments.length) || isGenerating) return;
 
   const input = overlayEl?.querySelector('#waffle-ai-input');
   if (input) input.value = '';
+
+  // The door to the backup kitchen, before anything else looks at the text: not
+  // the image intent, and not the transcript. A key that gets written into the
+  // chat history is a key that gets copy-pasted, so the string is consumed here
+  // and never appears in the conversation it was typed into.
+  if (!attachments.length && backupDoorMatches(text)) {
+    await runBackupDoor();
+    return;
+  }
 
   if (!attachments.length) {
     const imgPrompt = parseImageIntent(text);
@@ -1393,7 +1475,7 @@ function buildLockedOverlay() {
         </div>
       </div>
       <div class="waffle-ai-locked-body">
-        <button type="button" class="waffle-ai-locked-mascot" id="waffle-ai-locked-mascot" data-waffle-tap
+        <button type="button" class="waffle-ai-locked-mascot" id="waffle-ai-locked-mascot"
                 aria-label="Sir Waffle" title="Sir Waffle">
           ${waffleMascotSVG('waffle-locked-svg')}
         </button>
@@ -1415,12 +1497,12 @@ function buildLockedOverlay() {
   // open/close forever and could never reach ten — which reads exactly like a
   // timeout. The whole overlay is the tap target instead, and dismissal stays
   // one click away via ✕, the button, or Escape.
-  // Reflects to data-waffle-tap, which closest('[data-waffle-tap]') matches.
-  wrap.dataset.waffleTap = '';
-  // There is deliberately no tap hint and no "n / 10" progress readout here.
-  // The gesture still counts (the whole overlay is the tap target, below), but
-  // the dialog no longer explains itself: an unlock that advertises its own
-  // recipe is not an unlock. Tappers get one toast when it lands.
+  // This overlay used to be one big target for the unlock gesture, and the whole
+  // dialog was wired to count every click on itself. The gesture is retired — the
+  // way into the backup kitchen is a string typed at Waffle AI, in backup-door.js
+  // — so nothing here is marked tappable and nothing counts. What is left is the
+  // paused notice this build no longer shows, kept because a build that can be
+  // paused again should not have to be written twice.
   wrap.querySelector('#waffle-ai-locked-close')?.addEventListener('click', () => { playPop(460); closeWaffleAI(); });
   wrap.querySelector('#waffle-ai-locked-done')?.addEventListener('click', () => { playPop(460); closeWaffleAI(); });
   document.addEventListener('keydown', e => {

@@ -1,3 +1,4 @@
+import { BACKUP_DOOR_FILE, backupPassphrase, encodePayload } from './backup-cipher.js';
 import { defineConfig } from 'vite';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -271,6 +272,28 @@ export default defineConfig({
       attachWaffleAiMiddleware(server.middlewares);
       scheduleWaffleWarmup(1500);
 
+      // The disguise exists in dev too, or the door could only ever be tested
+      // against a built deploy. Vite would otherwise 404 this path and then
+      // SPA-fall back to index.html, which decodes to a page that is not the
+      // backup kitchen — a confusing way to fail. Same cipher, same key, and
+      // the HTML goes through Vite's own transform so the script tags point at
+      // real dev modules.
+      server.middlewares.use(async (req, res, next) => {
+        const requested = (req.url || '').split('?')[0];
+        if (!requested.endsWith(`/${BACKUP_DOOR_FILE}`)) return next();
+        try {
+          const raw = fs.readFileSync(path.resolve('backup.html'), 'utf8');
+          const html = await server.transformIndexHtml('/backup.html', raw);
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+          res.setHeader('Cache-Control', 'no-store');
+          res.end(encodePayload(html));
+        } catch (err) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+          res.end(`door payload failed: ${err?.message || err}`);
+        }
+      });
+
       server.middlewares.use((req, res, next) => {
         let pathname;
         try {
@@ -387,6 +410,27 @@ export default defineConfig({
           }
         }
       }
+      // The backup kitchen does not ship as a page. Rollup has just built
+      // dist/backup.html — a shell of a few KB whose scripts and styles are
+      // already separate files under dist/assets/ — so the shell is ciphered
+      // into a .txt that looks like build junk and the page itself is deleted.
+      // /backup.html then 404s on GitHub Pages, and the only way in is the string
+      // typed at Waffle AI, which is also the key this was encoded with.
+      //
+      // This runs before the shell walk below on purpose: the worker precaches
+      // what is on disk, so it caches the .txt (a few KB, and the door then works
+      // offline) and never sees a backup.html that no longer exists.
+      const backupPage = path.resolve('dist/backup.html');
+      if (fs.existsSync(backupPage)) {
+        const payload = encodePayload(fs.readFileSync(backupPage, 'utf8'));
+        fs.writeFileSync(path.resolve('dist', BACKUP_DOOR_FILE), payload);
+        fs.rmSync(backupPage);
+        console.log(`[waffle] backup kitchen → ${BACKUP_DOOR_FILE} (${(payload.length / 1024).toFixed(1)} KB, key held nowhere in plain text); dist/backup.html removed`);
+      } else {
+        console.warn('[waffle] dist/backup.html was not built, so there is no backup kitchen to disguise');
+      }
+      if (!backupPassphrase()) throw new Error('the door has no passphrase');
+
       // Cache the application shell, not hundreds of megabytes of optional games/runtimes.
       const files = [];
       function walk(dir) {

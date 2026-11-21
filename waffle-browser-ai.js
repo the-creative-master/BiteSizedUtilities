@@ -1,4 +1,6 @@
-// Rough GGUF size per model at the default Compact (Q3_K_L) preset, in MB.
+import { isBackupBuild } from './build-mode.js';
+
+// Rough GGUF size per model at the quant that entry asks for first, in MB.
 // Used only to warn / budget *before* a download starts — the real byte size
 // always comes from the HuggingFace tree API when it is reachable.
 export const TEXT_MODELS = [
@@ -12,6 +14,7 @@ export const TEXT_MODELS = [
     dtype: 'q4',
     hfGgufRepo: 'Qwen/Qwen2.5-1.5B-Instruct-GGUF',
     hfGgufQuant: 'Q3_K_L',
+    ggufQuants: ['Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
     ggufFile: 'qwen2.5-1.5b.gguf',
     // Measured, not guessed: the source report for this entry came back with
     // qwen2.5-1.5b-instruct-q3_k_m.gguf at 881.6 MB (Q3_K_L is not published in
@@ -37,16 +40,25 @@ export const TEXT_MODELS = [
   {
     id: 'qwen3-0.6b',
     label: 'Qwen 3 0.6B',
-    badge: 'Light · ~300 MB',
+    // The most reliable model in the kitchen, by testing on real devices rather
+    // than by table order — so the menu says it instead of leaving it to luck.
+    badge: 'Most reliable · 4-bit ~385 MB',
     kind: 'server',
     hfId: 'onnx-community/Qwen3-0.6B-ONNX',
     hfIdAlts: ['onnx-community/Qwen3-0.6B'],
     dtype: 'q4',
     hfGgufRepo: 'unsloth/Qwen3-0.6B-GGUF',
-    hfGgufQuant: 'Q3_K_L',
+    hfGgufQuant: 'Q4_K_M',
+    // 4, 5 or 6 bit and nothing below: at 3 bit this one starts dropping
+    // instructions, which is the opposite of why it is the recommended model.
+    ggufQuants: ['Q4_K_M', 'Q5_K_M', 'Q6_K'],
     ggufFile: 'qwen3-0.6b.gguf',
-    ggufMB: 300,
-    desc: 'Fast, lightweight Qwen 3 0.6B via llama.cpp, q4 ONNX, or Q3_K_L WLlama'
+    // Arithmetic from the figure this entry carried at Q3_K_L (300 MB ≈ 3.5 bits
+    // a weight, scaled to 4.5), not a measurement — this sandbox has no route to
+    // huggingface.co. The repo tree still prices the real file before anything is
+    // downloaded, and the source report shows the measured size on the device.
+    ggufMB: 385,
+    desc: 'The reliable one: Qwen 3 0.6B at 4–6 bit via llama.cpp, q4 ONNX, or WLlama'
   },
   {
     id: 'smollm2-135m',
@@ -62,6 +74,7 @@ export const TEXT_MODELS = [
     // one worth keeping lossless. The fetch script asks the repo for F16 and
     // falls through its quant chain if the repo does not publish it.
     hfGgufQuant: 'F16',
+    ggufQuants: ['F16'],
     ggufFile: 'smollm2-135m.gguf',
     // Arithmetic, not a measurement: 135M parameters at two bytes each. The
     // sandbox this was written in cannot reach huggingface.co, so the real
@@ -77,21 +90,28 @@ export const TEXT_MODELS = [
   {
     id: 'smollm2-360m',
     label: 'SmolLM2 360M',
-    badge: 'Browser · ~170 MB',
+    badge: 'Browser · 16-bit ~720 MB',
     kind: 'browser',
     hfId: 'HuggingFaceTB/SmolLM2-360M-Instruct-ONNX',
     hfIdAlts: ['onnx-community/SmolLM2-360M-Instruct', 'HuggingFaceTB/SmolLM2-360M-Instruct'],
     dtype: 'q4',
     hfGgufRepo: 'bartowski/SmolLM2-360M-Instruct-GGUF',
-    hfGgufQuant: 'Q3_K_L',
+    // Full 16-bit like the 135M, for the same reason: a 3-bit quant of a model
+    // this small keeps the parameters and loses the knowledge. It also makes this
+    // the most expensive entry on the list, which is why it sits over the
+    // self-hosting ceiling and always downloads from Hugging Face.
+    hfGgufQuant: 'F16',
+    ggufQuants: ['F16'],
     ggufFile: 'smollm2-360m.gguf',
-    ggufMB: 170,
-    desc: 'Compact in-browser WebGPU/WASM model (~170 MB in Q3_K_L / q4)'
+    // Arithmetic: 360M parameters at two bytes each. The Q3_K_L file this
+    // replaces was 170 MB.
+    ggufMB: 720,
+    desc: 'SmolLM2 360M at full 16-bit (~720 MB) — small model, no quantisation loss'
   },
   {
     id: 'smollm2-1.7b',
     label: 'SmolLM2 1.7B',
-    badge: 'Biggest in-browser · ~1 GB',
+    badge: 'Biggest in-browser · ~1 GB, from ~560 MB',
     kind: 'browser',
     // Repo paths written down without being able to check them: this sandbox has
     // no route to huggingface.co. If one is wrong the source report says
@@ -102,29 +122,49 @@ export const TEXT_MODELS = [
     hfIdAlts: ['HuggingFaceTB/SmolLM2-1.7B-Instruct-ONNX', 'HuggingFaceTB/SmolLM2-1.7B-Instruct'],
     dtype: 'q4',
     hfGgufRepo: 'bartowski/SmolLM2-1.7B-Instruct-GGUF',
+    // The widest range on the list, and the only one that reaches down to 2 bit:
+    // this is the biggest model here, so the question about it is whether it fits
+    // at all, and on a tight device 2 bit is the difference between loading and
+    // not. It still *leads* at Q4_K_M, which is the quant 1.2 shipped and the one
+    // that has been tested — a range says what may be used, not what to prefer,
+    // and preferring the worst acceptable quant would have downgraded this model
+    // for everybody who could already hold it.
     hfGgufQuant: 'Q4_K_M',
+    ggufQuants: ['Q2_K', 'Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
     ggufFile: 'smollm2-1.7b.gguf',
     // Arithmetic again: 1.7B parameters at the ~0.6 bytes a weight that Q4_K_M
-    // costs. At ~1 GB it is over the per-model ceiling for self-hosting, so it
-    // is deliberately never shipped inside the site — a visitor who picks it
-    // downloads it once, into their own storage, and the source report tells
-    // them the measured size before they do.
+    // costs, which is the quant this entry leads with. At the bottom of its range
+    // (Q2_K, ~0.33 bytes) the same model is roughly 560 MB.
+    //
+    // ggufMB is a *ceiling*, not a description: it is the budget the real file is
+    // checked against (fetchModelSourceFacts) and the estimate fitsOnCpu weighs
+    // against the WASM heap. So it has to name the quant that will actually be
+    // loaded — the lead — and not the lightest one the range happens to allow.
+    // Budgeting this entry at its Q2_K size would have failed every Q4_K_M load
+    // with "raise ggufMB", which is a false alarm about a file that is fine.
+    //
+    // Either figure is over the per-model ceiling for self-hosting, so it is
+    // deliberately never shipped inside the site — a visitor who picks it
+    // downloads it once, into their own storage, and the source report tells them
+    // the measured size before they do.
     ggufMB: 1050,
-    desc: 'SmolLM2 1.7B in Q4_K_M (~1 GB) — the biggest model here; wants a GPU, or a patient CPU'
+    desc: 'SmolLM2 1.7B, 2 to 6 bit (~1 GB at the Q4_K_M it leads with, ~560 MB at the bottom of the range) — the biggest model here; wants a GPU, or a patient CPU'
   },
   {
     id: 'qwen2.5-0.5b',
     label: 'Qwen 2.5 0.5B',
-    badge: 'Browser · ~250 MB',
+    badge: 'Browser · ~320 MB',
     kind: 'browser',
     hfId: 'onnx-community/Qwen2.5-0.5B-Instruct',
     hfIdAlts: ['onnx-community/Qwen2.5-0.5B-Instruct-ONNX'],
     dtype: 'q4',
     hfGgufRepo: 'Qwen/Qwen2.5-0.5B-Instruct-GGUF',
-    hfGgufQuant: 'Q3_K_L',
+    hfGgufQuant: 'Q4_K_M',
+    ggufQuants: ['Q4_K_M', 'Q5_K_M', 'Q6_K'],
     ggufFile: 'qwen2.5-0.5b.gguf',
-    ggufMB: 250,
-    desc: 'Nimble multilingual model in-browser (~250 MB in Q3_K_L / q4)'
+    // Arithmetic: the 250 MB this entry carried at Q3_K_L, scaled to 4.5 bits.
+    ggufMB: 320,
+    desc: 'Nimble multilingual model in-browser (~320 MB at 4-bit, up to 6-bit)'
   },
   {
     id: 'qwen3.5-0.8b',
@@ -137,9 +177,48 @@ export const TEXT_MODELS = [
     dtype: { embed_tokens: 'q4', decoder_model_merged: 'q4' },
     hfGgufRepo: 'unsloth/Qwen3.5-0.8B-GGUF',
     hfGgufQuant: 'Q3_K_L',
+    ggufQuants: ['Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
     ggufFile: 'qwen3.5-0.8b.gguf',
     ggufMB: 400,
     desc: 'Qwen 3.5 0.8B multimodal & chat in-browser (~400 MB Q3_K_L / q4)'
+  },
+  {
+    id: 'falcon3-1b',
+    label: 'Falcon 3 1B',
+    badge: 'Browser · from ~460 MB',
+    kind: 'browser',
+    // No hfId on purpose. Every other browser model here names an ONNX repo as
+    // well as a GGUF one, and an ONNX repo nobody can check from this sandbox is
+    // a guess that costs a failed attempt on the device — which on a tablet is ten
+    // seconds of spinner before the runtime that would have worked gets its turn.
+    // So Falcon 3 runs through WLlama only, and `pushBrowser` skipping a model
+    // with no hfId is the path this table has always had for exactly that.
+    hfGgufRepo: 'tiiuae/Falcon3-1B-Instruct-GGUF',
+    hfGgufQuant: 'Q3_K_L',
+    ggufQuants: ['Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
+    ggufFile: 'falcon3-1b.gguf',
+    // Arithmetic: 1B parameters at ~3.5 bits a weight, plus a 65k-vocabulary
+    // embedding. Unverified like every other size in this table — the repo tree
+    // prices the real file before anything is downloaded, and if the repo path
+    // itself is wrong the source report says "not found" and names what it tried.
+    ggufMB: 460,
+    desc: 'Falcon 3 1B in-browser, 3–6 bit (~460 MB at Q3_K_L) — GGUF only, no ONNX route'
+  },
+  {
+    id: 'granite-code-0.5b',
+    label: 'Granite Code 0.5B',
+    badge: 'Code diagnostics · arriving later',
+    kind: 'browser',
+    // Reserved, not shipped. CodeHub's AI Error Helper is pinned to this model
+    // and to nothing else, and IBM's Granite weights are not in the kitchen yet.
+    // There is deliberately no repo here to guess at: an invented hfGgufRepo
+    // would fail as a 404 from Hugging Face and read as a broken model rather
+    // than a model that has not arrived. `arrivesIn` is what the helper reads to
+    // say so plainly. When Granite lands, fill in hfGgufRepo / hfGgufQuant /
+    // ggufQuants / ggufMB, delete arrivesIn, and nothing else has to change.
+    arrivesIn: 'a later update',
+    ggufFile: 'granite-code-0.5b.gguf',
+    desc: 'Reserved for CodeHub code diagnostics — Granite models arrive in a later update'
   },
   {
     id: 'llama3.2-1b',
@@ -180,15 +259,55 @@ export const TEXT_MODELS = [
 export const OFFERED_TEXT_MODEL_IDS = ['smollm2-135m', 'qwen3-0.6b', 'qwen3.5-0.8b', 'qwen2.5-1.5b', 'smollm2-1.7b'];
 
 /**
+ * What the backup kitchen offers, and only the backup kitchen. This is the whole
+ * content of 1.2 TVAR 1: eight models instead of five, each one limited to the
+ * quants it may be fetched at, so a test build can find out what a tighter list
+ * does to reliability before anybody asks the public kitchen to live with it.
+ *
+ * Both lists are ids into the same table, and the table keeps every model it has
+ * ever had — deleting entries breaks CI, the source reports, and the stored
+ * preference of any visitor who chose one.
+ */
+export const TVAR_OFFERED_TEXT_MODEL_IDS = [
+  'smollm2-135m', 'smollm2-360m', 'qwen2.5-0.5b', 'qwen3-0.6b',
+  'qwen3.5-0.8b', 'falcon3-1b', 'qwen2.5-1.5b', 'smollm2-1.7b'
+];
+
+/** The menu this page renders: the test build's in the backup kitchen, the release's everywhere else. */
+export function offeredModelIds() {
+  return isBackupBuild() ? TVAR_OFFERED_TEXT_MODEL_IDS : OFFERED_TEXT_MODEL_IDS;
+}
+
+/**
+ * Both menus as one list, for anything that has to serve either build — the
+ * download script above all, which runs in Node where there is no page to ask.
+ * A deploy that pre-cached only the public menu would leave the backup kitchen
+ * fetching from Hugging Face on the one device it exists to be tested on.
+ */
+export const ALL_OFFERED_TEXT_MODEL_IDS = [
+  ...OFFERED_TEXT_MODEL_IDS,
+  ...TVAR_OFFERED_TEXT_MODEL_IDS.filter(id => !OFFERED_TEXT_MODEL_IDS.includes(id))
+];
+
+/**
  * The offered models, in menu order. An id here that is not in the table is a
  * typo, and a typo must not silently shorten the menu, so this throws instead of
  * filtering it out.
  */
 export function offeredTextModels(models = TEXT_MODELS) {
+  return modelsFromIds(offeredModelIds(), models);
+}
+
+/** Every model either kitchen offers: what `scripts/fetch-model.mjs` prices and downloads. */
+export function allOfferedTextModels(models = TEXT_MODELS) {
+  return modelsFromIds(ALL_OFFERED_TEXT_MODEL_IDS, models);
+}
+
+function modelsFromIds(ids, models) {
   const byId = new Map(models.map(m => [m.id, m]));
-  return OFFERED_TEXT_MODEL_IDS.map(id => {
+  return ids.map(id => {
     const m = byId.get(id);
-    if (!m) throw new Error(`OFFERED_TEXT_MODEL_IDS names "${id}", which is not in TEXT_MODELS`);
+    if (!m) throw new Error(`the model menu names "${id}", which is not in TEXT_MODELS`);
     return m;
   });
 }
@@ -1906,6 +2025,41 @@ export const CTX_MARGIN_TOKENS = 24;
 export const WLAMA_CTX_CPU = 1024;
 export const WLAMA_CTX_GPU = 2048;
 export const ONNX_PROMPT_BUDGET = 1536;
+
+/** Below this much usable wasm heap, a device gets shorter prompts and answers. */
+const TIGHT_WASM_BUDGET_BYTES = 1600 * 1024 ** 2;
+
+/**
+ * How much this device should be asked to read, and how much to say.
+ *
+ * The runtimes already fit a conversation into their own context window, so
+ * nothing here can overrun anything — this is about wall clock. On a CPU-only
+ * tab almost all of the time goes into *generating* tokens, not reading them: a
+ * reply capped at 320 tokens instead of 560 is a reply that arrives roughly 40%
+ * sooner, and on a tablet that is the difference between an answer and a
+ * spinner. Prompt characters are capped for the same reason in the other
+ * direction — a 3,200-character paste costs prompt processing before the first
+ * token, and the runtime was going to clip it anyway.
+ *
+ * Deliberately derived from the diagnostics rather than from the user agent: the
+ * same browser on a phone and on a desktop gets different numbers, and a device
+ * that lies about its memory is still budgeted by what the wasm heap can hold.
+ */
+export function aiSpeedProfile(diag = null) {
+  const budget = Number(diag?.wasmBudgetBytes) || 0;
+  const memGB = Number(diag?.deviceMemoryGB) || 0;
+  const tight = Boolean(diag) && (
+    diag.memoryTightPlatform === true ||
+    (budget > 0 && budget < TIGHT_WASM_BUDGET_BYTES) ||
+    (memGB > 0 && memGB < 4)
+  );
+  return {
+    tight,
+    maxTokens: tight ? 320 : 520,
+    promptChars: tight ? 1600 : 3200,
+    onnxPromptBudget: tight ? 1024 : ONNX_PROMPT_BUDGET
+  };
+}
 export const MAX_HISTORY_MESSAGES = 8;
 
 /**
@@ -2413,7 +2567,7 @@ function shardTotalBytes(candidates, firstPath) {
  * during load. When nothing fits, the smallest file is used anyway and the
  * caller is told the size.
  */
-async function resolveBestHFGguf(repo, preferredQuants, signal, budgetBytes = 0) {
+async function resolveBestHFGguf(repo, preferredQuants, signal, budgetBytes = 0, { strict = false } = {}) {
   const files = await fetchHfTree(repo, signal);
   const candidates = ggufCandidates(files);
   if (!candidates.length) throw new Error(`No GGUF files found in ${repo}`);
@@ -2450,7 +2604,16 @@ async function resolveBestHFGguf(repo, preferredQuants, signal, budgetBytes = 0)
   // load path only accepts a cached quant that appears in the preset's list, and
   // 'smallest' never does, so every load went back to the network for nothing.
   const fallback = choose(candidates);
-  return { ...fallback, quant: quantFromPath(fallback.path) || 'smallest' };
+  const taken = quantFromPath(fallback.path) || 'smallest';
+  // A model with a range of its own is a limit and not a preference. Serving the
+  // smallest file in the repo when none of the range is published would serve a
+  // quantisation the table says may not be used, and nothing on the device would
+  // say so — the model would simply be worse than the one that was picked. Failing
+  // here names the repo, the range that was wanted and the file that was there.
+  if (strict) {
+    throw new Error(`${repo} publishes none of the quants ${preferredQuants.join(', ')} — the smallest file there is ${taken}, which the range excludes`);
+  }
+  return { ...fallback, quant: taken };
 }
 
 /** The quantization token in a GGUF filename, when it uses a name we know. */
@@ -2508,8 +2671,33 @@ function writePrecacheIndex(map) {
   writeCachePref(KEY_PRECACHE_INDEX, map);
 }
 
-function quantListFor(cfg) {
+/**
+ * The order a model's own range is tried in, or null if it has no range.
+ *
+ * Its lead quant first, then the rest of what is allowed. A list of five
+ * acceptable quantisations is not a request for the worst of them, so ordering
+ * it lead-first means widening a range can never downgrade the model a visitor
+ * actually gets — while every allowed quant stays reachable for a repository
+ * that does not publish the lead. Pure on purpose: `scripts/fetch-model.mjs`
+ * runs it in Node, where there is no stored preset to read.
+ */
+export function quantRangeOrder(cfg) {
+  if (!cfg?.ggufQuants?.length) return null;
+  const lead = cfg.hfGgufQuant;
+  return lead && cfg.ggufQuants.includes(lead)
+    ? [lead, ...cfg.ggufQuants.filter(q => q !== lead)]
+    : cfg.ggufQuants.slice();
+}
+
+export function quantListFor(cfg) {
   const preset = QUANT_PRESETS.find(q => q.id === getSelectedQuantPreset()) || QUANT_PRESETS[0];
+  // 1.2 TVAR 1 says the 0.6B may be fetched at 4, 5 or 6 bit and no lower, and
+  // appending the preset's Q3_K_L chain behind that would quietly break the rule
+  // the first time a repo turned out not to publish Q4_K_M. A model with no range
+  // of its own keeps the old behaviour: its declared quant first, preset behind.
+  // A model's own range wins outright, and the preset does not get to widen it.
+  const own = quantRangeOrder(cfg);
+  if (own) return own;
   return cfg?.hfGgufQuant && !preset.ggufQuants.includes(cfg.hfGgufQuant)
     ? [...preset.ggufQuants, cfg.hfGgufQuant]
     : preset.ggufQuants;
@@ -2535,7 +2723,8 @@ export async function precacheTextModel(modelId, { onProgress, signal } = {}) {
     loaded: 0,
     total: 0
   });
-  const picked = await resolveBestHFGguf(cfg.hfGgufRepo, quantListFor(cfg), signal, budget);
+  const picked = await resolveBestHFGguf(cfg.hfGgufRepo, quantListFor(cfg), signal, budget,
+    { strict: Boolean(cfg.ggufQuants?.length) });
   const url = ggufUrlFor(cfg.hfGgufRepo, picked.file);
   const mm = await getModelManager();
 
@@ -2885,6 +3074,7 @@ export async function streamWllamaChat({
   ggufFile = null,
   hfRepo = null,
   hfQuant = null,
+  ggufQuants = null,
   messages,
   systemPrompt,
   maxTokens = 380,
@@ -2897,7 +3087,8 @@ export async function streamWllamaChat({
   const { Wllama } = await import('@wllama/wllama');
   const diag = await detectDeviceDiagnostics().catch(() => null);
   const preset = QUANT_PRESETS.find(q => q.id === getSelectedQuantPreset()) || QUANT_PRESETS[0];
-  const quantList = hfQuant && !preset.ggufQuants.includes(hfQuant)
+  const quantList = ggufQuants?.length ? ggufQuants.slice()
+    : hfQuant && !preset.ggufQuants.includes(hfQuant)
     ? [...preset.ggufQuants, hfQuant]
     : preset.ggufQuants;
 
@@ -3061,7 +3252,8 @@ export async function streamWllamaChat({
 
     // 3) HuggingFace → downloaded straight into on-device storage.
     if (hfRepo) {
-      const picked = await resolveBestHFGguf(hfRepo, quantList, signal, budget);
+      const picked = await resolveBestHFGguf(hfRepo, quantList, signal, budget,
+        { strict: Boolean(ggufQuants?.length) });
       quantLabel = picked.quant;
       if (picked.overBudget) {
         onStatus?.({

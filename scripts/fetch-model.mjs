@@ -31,7 +31,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TEXT_MODELS, QUANT_PRESETS, offeredTextModels } from '../waffle-browser-ai.js';
+import { TEXT_MODELS, QUANT_PRESETS, allOfferedTextModels, quantRangeOrder } from '../waffle-browser-ai.js';
 
 const HF_BASE = 'https://huggingface.co';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -164,10 +164,14 @@ async function resolvePick(modelId) {
   const preset = QUANT_PRESETS.find(q => q.id === presetId) || QUANT_PRESETS[0];
   // The table's own quant leads: it is a decision about that model (the 135M is
   // wanted at F16 whatever the preset says), and the preset's chain is the
-  // fallback for a repo that does not publish it.
-  const preferred = cfg.hfGgufQuant
-    ? [cfg.hfGgufQuant, ...preset.ggufQuants.filter(q => q !== cfg.hfGgufQuant)]
-    : preset.ggufQuants;
+  // fallback for a repo that does not publish it. A model that carries a range of
+  // its own (`ggufQuants`) is stricter than that: the range is the whole decision,
+  // the preset gets no say, and a repo that publishes none of it fails out loud
+  // instead of being quietly served something the range excluded.
+  const preferred = quantRangeOrder(cfg)
+    || (cfg.hfGgufQuant
+      ? [cfg.hfGgufQuant, ...preset.ggufQuants.filter(q => q !== cfg.hfGgufQuant)]
+      : preset.ggufQuants);
 
   if (fs.existsSync(dest) && !force) {
     return { modelId, cfg, dest, preset, preferred, present: true, size: fs.statSync(dest).size, file: null, quant: null };
@@ -175,6 +179,12 @@ async function resolvePick(modelId) {
   const files = await fetchTree(cfg.hfGgufRepo);
   const { file, quant } = pickQuantFile(files, preferred);
   if (!file) throw new Error(`no usable single-file GGUF in ${cfg.hfGgufRepo}`);
+  // A model with a range of its own may not be served outside it. pickQuantFile
+  // degrades to the smallest file in the repo when nothing matches, which is the
+  // right behaviour for a preference and the wrong one for a limit.
+  if (cfg.ggufQuants?.length && !cfg.ggufQuants.includes(quant)) {
+    throw new Error(`${cfg.hfGgufRepo} publishes none of ${cfg.id}'s allowed quants (${cfg.ggufQuants.join(', ')}); the smallest file there is ${quant}`);
+  }
   return { modelId, cfg, dest, preset, preferred, present: false, size: file.size || 0, file, quant };
 }
 
@@ -218,7 +228,7 @@ async function downloadPick(pick) {
 export async function main({ budgetBytes = maxBytes, ids = null } = {}) {
   const wanted = ids
     || (allSmall
-      ? selectSmallModels(offeredTextModels(TEXT_MODELS))
+      ? selectSmallModels(allOfferedTextModels(TEXT_MODELS))
       : (positional.length ? positional : [DEFAULT_MODEL]));
 
   if (!wanted.length) {

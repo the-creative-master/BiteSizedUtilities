@@ -19,13 +19,24 @@ import { isBackupBuild } from './build-mode.js';
  * visitors on GitHub Pages never see repo files, and the release notes belong
  * where the kitchen is.
  */
-export const APP_VERSION = '1.2';
+export const APP_VERSION = '1.2.1';
 
 /** Test versions built after 1.2 shipped. Reset to 0 on every public release. */
-export const TVAR = 0;
+export const TVAR = 1;
 
-/** `1.1.1 TVAR 0` — the extended label, used only while a test version is open. */
-export const APP_VERSION_EXTENDED = `${APP_VERSION} TVAR ${TVAR}`;
+/**
+ * The release cycle the open test build belongs to.
+ *
+ * Its own constant rather than APP_VERSION, because the two are not the same
+ * string any more: 1.2.1 is what the public kitchen reports, while the backup
+ * kitchen is still testing on top of 1.2. Deriving the extended label from
+ * APP_VERSION would have announced "1.2.1 TVAR 1" — a build that has never
+ * existed — and renumbered the entry below it that documents the one that has.
+ */
+export const TVAR_CYCLE = '1.2';
+
+/** `1.2 TVAR 1` — the extended label, used only while a test version is open. */
+export const APP_VERSION_EXTENDED = `${TVAR_CYCLE} TVAR ${TVAR}`;
 
 /** What the footer of the changelog should call this build. */
 export function appVersionLabel() {
@@ -39,6 +50,51 @@ export function appVersionLabel() {
  * what is known to be rough — that is the whole point of writing them down.
  */
 export const TVAR_LOG = [
+  {
+    version: '1.2 TVAR 1',
+    date: 'November 22, 2026',
+    title: 'Eight models, tighter quants, and a door that is not a gesture',
+    tvar: true,
+    groups: [
+      {
+        label: '\u{1F9EA} What this build is for',
+        items: [
+          'This is the release plus a tighter model menu and a new way in, and nothing else. The public kitchen at 1.2.1 still offers five models; the eight below are here so reliability can be compared across a wider set before anybody is asked to live with it.',
+          'Everything in here is a decision that can be reversed by editing one list. If a model turns out to be a dead end on a real device, it comes off the list and the table keeps the entry.'
+        ]
+      },
+      {
+        label: '\u{1F916} The tighter model set',
+        items: [
+          'Eight, each one limited to the quantisations it may be fetched at: SmolLM2 135M and SmolLM2 360M at full 16-bit and nothing less; Qwen 2.5 0.5B and Qwen 3 0.6B at 4, 5 or 6 bit; Qwen 3.5 0.8B, Falcon 3 1B and Qwen 2.5 1.5B at 3, 4, 5 or 6 bit; SmolLM2 1.7B anywhere from 2 bit to 6, because the first question about the biggest model here is whether it fits at all.',
+          'A range is what may be used, not what is preferred: each model still leads with the quantisation that has actually been tested, so widening a list cannot quietly downgrade the model somebody gets. SmolLM2 1.7B still asks for Q4_K_M first and may fall as low as Q2_K; the two Qwen models went the other way, because 3-bit is outside the range they were given and 4-bit is better than what they were doing.',
+          'The range is a limit, not a preference order with a fallback behind it. A repository that publishes none of the allowed quants fails out loud instead of being served something the range excluded.',
+          'Falcon 3 1B is new, and GGUF-only: no ONNX repository for it is being claimed here, because a guessed one costs a failed attempt on the device before the runtime that would have worked gets its turn.',
+          'SmolLM2 360M went from a 170 MB 3-bit file to a 720 MB 16-bit one. That is over the ceiling for shipping weights inside the site, so it always downloads from Hugging Face on first use.',
+          'Every size in the table except two is arithmetic from parameter counts, not a measurement \u2014 the sandbox these were written in cannot reach Hugging Face. The repository tree prices the real file before anything downloads, and the source report on the device shows the measured number.',
+          'Granite Code 0.5B is in the table and on no menu. It is reserved for CodeHub\u2019s error diagnostics, it has no repository entry yet, and it is the model those diagnostics wait for.'
+        ]
+      },
+      {
+        label: '\u{1F6AA} The door',
+        items: [
+          'The tap gesture is gone. A fast run of taps on Sir Waffle was a door anybody could be told about and anybody could hit by accident while bouncing the waffle wall, and it navigated to an address that sat in the bundle in plain text.',
+          'This build is not on the host under its own name any more. It ships as DONTASKMEWHATTHATIS.txt \u2014 a few kilobytes of what looks like obfuscated build junk \u2014 and the built page inside it is ciphertext. The address that used to open it returns a 404.',
+          'The way in is a string typed at Waffle AI. That string is also the key the file was encoded with, so the file is useless without it and the string appears nowhere in the source or the bundle as text.',
+          'Be clear about what that buys. A static site has nowhere to keep a secret: the key ships next to the ciphertext, so this is obfuscation and not encryption, and somebody determined can recover the string by running the bundle\u2019s own decoder. What it does stop is grepping, viewing source, guessing the address, and stumbling in.'
+        ]
+      },
+      {
+        label: '\u{26A0}\u{FE0F} Known rough edges',
+        items: [
+          'After the door opens, the address bar says the page it always said \u2014 and reloading that address gets a 404, because there is no file there. Type the string again.',
+          'The door hands the decoded page to the next load rather than mounting it in place, because both kitchens are built from the same module and a document evaluates a module URL once. In a browser that refuses sessionStorage it falls back to mounting here, which re-runs the page with this one\u2019s document-level listeners still attached \u2014 so a wall bounce can fire twice. That path is the exception, not the plan.',
+          'The repository path for Falcon 3 1B has not been verified against Hugging Face. If it is wrong, the source report says "not found" and names the repository it tried.',
+          'The self-hosting budget is unchanged, so a deploy still ships only SmolLM2 135M from its own origin. Everything else on this menu downloads on first use.'
+        ]
+      }
+    ]
+  },
   {
     // The newest entry always spells the counter out literally, and a test
     // pins it to APP_VERSION_EXTENDED, so history cannot quietly renumber
@@ -203,6 +259,38 @@ export const TVAR_LOG = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: '1.2.1',
+    date: 'November 22, 2026',
+    title: 'Quicker answers, and a code helper that waits for the right model',
+    groups: [
+      {
+        label: '\u{26A1} Quicker answers',
+        items: [
+          'Every writing tool in English & Languages used to ask a model for the same 560 tokens \u2014 about right for an essay draft, and about four times too much for an idiom. Each one now asks for the length of a good answer to its own question: 220 for pronunciation, 260 for an idiom, 400 for a summary, 520 for an essay. On a device with a small memory budget every one of those is capped again. A tablet generates a few tokens a second, so this is the difference between an answer and a spinner.',
+          'Those tools also stopped appending "(Speak in English)" to every request when the kitchen is already set to English, and stopped pasting more of your document than the model was ever going to read. Both were being counted in the wait.',
+          'The banner above them said "Powered by Qwen 2.5 1.5B" whatever you had chosen in Settings. It names your actual choice now.',
+          'Qwen 3 0.6B is marked as the most reliable model here, because testing on real devices said so rather than table order. It is now fetched at 4-bit or better and never below: roughly 85 MB more to download, and it stops dropping instructions. Qwen 2.5 0.5B moved up with it, for the same reason.',
+          'A model can be limited to a range of quantisations instead of one file with a preset chain behind it. The range is what may be used; the model still leads with the quantisation that has been tested, so a wider range cannot downgrade what is served.'
+        ]
+      },
+      {
+        label: '\u{1F50D} CodeHub\u2019s AI Error Helper',
+        items: [
+          'The helper that explains a runtime error and offers a fix runs on Granite Code 0.5B and on nothing else. It used to borrow Qwen 2.5 Coder 1.5B, the largest model in the kitchen, which on a CPU-only tablet meant a download of about 700 MB before it could say anything at all.',
+          'Granite models will come in a later update. Until then the helper says exactly that, and stops \u2014 it does not fail with an error from a repository nobody has, and it does not quietly substitute a different model, because an answer from another model looks identical to an answer from this one and the testing that chose the pin would mean nothing.'
+        ]
+      },
+      {
+        label: '\u{1F9F0} Underneath',
+        items: [
+          'A model can be limited to a range of quantisations instead of one file with a preset chain behind it, and the range wins outright: no preset can widen it back.',
+          'The device question is asked once per build rather than once per release number, so this kitchen and any test build made from it each ask you once.',
+          'The backup kitchen is harder to get into than it was, on purpose. It is still there, and it is still where new behaviour is tried first.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.2',
     date: 'November 21, 2026',

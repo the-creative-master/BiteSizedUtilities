@@ -1,8 +1,27 @@
 /** Cozy 2.5D Developer Utilities — zero default HTML select/checkbox/range/color inputs */
 import { gEl, gameBtn, gameTabs, gameToggle, gameSlider, gameColorPicker, gameField, statBox, copyToClipboard } from './ui-kit.js';
 import { playPop, playSparkle } from './sfx.js';
-import { streamWaffleChat, formatWaffleMarkdown, isWaffleAiLocked, waffleAiLockedNoticeHTML } from './waffle-ai.js';
+import { streamWaffleChat, formatWaffleMarkdown, isWaffleAiLocked, waffleAiLockedNoticeHTML, waffleModelPendingNoticeHTML } from './waffle-ai.js';
+import { detectDeviceDiagnostics, aiSpeedProfile, clipToCharBudget } from './waffle-browser-ai.js';
 import { getAppLanguage } from './i18n.js';
+
+/**
+ * The one model this helper is allowed to use, and the only thing that model is
+ * allowed to be used for.
+ *
+ * Code diagnostics used to run on Qwen 2.5 Coder 1.5B, the largest model in the
+ * kitchen, which on a CPU-only tablet meant a ~700 MB download and a wait long
+ * enough to look broken. Granite Code 0.5B is what it runs on from 1.2.1: small
+ * enough to load on the devices that actually hit a syntax error, and trained for
+ * this rather than borrowed for it.
+ *
+ * The weights are not here yet — the entry in TEXT_MODELS carries `arrivesIn`
+ * instead of a repo — so the helper says that plainly and stops. It does not
+ * substitute another model, because "only Granite" is the whole point of pinning
+ * it: an answer from a different model looks exactly like an answer from this
+ * one, and the testing that decided the pin would mean nothing.
+ */
+const CODE_DIAGNOSTIC_MODEL_ID = 'granite-code-0.5b';
 
 const runtimeBase = () => new URL('runtimes/', document.baseURI);
 const mounted = new WeakMap();
@@ -260,17 +279,21 @@ export function mountCode(id, root) {
 
       const appLang = getAppLanguage();
       const langHint = appLang && appLang !== 'English' ? `\n\n(Speak in ${appLang})` : '';
+      // A tablet debugging a 3,200-character paste spends most of its time
+      // reading it, and the runtime clips it afterwards anyway.
+      const diag = await detectDeviceDiagnostics().catch(() => null);
+      const profile = aiSpeedProfile(diag);
       const promptText = errorMsg
-        ? `Language: ${l.name}\nError:\n${errorMsg.slice(0, 1200)}\n\nCode:\n\`\`\`${l.id}\n${source.slice(0, 3200)}\n\`\`\`\n\nExplain the root cause briefly in 2-3 sentences and provide the corrected ${l.id === 'web' ? 'JavaScript' : l.name} code in a single fenced code block.${langHint}`
-        : `Language: ${l.name}\nReview this code for bugs or syntax issues. Explain concisely and provide an improved/fixed version in a single fenced code block.\n\`\`\`${l.id}\n${source.slice(0, 3200)}\n\`\`\`${langHint}`;
+        ? `Language: ${l.name}\nError:\n${errorMsg.slice(0, 1200)}\n\nCode:\n\`\`\`${l.id}\n${clipToCharBudget(source, profile.promptChars)}\n\`\`\`\n\nExplain the root cause briefly in 2-3 sentences and provide the corrected ${l.id === 'web' ? 'JavaScript' : l.name} code in a single fenced code block.${langHint}`
+        : `Language: ${l.name}\nReview this code for bugs or syntax issues. Explain concisely and provide an improved/fixed version in a single fenced code block.\n\`\`\`${l.id}\n${clipToCharBudget(source, profile.promptChars)}\n\`\`\`${langHint}`;
 
       try {
         const reply = await streamWaffleChat({
-          modelId: 'qwen2.5-coder-1.5b',
+          modelId: CODE_DIAGNOSTIC_MODEL_ID,
           systemPrompt: 'You are an expert, concise code debugger inside CodeHub. Identify the exact bug and give a clean working fix in one fenced code block. Avoid fluff.',
           messages: [{ role: 'user', content: promptText }],
           temperature: 0.25,
-          maxTokens: 520,
+          maxTokens: profile.maxTokens,
           signal: ac.signal,
           onToken(_, acc) {
             if (!disposed && aiAbort === ac) {
@@ -288,7 +311,14 @@ export function mountCode(id, root) {
           playSparkle();
         }
       } catch (err) {
-        if (err.name !== 'AbortError' && !disposed && aiAbort === ac) {
+        if (err.name === 'WaffleModelPending' && !disposed && aiAbort === ac) {
+          // The pinned model has not arrived. Say so and offer nothing else:
+          // "only Granite" is the entire point of the pin, and an answer from a
+          // different model looks exactly like an answer from this one, which
+          // would make the testing that chose it meaningless.
+          aiBody.innerHTML = waffleModelPendingNoticeHTML({ label: err.label, arrivesIn: err.arrivesIn });
+          applyFixBtn.hidden = true;
+        } else if (err.name !== 'AbortError' && !disposed && aiAbort === ac) {
           aiBody.innerHTML = `<p class="waffle-md-p">AI diagnostics unavailable: ${esc(err.message || err)}</p>`;
         }
       } finally {

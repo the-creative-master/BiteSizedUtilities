@@ -185,8 +185,14 @@ test('the on-device cache is no longer defeated by the "smallest" sentinel', () 
   const src = fs.readFileSync('waffle-browser-ai.js', 'utf8');
   // The resolver must name the quant it actually took when no preset quant matched.
   assert.match(src, /function quantFromPath\(/, 'a real quant is derived from the filename');
-  assert.match(src, /quant: quantFromPath\(fallback\.path\) \|\| 'smallest'/,
+  assert.match(src, /const taken = quantFromPath\(fallback\.path\) \|\| 'smallest';/,
     'the sentinel is now a last resort, not the default');
+  assert.match(src, /return \{ \.\.\.fallback, quant: taken \};/, 'and it is what gets cached');
+  // 1.2 TVAR 1 made a range a limit, so the resolver refuses before it can ever
+  // hand back the sentinel for a model that has one.
+  const body = src.slice(src.indexOf('async function resolveBestHFGguf('));
+  assert.ok(body.indexOf('if (strict)') < body.indexOf('return { ...fallback, quant: taken }'),
+    'a model with its own range is refused, not served an unnamed quant');
   // Cache entries record the preset they were fetched under.
   assert.match(src, /function rememberPrecachedGguf\(repo, \{ url, quant, sizeBytes, preset \}\)/);
   assert.match(src, /preset: preset \|\| null/, 'the preset is persisted');

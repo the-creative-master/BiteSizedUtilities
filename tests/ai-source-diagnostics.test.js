@@ -465,7 +465,13 @@ test('facts are cached per model so one failure does not become six API calls', 
 
 test('every model in the table can be diagnosed without producing junk', async () => {
   assert.ok(TEXT_MODELS.length >= 9, 'the whole model table is covered');
-  for (const model of TEXT_MODELS) {
+  // One entry has no source to check: Granite Code 0.5B is reserved for CodeHub's
+  // diagnostics and its weights have not arrived, so it carries `arrivesIn`
+  // instead of a repo. Diagnosing it would mean inventing a URL to fail against.
+  const reserved = TEXT_MODELS.filter(m => !m.hfGgufRepo);
+  assert.deepEqual(reserved.map(m => m.id), ['granite-code-0.5b'], 'exactly one entry is waiting for weights');
+  assert.match(reserved[0].arrivesIn, /later update/, 'and it says when');
+  for (const model of TEXT_MODELS.filter(m => m.hfGgufRepo)) {
     clearModelSourceFactsCache();
     const facts = await fetchModelSourceFacts(model, {
       fetchImpl: fakeFetch([

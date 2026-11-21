@@ -90,6 +90,24 @@ export function planBudget(picks, budgetBytes = Infinity) {
   return { take, skip, used, budgetBytes };
 }
 
+/**
+ * Which models `--all-small` means, and in what order to fetch them.
+ *
+ * It used to filter on `m.params`, a field no entry in TEXT_MODELS actually has,
+ * so `Number(undefined || 0) < 1` was true for all nine — the 882 MB ones
+ * included — and the budget then decided everything by table order. Selection
+ * now uses `ggufMB`, the measured file size the table already carries, and sorts
+ * smallest first, so a tight budget fills with models that fit instead of
+ * stopping at the first one that does not.
+ */
+export function selectSmallModels(models, { maxModelMB = 400 } = {}) {
+  return models
+    .filter(m => m.hfGgufRepo && m.ggufFile)
+    .filter(m => Number(m.ggufMB) > 0 && Number(m.ggufMB) <= maxModelMB)
+    .sort((a, b) => Number(a.ggufMB) - Number(b.ggufMB))
+    .map(m => m.id);
+}
+
 async function fetchTree(repo) {
   const res = await fetch(`${HF_BASE}/api/models/${repo}/tree/main?recursive=true`, {
     headers: { Accept: 'application/json' }
@@ -193,8 +211,14 @@ async function downloadPick(pick) {
 export async function main({ budgetBytes = maxBytes, ids = null } = {}) {
   const wanted = ids
     || (allSmall
-      ? TEXT_MODELS.filter(m => Number(m.params || 0) < 1).map(m => m.id)
+      ? selectSmallModels(TEXT_MODELS)
       : (positional.length ? positional : [DEFAULT_MODEL]));
+
+  if (!wanted.length) {
+    console.error('Nothing to fetch: no model in TEXT_MODELS qualifies. Check ggufMB and hfGgufRepo.');
+    process.exitCode = 1;
+    return { ok: 0, failed: [], plan: { take: [], skip: [], used: 0 } };
+  }
 
   const budgetNote = Number.isFinite(budgetBytes) ? `, ${fmtMB(budgetBytes)} budget` : '';
   console.log(`\nWaffle AI model fetch → .cache/waffle-ai/  (${wanted.length} model${wanted.length === 1 ? '' : 's'}${budgetNote})\n`);
@@ -227,6 +251,14 @@ export async function main({ budgetBytes = maxBytes, ids = null } = {}) {
     }
   }
 
+  if (!ok && !plan.take.some(pick => pick.present)) {
+    // Say it plainly. A deploy that silently ships no weights is
+    // indistinguishable from one that ships them, and every visitor then
+    // downloads from Hugging Face again — the failure this script exists to
+    // prevent, hidden behind a green tick.
+    console.error('\nNothing was fetched. This origin will serve no model of its own,');
+    console.error('so every visitor downloads from Hugging Face instead.');
+  }
   console.log(`\nDone: ${ok}/${plan.take.length} present${plan.skip.length ? `, ${plan.skip.length} left to Hugging Face by budget` : ''} (${fmtMB(plan.used)} self-hosted).`);
   if (failed.length) {
     console.log('\nFailed:');

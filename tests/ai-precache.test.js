@@ -18,7 +18,7 @@ import {
   stopAutoPrecache,
   AUTO_PRECACHE_COOLDOWN_MS
 } from '../waffle-browser-ai.js';
-import { planBudget, pickQuantFile } from '../scripts/fetch-model.mjs';
+import { planBudget, pickQuantFile, selectSmallModels } from '../scripts/fetch-model.mjs';
 
 const MB = 1024 * 1024;
 const HOUR = 60 * 60 * 1000;
@@ -329,6 +329,25 @@ test('a file already on disk still counts against the budget', () => {
   assert.deepEqual(plan.skip.map(p => p.modelId), ['new']);
 });
 
+test('--all-small selects by measured size, smallest first', () => {
+  const sel = selectSmallModels(TEXT_MODELS);
+  assert.ok(sel.includes('smollm2-135m'), 'the default model, which every visitor uses, is in');
+  assert.ok(!sel.includes('qwen2.5-1.5b'), 'and the 882 MB one is not');
+  assert.ok(sel.every(id => TEXT_MODELS.find(m => m.id === id).ggufMB > 0),
+    'selection uses the measured ggufMB, not a field the table does not carry');
+
+  const sizes = sel.map(id => TEXT_MODELS.find(m => m.id === id).ggufMB);
+  assert.deepEqual(sizes, [...sizes].sort((a, b) => a - b), 'smallest first');
+
+  const plan = planBudget(
+    sel.map(id => ({ modelId: id, size: TEXT_MODELS.find(m => m.id === id).ggufMB * MB })),
+    160 * MB
+  );
+  assert.deepEqual(plan.take.map(p => p.modelId), ['smollm2-135m'],
+    'a 160 MB deploy ships one working model rather than nothing that fits');
+  assert.equal(Math.round(plan.used / MB), 93);
+});
+
 test('the quant picker prefers the configured quant and refuses shards', () => {
   const files = [
     { path: 'M-Q3_K_L.gguf', type: 'file', size: 93 },
@@ -369,6 +388,8 @@ test('the Pages deploy pre-caches after the tests, before the build, and cannot 
   assert.match(step, /continue-on-error: true/);
   assert.match(yml, /actions\/cache@v4/, 'the weights are cached between deploys instead of re-downloaded');
   assert.match(yml, /path: \.cache\/waffle-ai/);
+  assert.match(yml, /Report the weights this deploy will serve/,
+    'and the log says whether any weights actually came with it');
 });
 
 test('npm run precache is the same command the deploy runs', () => {

@@ -36,6 +36,11 @@ jobs:
       - name: Pre-cache the models this site can serve
         continue-on-error: true
         run: npm run precache
+      # The step above cannot fail the deploy, so this is the line that says
+      # whether the site is about to carry its own model weights or whether every
+      # visitor will download them from Hugging Face again.
+      - name: Report the weights this deploy will serve
+        run: ls -l .cache/waffle-ai/*.gguf || echo "no self-hosted model weights in this deploy"
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

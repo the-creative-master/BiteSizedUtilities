@@ -2830,35 +2830,64 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   color: var(--ink-soft);
 }
 
-.waffle-os-ask {
+/* The device question is its own window now. Inside the chat dialog it changed
+   the dialog's height, so the AI window was a different shape on every device
+   that had not answered yet. */
+.waffle-os-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  margin: 6px 0 0;
-  padding: 7px 8px;
-  border-radius: 9px;
-  background: #fff8e8;
-  border: 1px solid #e7d3a8;
-  font-size: 11.5px;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(79, 47, 35, 0.42);
 }
 
-.waffle-os-ask[hidden] { display: none; }
+.waffle-os-modal[hidden] { display: none; }
+
+.waffle-os-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(420px, 100%);
+  padding: 16px 16px 14px;
+  border-radius: 16px;
+  background: #fff8e8;
+  border: 3px solid #4f2f23;
+  box-shadow: 0 10px 28px rgba(79, 47, 35, 0.35);
+  font-size: 12.5px;
+}
+
+.waffle-os-card .window-close-x {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
 
 .waffle-os-why { color: var(--ink-soft); }
 
 .waffle-os-choices {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
-  width: 100%;
+  gap: 6px;
 }
 
 .waffle-os-btn {
-  padding: 3px 9px;
-  font-size: 11px;
+  padding: 5px 12px;
+  font-size: 12px;
   border-radius: 999px;
 }
+
+.waffle-os-btn.is-current {
+  background: #ffe58f;
+  border-color: #4f2f23;
+  font-weight: 700;
+}
+
+/* The pill in the header is the door back to that question. */
+.waffle-device-pill { cursor: pointer; }
 
 .waffle-device-note {
   margin: 6px 0 0;

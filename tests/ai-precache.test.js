@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   TEXT_MODELS,
+  offeredTextModels,
   planAutoPrecache,
   probeServedModels,
   autoPrecacheServedModels,
@@ -330,22 +331,38 @@ test('a file already on disk still counts against the budget', () => {
 });
 
 test('--all-small selects by measured size, smallest first', () => {
-  const sel = selectSmallModels(TEXT_MODELS);
+  // The deploy selects from the menu, not the archive: the table keeps models
+  // 1.2 stopped offering, and pre-caching weights nobody can pick would spend
+  // the Pages budget on them.
+  const script = fs.readFileSync('scripts/fetch-model.mjs', 'utf8');
+  assert.match(script, /selectSmallModels\(offeredTextModels\(TEXT_MODELS\)\)/,
+    'the deploy pre-caches what the menu offers');
+
+  const sel = selectSmallModels(offeredTextModels(TEXT_MODELS));
   assert.ok(sel.includes('smollm2-135m'), 'the default model, which every visitor uses, is in');
   assert.ok(!sel.includes('qwen2.5-1.5b'), 'and the 882 MB one is not');
+  assert.ok(!sel.includes('smollm2-1.7b'), 'nor the ~1 GB one — it is over the per-model ceiling');
+  assert.ok(!sel.includes('smollm2-360m'), 'nor a model the menu no longer offers');
   assert.ok(sel.every(id => TEXT_MODELS.find(m => m.id === id).ggufMB > 0),
     'selection uses the measured ggufMB, not a field the table does not carry');
 
   const sizes = sel.map(id => TEXT_MODELS.find(m => m.id === id).ggufMB);
   assert.deepEqual(sizes, [...sizes].sort((a, b) => a - b), 'smallest first');
 
+  // The budget is read out of the command the deploy runs, so this cannot drift
+  // from it: 1.2 moved the default model to full 16-bit, ~270 MB rather than 93,
+  // and the budget had to move with it or the site would ship no model at all.
+  const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+  const deployMB = Number(/--max-mb=(\d+)/.exec(pkg.scripts.precache)[1]);
+  assert.ok(deployMB >= 270, `the deploy budget can hold the default model (${deployMB} MB)`);
+
   const plan = planBudget(
     sel.map(id => ({ modelId: id, size: TEXT_MODELS.find(m => m.id === id).ggufMB * MB })),
-    160 * MB
+    deployMB * MB
   );
   assert.deepEqual(plan.take.map(p => p.modelId), ['smollm2-135m'],
-    'a 160 MB deploy ships one working model rather than nothing that fits');
-  assert.equal(Math.round(plan.used / MB), 93);
+    'the deploy ships exactly the model every visitor meets first');
+  assert.equal(Math.round(plan.used / MB), 270);
 });
 
 test('the quant picker prefers the configured quant and refuses shards', () => {
@@ -404,9 +421,40 @@ test('the Pages deploy pre-caches after the tests, before the build, and cannot 
 
 test('npm run precache is the same command the deploy runs', () => {
   const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-  assert.equal(pkg.scripts.precache, 'node scripts/fetch-model.mjs --all-small --max-mb=160');
+  assert.equal(pkg.scripts.precache, 'node scripts/fetch-model.mjs --all-small --max-mb=320');
   const script = fs.readFileSync('scripts/fetch-model.mjs', 'utf8');
   assert.match(script, /--max-mb=/, 'the flag the script documents is the one it parses');
   assert.match(script, /export function planBudget/, 'the budget rule is exported so it can be tested without a network');
   assert.ok(!/^main\(\);$/m.test(script), 'importing the script must not start a download');
+});
+
+test('the declared quant leads, so the 135M is fetched at F16 and degrades if a repo has none', () => {
+  // The table's quant is a decision about that model; the preset chain is the
+  // fallback for a repo that does not publish it. It used to be the other way
+  // round, which meant declaring F16 changed nothing at all.
+  const script = fs.readFileSync('scripts/fetch-model.mjs', 'utf8');
+  assert.match(script, /\[cfg\.hfGgufQuant, \.\.\.preset\.ggufQuants\.filter\(q => q !== cfg\.hfGgufQuant\)\]/);
+
+  const tiny = TEXT_MODELS.find(m => m.id === 'smollm2-135m');
+  const f16 = { path: 'SmolLM2-135M-Instruct-F16.gguf', size: 270_000_000, type: 'file' };
+  const q3 = { path: 'SmolLM2-135M-Instruct-Q3_K_L.gguf', size: 93_000_000, type: 'file' };
+  const preferred = [tiny.hfGgufQuant, 'Q3_K_L', 'Q3_K_M'];
+
+  assert.equal(pickQuantFile([q3, f16], preferred).quant, 'F16', 'the lossless file wins when the repo has one');
+  assert.equal(pickQuantFile([q3, f16], preferred).file.path, f16.path, 'and it is the bigger file that gets taken, not the smaller');
+  assert.equal(pickQuantFile([q3], preferred).quant, 'Q3_K_L', 'a repo without F16 degrades instead of failing');
+});
+
+test('a model too big to serve from a static site is left to Hugging Face, out loud', () => {
+  // GitHub Pages has a ~1 GB soft cap and the build already ships ~340 MB, so
+  // there is a per-model ceiling as well as a total budget. It is applied to the
+  // size the repo tree actually reported, not to the table's estimate.
+  const script = fs.readFileSync('scripts/fetch-model.mjs', 'utf8');
+  assert.match(script, /const MAX_MODEL_MB = 400;/);
+  assert.match(script, /pick\.size > MAX_MODEL_BYTES/, 'checked against the measured size');
+  assert.match(script, /per-model ceiling/, 'and the log says why it was skipped');
+  assert.match(script, /maxModelMB = MAX_MODEL_MB/, 'selection and the ceiling are the same number');
+
+  assert.ok(!selectSmallModels(offeredTextModels(TEXT_MODELS)).includes('smollm2-1.7b'),
+    'the 1.7B is over it by design — a visitor who picks it downloads it once, into their own storage');
 });

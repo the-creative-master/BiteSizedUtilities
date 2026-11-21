@@ -413,6 +413,26 @@ const SCOPE = new URL('.', self.location.href).href;
 const BIG_ASSET = /\\.(wasm|gguf|onnx|bin|safetensors|zip|mp4|webm)$/i;
 const MAX_CACHE_BYTES = 8 * 1024 * 1024;
 
+// GitHub Pages cannot send COOP/COEP, so a deployed kitchen has no
+// SharedArrayBuffer and every runtime runs one thread: wllama asks for
+// n_threads = 1 and ONNX Runtime is pinned to numThreads = 1, both because
+// crossOriginIsolated is false. A service worker *can* send them. Re-serving the
+// document with the headers attached means the next navigation boots isolated,
+// which is the only switch those two runtimes are waiting on.
+//
+// credentialless rather than require-corp, on purpose: Chromium isolates and
+// still lets cross-origin subresources load without credentials, so the two
+// vendored games that fetch a display font from Google keep working. A browser
+// that does not understand the value ignores it and stays single-threaded, which
+// is exactly what it does today.
+function isolated(res) {
+  if (!res) return res;
+  const headers = new Headers(res.headers);
+  headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+  headers.set('Cross-Origin-Embedder-Policy', 'credentialless');
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
 function staticHostAnswer() {
   return new Response(
     JSON.stringify({ ok: false, static: true, error: 'No llama.cpp server on this static host — using the in-browser runtimes.' }),
@@ -458,6 +478,7 @@ self.addEventListener('fetch', e => {
 
   if (req.method !== 'GET') return;
   const isBigAsset = BIG_ASSET.test(u.pathname);
+  const isDocument = req.mode === 'navigate';
 
   e.respondWith(
     fetch(req).then(r => {
@@ -468,10 +489,12 @@ self.addEventListener('fetch', e => {
           caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
         }
       }
-      return r;
+      // Cache the plain copy, serve the isolated one: a document answered from
+      // cache offline still needs the headers to boot multithreaded.
+      return isDocument && r.ok ? isolated(r) : r;
     }).catch(() => caches.match(req).then(hit => hit || (
-      req.mode === 'navigate' ? caches.match(SCOPE + 'index.html') : Response.error()
-    )))
+      isDocument ? caches.match(SCOPE + 'index.html') : Response.error()
+    )).then(fallback => (isDocument ? isolated(fallback) : fallback)))
   );
 });
 `;

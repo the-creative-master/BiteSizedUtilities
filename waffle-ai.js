@@ -106,8 +106,19 @@ export const WAFFLE_AI_LOCK_MESSAGE = 'I apologize for the inconvenience but Waf
 import { isBackupBuild } from './build-mode.js';
 export { isBackupBuild };
 
+/**
+ * 1.2 put Waffle AI back in the main kitchen. The pause was never about the
+ * feature being unwanted: it was about the runtimes underneath it claiming
+ * devices they could not run on, and that is the part the diagnostics, the
+ * stall watchdog and the honest failure reports have now fixed.
+ *
+ * The backup kitchen stays, and stays different — same tools, test switches on,
+ * which is where new AI behaviour gets tried before it lands here. Every locked
+ * surface still reads this one function, so a future release can pause the
+ * feature again by changing one line rather than hunting for the places.
+ */
 export function isWaffleAiLocked() {
-  return !isBackupBuild();
+  return false;
 }
 
 /** Thrown by every AI entry point while paused, so callers can tell "locked" apart from "failed". */
@@ -666,36 +677,92 @@ function activeImageCfg() {
   return IMAGE_MODELS.find(m => m.id === id) || IMAGE_MODELS[0];
 }
 
+/** Asked once per tab: a modal that reappears on every open is a nag. */
+const KEY_OS_ASKED = 'waffle-ai-os-asked';
+
+// Set while the question is open because somebody asked for it back from the
+// device pill. Without it the next status update would re-render the question,
+// see an answer already stored, and close the window the visitor just opened.
+let osAskReopened = false;
+
 /**
- * Ask which device this is — backup kitchen only, until it has been answered.
+ * Ask which device this is, in its own window, until it has been answered.
  * Detection fills in the version and the capabilities, but a browser can hide or
  * rewrite its agent, and on HarmonyOS it often does; being told outranks
  * guessing, and the answer is what decides which runtimes get tried.
+ *
+ * It used to be a strip inside the chat dialog, which made the dialog a
+ * different height on every device that had not answered yet — a window that
+ * changes shape while a model is loading. As a modal the chat keeps its shape
+ * and the question sits on top of it.
  */
 function renderOsAsk() {
-  if (!overlayEl || !isBackupBuild()) return;
+  if (!overlayEl) return;
   const box = overlayEl.querySelector('#waffle-ai-os-ask');
   const choices = overlayEl.querySelector('#waffle-ai-os-choices');
   if (!box || !choices) return;
+  if (osAskReopened) return;
   const declared = getDeclaredOS();
-  box.hidden = Boolean(declared);
-  if (declared) return;
+  let asked = false;
+  try { asked = sessionStorage.getItem(KEY_OS_ASKED) === '1'; } catch {}
+  box.hidden = Boolean(declared || asked);
+  if (box.hidden) return;
+
+  const answered = () => {
+    osAskReopened = false;
+    try { sessionStorage.setItem(KEY_OS_ASKED, '1'); } catch {}
+    box.hidden = true;
+    detectDeviceDiagnostics().then(d => { deviceDiag = d; updateStatusBadge(); }).catch(() => {});
+  };
+
   choices.innerHTML = OS_CHOICES.map(c =>
-    `<button type="button" class="gbtn waffle-os-btn" data-os="${c.id}">${esc(c.label)}</button>`
+    `<button type="button" class="gbtn waffle-os-btn${c.id === declared ? ' is-current' : ''}" data-os="${c.id}"${c.id === declared ? ' aria-pressed="true"' : ''}>${esc(c.label)}</button>`
   ).join('') + '<button type="button" class="gbtn waffle-mini-btn" id="waffle-os-skip">Let it detect</button>';
   choices.querySelectorAll('[data-os]').forEach(btn => {
     btn.addEventListener('click', () => {
       playPop?.(620);
       setDeclaredOS(btn.dataset.os);
-      box.hidden = true;
-      detectDeviceDiagnostics().then(d => { deviceDiag = d; updateStatusBadge(); }).catch(() => {});
+      answered();
     });
   });
-  choices.querySelector('#waffle-os-skip')?.addEventListener('click', () => {
-    clearDeclaredOS();
+  // "Let it detect", the ✕ and the backdrop all mean the same thing: go with
+  // what detection found, and stop asking.
+  const detect = () => { playPop?.(420); clearDeclaredOS(); answered(); };
+  choices.querySelector('#waffle-os-skip')?.addEventListener('click', detect);
+  box.querySelector('#waffle-os-close')?.addEventListener('click', detect);
+  box.addEventListener('click', e => { if (e.target === box) detect(); });
+}
+
+/**
+ * The door back to the question: the device pill in the header. Reopening shows
+ * the current answer marked, so "HarmonyOS" can be corrected rather than only
+ * cleared.
+ */
+function reopenOsAsk() {
+  if (!overlayEl) return;
+  const box = overlayEl.querySelector('#waffle-ai-os-ask');
+  const choices = overlayEl.querySelector('#waffle-ai-os-choices');
+  if (!box || !choices) return;
+  osAskReopened = true;
+  try { sessionStorage.removeItem(KEY_OS_ASKED); } catch {}
+  const declared = getDeclaredOS();
+  choices.innerHTML = OS_CHOICES.map(c =>
+    `<button type="button" class="gbtn waffle-os-btn${c.id === declared ? ' is-current' : ''}" data-os="${c.id}"${c.id === declared ? ' aria-pressed="true"' : ''}>${esc(c.label)}</button>`
+  ).join('') + '<button type="button" class="gbtn waffle-mini-btn" id="waffle-os-skip">Let it detect</button>';
+  const answered = () => {
+    osAskReopened = false;
+    try { sessionStorage.setItem(KEY_OS_ASKED, '1'); } catch {}
     box.hidden = true;
     detectDeviceDiagnostics().then(d => { deviceDiag = d; updateStatusBadge(); }).catch(() => {});
+  };
+  choices.querySelectorAll('[data-os]').forEach(btn => {
+    btn.addEventListener('click', () => { playPop?.(620); setDeclaredOS(btn.dataset.os); answered(); });
   });
+  const detect = () => { playPop?.(420); clearDeclaredOS(); answered(); };
+  choices.querySelector('#waffle-os-skip')?.addEventListener('click', detect);
+  box.querySelector('#waffle-os-close')?.addEventListener('click', detect);
+  box.hidden = false;
+  choices.querySelector('.is-current, [data-os]')?.focus?.();
 }
 
 function updateStatusBadge(customNote) {
@@ -711,7 +778,18 @@ function updateStatusBadge(customNote) {
   if (diagEl) {
     diagEl.textContent = deviceDiag.summaryLabel;
     diagEl.className = `waffle-device-pill ${deviceDiag.hasRisk ? 'is-risk' : 'is-ok'}`;
-    diagEl.title = deviceDiag.deviceNote || deviceDiag.summaryLabel;
+    diagEl.title = `${deviceDiag.deviceNote || deviceDiag.summaryLabel}\n\nTap to say which device this is.`;
+    // The pill is the way back to the device question once it has been answered
+    // or dismissed, so it has to look and act like something you can press.
+    if (!diagEl.dataset.osDoor) {
+      diagEl.dataset.osDoor = '1';
+      diagEl.tabIndex = 0;
+      diagEl.setAttribute('role', 'button');
+      diagEl.addEventListener('click', () => { playPop?.(520); reopenOsAsk(); });
+      diagEl.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); playPop?.(520); reopenOsAsk(); }
+      });
+    }
   }
   renderOsAsk();
   const noteEl = overlayEl.querySelector('#waffle-ai-device-note');
@@ -1348,6 +1426,15 @@ function buildOverlay() {
   wrap.className = 'waffle-ai-overlay';
   wrap.hidden = true;
   wrap.innerHTML = `
+    <div class="waffle-os-modal" id="waffle-ai-os-ask" hidden role="dialog" aria-modal="true" aria-labelledby="waffle-ai-os-title">
+      <div class="waffle-os-card">
+        <button type="button" class="window-close-x" id="waffle-os-close" aria-label="Close">✕</button>
+        <strong id="waffle-ai-os-title">Which device is this?</strong>
+        <span class="waffle-os-why">So the kitchen picks runtimes it can actually use here. You can change this any time from the device pill in the header.</span>
+        <div class="waffle-os-choices" id="waffle-ai-os-choices"></div>
+      </div>
+    </div>
+
     <div class="waffle-ai-dialog" role="dialog" aria-modal="true" aria-labelledby="waffle-ai-title">
       <div class="waffle-ai-header">
         <div class="window-grab-pill" aria-hidden="true"></div>
@@ -1369,11 +1456,6 @@ function buildOverlay() {
           <div class="waffle-disclaimer-head">
             <strong>⚠ DEVICE &amp; WEBGPU DISCLAIMER</strong>
             <span class="waffle-device-pill is-risk" id="waffle-ai-device-status">Checking WebGPU…</span>
-          </div>
-          <div class="waffle-os-ask" id="waffle-ai-os-ask" hidden>
-            <strong>Which device is this?</strong>
-            <span class="waffle-os-why">So the kitchen picks runtimes it can actually use here.</span>
-            <div class="waffle-os-choices" id="waffle-ai-os-choices"></div>
           </div>
           <p class="waffle-disclaimer-copy">${esc(AI_DISCLAIMER_TEXT)}</p>
           <pre class="waffle-device-note" id="waffle-ai-device-note" hidden></pre>

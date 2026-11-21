@@ -31,13 +31,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TEXT_MODELS, QUANT_PRESETS } from '../waffle-browser-ai.js';
+import { TEXT_MODELS, QUANT_PRESETS, offeredTextModels } from '../waffle-browser-ai.js';
 
 const HF_BASE = 'https://huggingface.co';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = path.join(ROOT, '.cache', 'waffle-ai');
 
 const DEFAULT_MODEL = 'smollm2-135m';
+// Nothing bigger than this is worth serving from a static site: GitHub Pages has
+// a ~1 GB soft cap and the build already ships ~340 MB.
+const MAX_MODEL_MB = 400;
+const MAX_MODEL_BYTES = MAX_MODEL_MB * 1024 ** 2;
 const DEFAULT_PRESET = 'compact';
 
 const args = process.argv.slice(2);
@@ -100,7 +104,7 @@ export function planBudget(picks, budgetBytes = Infinity) {
  * smallest first, so a tight budget fills with models that fit instead of
  * stopping at the first one that does not.
  */
-export function selectSmallModels(models, { maxModelMB = 400 } = {}) {
+export function selectSmallModels(models, { maxModelMB = MAX_MODEL_MB } = {}) {
   return models
     .filter(m => m.hfGgufRepo && m.ggufFile)
     .filter(m => Number(m.ggufMB) > 0 && Number(m.ggufMB) <= maxModelMB)
@@ -158,8 +162,11 @@ async function resolvePick(modelId) {
 
   const dest = path.join(OUT_DIR, cfg.ggufFile);
   const preset = QUANT_PRESETS.find(q => q.id === presetId) || QUANT_PRESETS[0];
-  const preferred = cfg.hfGgufQuant && !preset.ggufQuants.includes(cfg.hfGgufQuant)
-    ? [...preset.ggufQuants, cfg.hfGgufQuant]
+  // The table's own quant leads: it is a decision about that model (the 135M is
+  // wanted at F16 whatever the preset says), and the preset's chain is the
+  // fallback for a repo that does not publish it.
+  const preferred = cfg.hfGgufQuant
+    ? [cfg.hfGgufQuant, ...preset.ggufQuants.filter(q => q !== cfg.hfGgufQuant)]
     : preset.ggufQuants;
 
   if (fs.existsSync(dest) && !force) {
@@ -211,7 +218,7 @@ async function downloadPick(pick) {
 export async function main({ budgetBytes = maxBytes, ids = null } = {}) {
   const wanted = ids
     || (allSmall
-      ? selectSmallModels(TEXT_MODELS)
+      ? selectSmallModels(offeredTextModels(TEXT_MODELS))
       : (positional.length ? positional : [DEFAULT_MODEL]));
 
   if (!wanted.length) {
@@ -229,7 +236,16 @@ export async function main({ budgetBytes = maxBytes, ids = null } = {}) {
   const picks = [];
   for (const id of wanted) {
     try {
-      picks.push(await resolvePick(id));
+      const pick = await resolvePick(id);
+      // The per-model ceiling, applied to the size the repo tree actually
+      // reported rather than to the table's estimate. A model too big to serve
+      // from a static site is left to Hugging Face on purpose, and the log says
+      // so instead of letting the budget decide it silently.
+      if (!pick.present && pick.size > MAX_MODEL_BYTES) {
+        console.log(`  – ${pick.cfg.label}: ${fmtMB(pick.size)} is over the ${fmtMB(MAX_MODEL_BYTES)} per-model ceiling — it will load from Hugging Face instead`);
+        continue;
+      }
+      picks.push(pick);
     } catch (err) {
       failed.push({ id, message: String(err?.message || err) });
       console.error(`  ✗ ${id}: ${err?.message || err}`);

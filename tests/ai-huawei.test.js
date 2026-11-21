@@ -284,7 +284,8 @@ test('the AI panel shows the profile it recognised', () => {
   const src = fs.readFileSync('waffle-ai.js', 'utf8');
   assert.match(src, /id="waffle-ai-device-note"/, 'there is somewhere to show it');
   assert.match(src, /noteEl\.textContent = note/, 'and it is filled from deviceNote');
-  assert.match(src, /diagEl\.title = deviceDiag\.deviceNote/, 'the pill carries it as a tooltip too');
+  assert.match(src, /diagEl\.title = `\$\{deviceDiag\.deviceNote/, 'the pill carries it as a tooltip too');
+  assert.match(src, /Tap to say which device this is/, 'and the tooltip says the pill is the way back to the device question');
 });
 
 test('the attempt chain is ranked by the device, not hard-coded', () => {
@@ -318,4 +319,86 @@ test('the WebNN runtime ships only when the build asks for it', () => {
   assert.match(vite, /\\\.jspi/, 'the JSPI ONNX build is the one that carries the WebNN provider');
   assert.ok(vite.indexOf('SHIP_WEBNN ?') < vite.indexOf('const HASHED_ORT_ASSET'),
     'and the default build still copies only the runtimes it uses');
+});
+
+/* ------------------------------------------------- 1.2: the GPU, and asking */
+
+test('a Huawei tablet tries its own GPU first, and the note admits it is unverified', () => {
+  // ArkWeb reports Chromium versions that are not real Chrome releases, so its
+  // adapter can never be verified from a user agent. That has not changed, and
+  // the grade still says so.
+  const harmony = { isAndroid: true, isHuawei: true, chromiumMajor: 132 };
+  assert.equal(gradeWebgpuAdapter({ hasWebGPU: true, profile: harmony }), 'suspect');
+  assert.equal(gradeWebgpuAdapter({ hasWebGPU: false, profile: harmony }), 'absent');
+
+  // What changed is what "suspect" costs. It used to mean the Maleoon 910 was
+  // tried last, behind two CPU runtimes, on the one device in this kitchen whose
+  // GPU is worth reaching.
+  const huawei = { hasWebGPU: true, wllamaGpuSafe: true, gpuPreferred: true, webnnUsable: false };
+  assert.deepEqual(rankBrowserAttempts(huawei),
+    ['onnx-webgpu', 'wllama-gpu', 'wllama-cpu', 'onnx-wasm'],
+    'GPU first, with the CPU runtimes kept behind it as the fallback they were');
+
+  // Everywhere else a suspect adapter still means CPU first: an old Android
+  // Chrome can hang the tab instead of failing cleanly, and nobody asked for
+  // that trade there.
+  const otherSuspect = { ...huawei, gpuPreferred: false };
+  assert.deepEqual(rankBrowserAttempts(otherSuspect),
+    ['wllama-cpu', 'onnx-wasm', 'wllama-gpu', 'onnx-webgpu']);
+
+  const src = fs.readFileSync('waffle-browser-ai.js', 'utf8');
+  assert.match(src, /const gpuPreferred = gpuTrustLevel !== 'suspect' \|\| Boolean\(hasWebGPU && platform\.isHuawei\);/);
+  // Trying the GPU is not the same claim as having checked it, so the risk flags
+  // and the wording both stay.
+  assert.match(src, /gpuTrustLevel === 'suspect' \|\| !hasWasmSimd/, 'hasRisk still fires on a suspect adapter');
+  assert.match(src, /trying the GPU first, CPU behind it/, 'and the summary says what the chain will do');
+  assert.match(src, /unverified, but this device tries the GPU first/, 'as does the device note');
+  assert.ok(!/suspect[^`]*— CPU first`;\n/.test(src), 'the old label cannot survive next to the new order');
+});
+
+test('the device note names the GPU it found, not just that one exists', () => {
+  // "The GPU was tried" and "the GPU was found" have to be different sentences a
+  // visitor can tell apart, and on a MatePad the only place the Maleoon ever gets
+  // named is this line.
+  const src = fs.readFileSync('waffle-browser-ai.js', 'utf8');
+  assert.match(src, /info\.description\s*\|\| \[info\.architecture, info\.vendor\]\.filter\(Boolean\)\.join\(' '\)/,
+    'every field the adapter offers is kept');
+  assert.match(src, /adapterName \|\| 'present'/, 'and a browser that reports nothing still says the adapter is there');
+});
+
+test('the device question is its own window, not a strip inside the chat', () => {
+  const src = fs.readFileSync('waffle-ai.js', 'utf8');
+
+  // Inside the dialog it changed the dialog's height, so the AI window was a
+  // different shape on every device that had not answered yet — a window that
+  // moves while a model is loading.
+  assert.match(src, /<div class="waffle-os-modal" id="waffle-ai-os-ask" hidden role="dialog" aria-modal="true"/);
+  assert.ok(src.indexOf('waffle-os-modal') < src.indexOf('<div class="waffle-ai-dialog" role="dialog"'),
+    'the modal is a sibling of the chat window, not a child of it');
+  const at = src.indexOf('waffle-disclaimer-box');
+  const disclaimer = src.slice(at, at + 900);
+  assert.ok(disclaimer.includes('waffle-disclaimer-copy'), 'the disclaimer box was captured');
+  assert.ok(!disclaimer.includes('waffle-ai-os-ask'), 'the strip inside the dialog is gone');
+
+  // Asked once per tab, reopenable from the pill, and not backup-build only any
+  // more — 1.2 put AI in the main kitchen, so the question belongs there too.
+  assert.match(src, /sessionStorage\.setItem\(KEY_OS_ASKED, '1'\)/);
+  assert.match(src, /function reopenOsAsk\(\)/, 'the pill in the header is the way back');
+  assert.match(src, /diagEl\.addEventListener\('click'/, 'and it is wired to the pill');
+  assert.ok(!/if \(!overlayEl \|\| !isBackupBuild\(\)\) return;/.test(src), 'the question is no longer backup-only');
+  assert.match(src, /aria-pressed="true"/, 'a reopened window marks the answer you already gave');
+  // A window opened on purpose must survive the next status update: renderOsAsk
+  // runs on every badge refresh, and it closes the question when an answer is
+  // already stored — which is exactly the state a reopened window is in.
+  assert.match(src, /let osAskReopened = false;/);
+  assert.match(src, /if \(osAskReopened\) return;/, 'renderOsAsk leaves a reopened window alone');
+  assert.equal(src.split('osAskReopened = false;').length - 1, 3, 'and both ways of answering it clear the flag');
+
+  const css = fs.readFileSync('style.css', 'utf8');
+  assert.match(css, /\.waffle-os-modal \{[\s\S]{0,220}?position: fixed;/, 'it floats over the chat');
+  assert.match(css, /\.waffle-os-modal\[hidden\] \{ display: none; \}/);
+  assert.match(css, /\.waffle-os-card \{/, 'with the house card around it');
+  assert.match(css, /\.waffle-os-btn\.is-current \{/);
+  assert.match(css, /\.waffle-device-pill \{ cursor: pointer; \}/, 'the pill looks pressable, because it is');
+  assert.ok(!css.includes('.waffle-os-ask {'), 'and the inline strip styling went with the strip');
 });

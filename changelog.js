@@ -19,9 +19,9 @@ import { isBackupBuild } from './build-mode.js';
  * visitors on GitHub Pages never see repo files, and the release notes belong
  * where the kitchen is.
  */
-export const APP_VERSION = '1.1.1';
+export const APP_VERSION = '1.2';
 
-/** Test versions built after 1.1 shipped. Reset to 0 on every public release. */
+/** Test versions built after 1.2 shipped. Reset to 0 on every public release. */
 export const TVAR = 0;
 
 /** `1.1.1 TVAR 0` — the extended label, used only while a test version is open. */
@@ -203,6 +203,45 @@ export const TVAR_LOG = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: '1.2',
+    date: 'November 21, 2026',
+    title: 'Waffle AI is back, and quicker about it',
+    groups: [
+      {
+        label: '\u{1F916} Waffle AI is back',
+        items: [
+          'Waffle AI works in the main kitchen again, with nothing to unlock first. It was paused while the runtimes underneath it were made honest about what a device can actually run, and that work is what let it come back.',
+          'The backup kitchen stays, and stays reachable the way it always was. Same tools, test switches on: it is where new AI behaviour gets tried before it lands here.',
+          'Five models, and only five: SmolLM2 135M, Qwen 3 0.6B, Qwen 3.5 0.8B (the one that sees pictures), Qwen 2.5 1.5B and SmolLM2 1.7B. The rest of the old menu is gone rather than greyed out, so nothing on it can be picked by accident — and a model you picked before 1.2 that is no longer offered quietly becomes the default instead of failing.'
+        ]
+      },
+      {
+        label: '\u{26A1} Faster',
+        items: [
+          'Every model on a deployed kitchen used to run on one CPU core. Multi-threaded WebAssembly needs two response headers, and a static host cannot send them — so the service worker this site already ships now sends them itself, and the runtimes get the threads they were always written to use. Two honest limits: it applies from the second visit onwards, because the worker has to be in charge of the page first, and a browser that does not understand the headers simply stays single-threaded, exactly as it is today. The device note says which of those you are in.',
+          'A Huawei or HarmonyOS tablet now tries its own GPU first. ArkWeb reports Chromium versions that are not real Chrome releases, so its WebGPU adapter can never be verified from a user agent alone, and refusing to use it was not caution — it was giving up. The CPU runtimes stay behind it as the fallback they always were, the stall watchdog stays armed, and the note says plainly that the adapter is unverified and is being tried anyway.',
+          'The note now names the GPU it found, so "the GPU was tried" and "the GPU was found" are two different sentences you can tell apart.'
+        ]
+      },
+      {
+        label: '\u{1F4F1} The device question',
+        items: [
+          '"Which device is this?" — Android, iOS, iPadOS, macOS, Windows, Linux, HarmonyOS — is its own window now, asked once, instead of a strip inside the chat that changed the shape of the chat window on every device that had not answered it yet.',
+          'The pill in the AI header reopens that window with your current answer marked, so HarmonyOS can be corrected rather than only cleared.',
+          'SmolLM2 135M is served at full 16-bit. It is the model everyone meets first, and a 3-bit quant of a 135M model throws away most of what it knows. That costs about three times the download — roughly 270 MB instead of 93 — so a deploy pre-caches it, and the download comes from this site rather than from Hugging Face.'
+        ]
+      },
+      {
+        label: '\u{1F9F0} Under the counter',
+        items: [
+          'The games cabinet no longer phones home. Two pages were still reporting visitors to Google Analytics, one loaded an icon kit and a webfont from a CDN for a single caret glyph, and one carried the navigation bar of a proxy site, including a link out to an anime pirate. All of it is gone, and a test sweeps every page in the cabinet so it cannot come back.',
+          'Tic Tac Toe arrived as two documents stapled together with its stylesheet missing, so its white headings sat on a white page and its grid border was a seven-digit hex colour no browser parses. It is one document now, in the kitchen ink, and it still plays.',
+          'A deploy says twice what it is shipping: what the model cache held, and what the built site actually carries. Those are different questions, and only the second one proves anything.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.1.1',
     date: 'November 20, 2026',

@@ -16,6 +16,7 @@ import { APP_LANGUAGES, getAppLanguage, setAppLanguage, initAppI18n } from './i1
 import { gameSlider } from './ui-kit.js';
 import {
   TEXT_MODELS,
+  offeredTextModels,
   EXECUTION_MODES,
   QUANT_PRESETS,
   getSelectedTextModel,
@@ -815,7 +816,7 @@ function renderPrecachePanel() {
   const mb = b => (b > 0 ? `${Math.round(b / 1048576)} MB` : '?');
   const st = precacheState.storage;
 
-  const rows = TEXT_MODELS.filter(m => m.hfGgufRepo).map(m => {
+  const rows = offeredTextModels().filter(m => m.hfGgufRepo).map(m => {
     const entry = byRepo.get(m.hfGgufRepo);
     const cached = Boolean(entry?.usable);
     const busy = precacheState.busy === m.id;
@@ -974,7 +975,7 @@ function renderSettingsModal() {
   const textList = $('#settings-ai-text-list');
   if (textList) {
     const curText = getSelectedTextModel();
-    textList.innerHTML = TEXT_MODELS.map(m => `
+    textList.innerHTML = offeredTextModels().map(m => `
       <button type="button" class="gbtn waffle-model-pill ${curText === m.id ? 'selected' : ''}" data-set-text="${esc(m.id)}" title="${esc(m.desc)}">
         <strong>${esc(m.label)}</strong>
         <small>${esc(m.badge)}</small>
@@ -1236,7 +1237,27 @@ setTimeout(() => {
 try {
   if ('serviceWorker' in navigator && navigator.serviceWorker) {
     if (import.meta.env.PROD) {
-      navigator.serviceWorker.register('./sw.js').catch(console.warn);
+      navigator.serviceWorker.register('./sw.js').then(() => {
+        // The document that registered the worker was served before the worker
+        // existed, so it has no COOP/COEP and this page is still one thread. Ask
+        // for it again once the worker is in control — and only ever once, or a
+        // browser that refuses the headers would reload forever. Idle, so the
+        // reload does not fight the kitchen booting.
+        const KEY = 'waffle-isolation-reload';
+        const reloadOnce = () => {
+          try {
+            if (globalThis.crossOriginIsolated) return;
+            if (!navigator.serviceWorker.controller) return;
+            if (localStorage.getItem(KEY)) return;
+            localStorage.setItem(KEY, '1');
+            const go = () => location.reload();
+            if (typeof requestIdleCallback === 'function') requestIdleCallback(go, { timeout: 8000 });
+            else setTimeout(go, 4000);
+          } catch {}
+        };
+        navigator.serviceWorker.addEventListener('controllerchange', reloadOnce, { once: true });
+        reloadOnce();
+      }).catch(console.warn);
     } else {
       navigator.serviceWorker.getRegistrations?.().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
       if ('caches' in window && window.caches?.keys) {

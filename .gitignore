@@ -1,7 +1,5 @@
 node_modules/
 dist/
-dist-classic/
-dist-zip/
 test-results/
 playwright-report/
 .cache/

@@ -405,11 +405,10 @@ test('the Pages deploy pre-caches after the tests, before the build, and cannot 
   const yml = fs.readFileSync('.github/workflows/pages.yml', 'utf8');
   const tests = yml.indexOf('- run: npm test');
   const precache = yml.indexOf('npm run precache');
-  // A named step with two commands, not a bare `- run:`: the site first, then the
-  // offline zip packed from it. Matching the old shape here would silently have
-  // read -1 and failed the ordering assertion below for a reason that has nothing
-  // to do with pre-caching.
-  const build = yml.indexOf('run: npm run build && npm run zip:offline');
+  // A named step, not a bare `- run:`. Matching the wrong shape here would
+  // silently have read -1 and failed the ordering assertion below for a reason
+  // that has nothing to do with pre-caching.
+  const build = yml.indexOf('run: npm run build');
   assert.ok(tests > 0 && precache > 0 && build > 0, 'all three steps exist');
   assert.ok(tests < precache && precache < build, 'a deploy that cannot reach Hugging Face still builds and ships');
   const step = yml.slice(yml.lastIndexOf('- name: Pre-cache', precache), build);

@@ -10,8 +10,7 @@ import { mountMusic } from './tools-music.js';
 import { mountVideo } from './tools-video.js';
 import { mountGames } from './games.js';
 import { openWaffleAI, warmupWaffleAI, isWaffleAiLocked, WAFFLE_AI_LOCK_MESSAGE } from './waffle-ai.js';
-import { isBackupBuild, isFolderBuild } from './build-mode.js';
-import { offlineZipUrl, annotateOfflineZipButton } from './offline-download.js';
+import { isBackupBuild } from './build-mode.js';
 import { openChangelog } from './changelog.js';
 import { APP_LANGUAGES, getAppLanguage, setAppLanguage, initAppI18n } from './i18n.js';
 import { gameSlider } from './ui-kit.js';
@@ -120,8 +119,7 @@ app.innerHTML = `
     ${isBackupBuild() ? `
     <div class="backup-banner" id="backup-banner" data-no-i18n>
       <span class="gbadge backup-banner-badge">🧇 BACKUP KITCHEN</span>
-      <span class="backup-banner-copy">Waffle AI is in the main kitchen now. This build is where new behaviour gets tried first, so everything here is unfinished on purpose. It can also hand you the entire site as one zip — every game, runtime and model weight. Unzip it and index.html is the kitchen, with nothing to install; the parts a browser will not run off the disk wake up on a computer, with no internet.</span>
-      <a class="gbtn gbtn-chip backup-banner-exit" data-offline-zip href="${offlineZipUrl()}">⬇ Download BSU (.zip)<span data-offline-zip-size></span></a>
+      <span class="backup-banner-copy">Waffle AI is in the main kitchen now. This build is where new behaviour gets tried first, so everything here is unfinished on purpose.</span>
       <a class="gbtn gbtn-chip backup-banner-exit" href="./index.html">Back to the kitchen</a>
     </div>` : ''}
     <header class="game-hud">
@@ -307,11 +305,8 @@ async function triggerWallBounce(clientX, clientY) {
   }
 
   // AI-powered quips only exist in the backup build. While Waffle AI is paused
-  // the wall just bounces, and nothing reaches for a model or an endpoint. The
-  // folder build is in the same position for a different reason: there is no
-  // server to ask, and a fetch of ./api/... off the disk prints "URL scheme must
-  // be http or https" before it fails.
-  if (aiLocked || isFolderBuild()) {
+  // the wall just bounces, and nothing reaches for a model or an endpoint.
+  if (aiLocked) {
     speech.textContent = bounceStreak >= 10 ? '🍯 Syrup Frenzy!' : 'Boing!';
     speech.classList.remove('pop-in');
     void speech.offsetWidth;
@@ -1190,11 +1185,6 @@ $('#settings-overlay').addEventListener('click', e => {
 bindActions();
 try { route(); } catch (e) { console.error(e); home(); }
 try { initAppI18n(); } catch (e) { console.error(e); }
-// The zip's size is not known until the archive exists, which is after this page
-// was built, so the button starts without a number and earns one. Fire and forget:
-// if the metadata is missing the button still downloads, it just does not warn.
-if (BACKUP_BUILD) annotateOfflineZipButton().catch(() => {});
-
 setTimeout(() => { try { warmupWaffleAI(); } catch {} }, 800);
 
 /* Pre-cache whatever this site carries itself, once, in the background.
@@ -1226,11 +1216,7 @@ setTimeout(() => {
 }, 20_000);
 
 try {
-  // A page off the disk has no service worker scope at all, and asking for one
-  // prints "The URL protocol of the current origin is not supported" before it
-  // fails. The folder build is offline by definition — it is sitting on a disk —
-  // so there is nothing to register, and nothing to unregister either.
-  if (!isFolderBuild() && 'serviceWorker' in navigator && navigator.serviceWorker) {
+  if ('serviceWorker' in navigator && navigator.serviceWorker) {
     if (import.meta.env.PROD) {
       navigator.serviceWorker.register('./sw.js').then(() => {
         // The document that registered the worker was served before the worker

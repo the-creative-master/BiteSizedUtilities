@@ -236,19 +236,11 @@ function attachLocalModelRoutes(middlewares) {
 export default defineConfig({
   base: './',
   define: {
-    'import.meta.env.WAFFLE_WEBNN': JSON.stringify(process.env.WAFFLE_WEBNN || ''),
-    // Always false here: the site is served, so it is the module build. The folder
-    // build is made by vite.classic.config.js, which defines it true, and it only
-    // ever ships inside the offline zip.
-    'globalThis.__WAFFLE_FOLDER__': 'false'
+    'import.meta.env.WAFFLE_WEBNN': JSON.stringify(process.env.WAFFLE_WEBNN || '')
   },
   resolve: {
     alias: {
-      'onnxruntime-node': path.resolve('waffle-ort-empty.js'),
-      // The served site fetches the game catalog when the cupboard opens, so it
-      // must not also carry a bundled copy. Only vite.classic.config.js resolves
-      // this to the real file. See folder-game-catalog.js.
-      './folder-game-catalog.js': path.resolve('folder-stubs/no-catalog.js')
+      'onnxruntime-node': path.resolve('waffle-ort-empty.js')
     }
   },
   server: {

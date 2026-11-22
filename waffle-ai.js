@@ -107,7 +107,7 @@ export const WAFFLE_AI_LOCK_MESSAGE = 'I apologize for the inconvenience but Waf
 // art studio can read it without importing the AI stack. Imported *and*
 // re-exported: `export ... from` alone would leave the name unbound in this
 // module, and isWaffleAiLocked() below reads it.
-import { isBackupBuild, isFolderBuild } from './build-mode.js';
+import { isBackupBuild } from './build-mode.js';
 export { isBackupBuild };
 
 /**
@@ -683,11 +683,6 @@ async function fetchStatus() {
   // While paused there is nothing to report, and probing the API on a static
   // host only produces a confusing 404/501 in the network log.
   if (isWaffleAiLocked()) return;
-  // From a folder there is no server and no way to reach one: a fetch of
-  // ./api/waffle-ai/status off the disk is refused before it is sent, and the
-  // refusal is printed. The engines refuse with an explanation of their own, so
-  // the probe would add a red line and no information.
-  if (isFolderBuild()) return;
   try {
     const r = await fetch('./api/waffle-ai/status', { cache: 'no-store' });
     const ct = r.headers.get('content-type') || '';
@@ -706,9 +701,6 @@ async function fetchStatus() {
 export async function warmupWaffleAI() {
   // No background AI work while the feature is paused.
   if (isWaffleAiLocked()) return;
-  // Nor from a folder, which app.js asks for 800 ms after every boot: there is
-  // nothing to warm and no way to ask.
-  if (isFolderBuild()) return;
   // A static host (GitHub Pages) has no llama.cpp server, so this POST is a
   // guaranteed failure on every page load for every visitor. The status probe is
   // answered locally by the service worker, so check reachability through that

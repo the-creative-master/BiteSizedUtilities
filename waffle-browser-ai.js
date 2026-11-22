@@ -2947,6 +2947,11 @@ export async function precacheFromThisOrigin(modelId, { onProgress, signal, fetc
  * only, and it cancels itself the moment a chat starts.
  */
 export async function autoPrecacheServedModels({ onProgress, signal, fetchImpl = fetch, now = Date.now(), force = false } = {}) {
+  // Nothing to pre-cache from a folder. The models are served over http by the
+  // live site, and OPFS is not available to a page off the disk either — so every
+  // probe here would fail. app.js kicks this on idle after every boot, which means
+  // a folder open would otherwise spend its first minute printing failed fetches.
+  if (FOLDER_BUILD_FLAG) return { run: false, reason: 'the folder build has nothing to pre-cache', done: [] };
   if (autoPrecacheController) return { run: false, reason: 'a pre-cache is already running', done: [] };
   const controller = new AbortController();
   const onOuterAbort = () => { try { controller.abort('interrupted'); } catch {} };

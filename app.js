@@ -10,7 +10,7 @@ import { mountMusic } from './tools-music.js';
 import { mountVideo } from './tools-video.js';
 import { mountGames } from './games.js';
 import { openWaffleAI, warmupWaffleAI, isWaffleAiLocked, WAFFLE_AI_LOCK_MESSAGE } from './waffle-ai.js';
-import { isBackupBuild } from './build-mode.js';
+import { isBackupBuild, isFolderBuild } from './build-mode.js';
 import { offlineZipUrl, annotateOfflineZipButton } from './offline-download.js';
 import { openChangelog } from './changelog.js';
 import { APP_LANGUAGES, getAppLanguage, setAppLanguage, initAppI18n } from './i18n.js';
@@ -307,8 +307,11 @@ async function triggerWallBounce(clientX, clientY) {
   }
 
   // AI-powered quips only exist in the backup build. While Waffle AI is paused
-  // the wall just bounces, and nothing reaches for a model or an endpoint.
-  if (aiLocked) {
+  // the wall just bounces, and nothing reaches for a model or an endpoint. The
+  // folder build is in the same position for a different reason: there is no
+  // server to ask, and a fetch of ./api/... off the disk prints "URL scheme must
+  // be http or https" before it fails.
+  if (aiLocked || isFolderBuild()) {
     speech.textContent = bounceStreak >= 10 ? '🍯 Syrup Frenzy!' : 'Boing!';
     speech.classList.remove('pop-in');
     void speech.offsetWidth;
@@ -1223,7 +1226,11 @@ setTimeout(() => {
 }, 20_000);
 
 try {
-  if ('serviceWorker' in navigator && navigator.serviceWorker) {
+  // A page off the disk has no service worker scope at all, and asking for one
+  // prints "The URL protocol of the current origin is not supported" before it
+  // fails. The folder build is offline by definition — it is sitting on a disk —
+  // so there is nothing to register, and nothing to unregister either.
+  if (!isFolderBuild() && 'serviceWorker' in navigator && navigator.serviceWorker) {
     if (import.meta.env.PROD) {
       navigator.serviceWorker.register('./sw.js').then(() => {
         // The document that registered the worker was served before the worker

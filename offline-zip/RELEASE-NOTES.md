@@ -2,7 +2,7 @@
 
 {{FILES}} files, {{EXTRACTED}} extracted, **{{ZIP}}** to download. Built {{BUILT}} from {{SOURCE}}.
 
-This is the entire built site in one archive: every tool, all 51 games, the CodeHub
+This is the entire built site in one archive: every tool, all {{GAMES_TOTAL}} games, the CodeHub
 runtimes, the fonts and icons. {{WEIGHTS_SENTENCE}} It is rebuilt from `main` on
 every deploy, so this asset always matches the live site.
 
@@ -27,13 +27,13 @@ some pieces stay asleep until the folder is served:
 
 | From a folder | Works? | Why |
 | --- | --- | --- |
-| The kitchen, and all 115 utilities on its shelves | yes | that is what `kitchen.js` is for |
-| 85 of them — the maths, science, text, art, music and video cupboards | yes | those six never touch the network or a worker |
-| The games cupboard, listing all 51 games | yes | its catalog is bundled, not fetched |
-| 26 of those games, on tap | yes | a whole game in one page, nothing else to read |
-| The whole English &amp; Languages cupboard, all 15 | no | 14 ask Waffle AI, and the translator calls an API |
-| The other 25 games | no | they read their own files as they load |
-| CodeHub, JavaScript and Web — the rest of that cupboard is in the 85 | no | these three run your code in a worker |
+| The kitchen, and all {{UTILITIES_TOTAL}} utilities on its shelves | yes | that is what `kitchen.js` is for |
+| {{UTILITIES_OFFLINE}} of them, doing their work in the page | yes | the maths, science, text, art, music and video cupboards in full, plus {{CODE_OFFLINE}} of the {{CODE_TOTAL}} coding tools |
+| The games cupboard, listing all {{GAMES_TOTAL}} games | yes | its catalog is bundled, not fetched |
+| {{GAMES_PLAYABLE}} of those games, on tap | yes | a whole game in one page, nothing else to read |
+| The whole English &amp; Languages cupboard, all {{ENGLISH_TOOLS}} | no | every one asks an AI; the translator calls an API |
+| The other {{GAMES_BLOCKED}} games | no | they read their own files as they load |
+| {{CODE_BLOCKED}} | no | they run your code in a worker; the cupboard's other {{CODE_OFFLINE}} tools work |
 | Waffle AI, and the images it makes | no | the engines load as modules and use workers |
 
 None of that is a broken download and there is no setting to flip. The sleeping pieces

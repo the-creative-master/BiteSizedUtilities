@@ -95,13 +95,13 @@
     <p>The folder build works around the first of those, which is why the kitchen opens at all. The other two are why a few things stay asleep until the folder is served:</p>
     <table>
       <tr><th style="width:52%">From a folder</th><th style="width:24%">Works?</th><th>Why</th></tr>
-      <tr><td>The kitchen, and all 115 utilities on its shelves</td><td><span class="yes">Yes</span></td><td>that is what <code>kitchen.js</code> is for</td></tr>
-      <tr><td>85 of them — the maths, science, text, art, music and video cupboards</td><td><span class="yes">Yes</span></td><td>those six never touch the network or a worker</td></tr>
-      <tr><td>The games cupboard, listing all 51 games</td><td><span class="yes">Yes</span></td><td>its catalog is bundled, not fetched</td></tr>
-      <tr><td>26 of those games, on tap</td><td><span class="yes">Yes</span></td><td>a whole game in one page, nothing else to read</td></tr>
-      <tr><td>The whole English &amp; Languages cupboard — all 15</td><td><span class="no">No</span></td><td>14 ask Waffle AI, and the translator calls an API</td></tr>
-      <tr><td>The other 25 games</td><td><span class="no">No</span></td><td>they read their own files as they load</td></tr>
-      <tr><td>CodeHub, JavaScript and Web — the rest of that cupboard is in the 85</td><td><span class="no">No</span></td><td>these three run your code in a worker</td></tr>
+      <tr><td>The kitchen, and all {{UTILITIES_TOTAL}} utilities on its shelves</td><td><span class="yes">Yes</span></td><td>that is what <code>kitchen.js</code> is for</td></tr>
+      <tr><td>{{UTILITIES_OFFLINE}} of them, doing their work in the page</td><td><span class="yes">Yes</span></td><td>the maths, science, text, art, music and video cupboards in full, plus {{CODE_OFFLINE}} of the {{CODE_TOTAL}} coding tools</td></tr>
+      <tr><td>The games cupboard, listing all {{GAMES_TOTAL}} games</td><td><span class="yes">Yes</span></td><td>its catalog is bundled, not fetched</td></tr>
+      <tr><td>{{GAMES_PLAYABLE}} of those games, on tap</td><td><span class="yes">Yes</span></td><td>a whole game in one page, nothing else to read</td></tr>
+      <tr><td>The whole English &amp; Languages cupboard — all {{ENGLISH_TOOLS}}</td><td><span class="no">No</span></td><td>every one asks an AI; the translator calls an API</td></tr>
+      <tr><td>The other {{GAMES_BLOCKED}} games</td><td><span class="no">No</span></td><td>they read their own files as they load</td></tr>
+      <tr><td>{{CODE_BLOCKED}}</td><td><span class="no">No</span></td><td>they run your code in a worker, which a page off the disk cannot start</td></tr>
       <tr><td>Waffle AI, and the images it makes</td><td><span class="no">No</span></td><td>the engines load as modules and use workers</td></tr>
     </table>
     <p style="margin-bottom:0">The sleeping ones say so rather than failing quietly. If you want them, the next card is one double-click.</p>
@@ -109,7 +109,7 @@
 
   <div class="card good" id="served-view" hidden>
     <h2><span class="pill">Server running</span> &nbsp;Everything in this folder is awake</h2>
-    <p style="margin-top:0">All 115 utilities, all 51 games, the code runtimes, and Waffle AI running on the model weights that came in this folder — with nothing fetched from the internet.</p>
+    <p style="margin-top:0">All {{UTILITIES_TOTAL}} utilities, all {{GAMES_TOTAL}} games, the code runtimes, and Waffle AI running on the model weights that came in this folder — with nothing fetched from the internet.</p>
     <a class="go" href="index.html">Open the kitchen →</a>
     <p style="margin-bottom:0">Leave the server window open while you use it. The site also registers a service worker, so after one visit your browser keeps a copy of its own and the kitchen can survive the server being closed.</p>
   </div>

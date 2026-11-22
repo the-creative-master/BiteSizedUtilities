@@ -102,7 +102,8 @@ test('the layered studio gets its own hand-drawn 2.5D icon, distinct from all 11
 });
 
 test('app.js resolves the tool list through the backup flag and never reads allTools directly', () => {
-  assert.ok(appSrc.includes("import { isBackupBuild } from './build-mode.js';"), 'app.js asks the shared flag which build this page is');
+  assert.match(appSrc, /import \{[^}]*\bisBackupBuild\b[^}]*\} from '\.\/build-mode\.js';/,
+    'app.js asks the shared flag which build this page is');
   assert.ok(appSrc.includes('const BACKUP_BUILD = isBackupBuild();'));
   assert.ok(appSrc.includes('resolveTools(BACKUP_BUILD)'), 'the tool list comes from resolveTools');
   assert.ok(!appSrc.includes('allTools'), 'every render path uses the resolved list');
@@ -134,7 +135,7 @@ test('isBackupPage reads the same flag as isBackupBuild, and both fail closed', 
   // gate and the studio gate cannot drift apart.
   const modeSrc = fs.readFileSync('build-mode.js', 'utf8');
   assert.ok(modeSrc.includes("dataset?.backup === '1'"), 'build-mode.js is the only place the flag is read');
-  assert.ok(fs.readFileSync('waffle-ai.js', 'utf8').includes("import { isBackupBuild } from './build-mode.js';"),
+  assert.match(fs.readFileSync('waffle-ai.js', 'utf8'), /import \{[^}]*\bisBackupBuild\b[^}]*\} from '\.\/build-mode\.js';/,
     'the AI gate imports it');
   assert.ok(fs.readFileSync('art-studio-layers.js', 'utf8').includes("export { isBackupBuild as isBackupPage } from './build-mode.js';"),
     'and so does the studio');

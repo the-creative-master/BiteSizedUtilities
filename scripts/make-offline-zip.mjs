@@ -36,7 +36,12 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+// offline-facts.js is bundled into the app, so it holds the numbers and nothing that
+// scans source; the patterns live here, where the census can read them without
+// counting its own module as a blocker.
+import { FOLDER_FACTS } from '../offline-facts.js';
+import { classifyGameSource, measureGames, toolModuleMap, moduleSet, classifyTools } from './folder-census.mjs';
 
 import {
   OFFLINE_ZIP_NAME as ZIP_NAME,
@@ -46,6 +51,9 @@ import {
 } from '../offline-download.js';
 
 export { ZIP_NAME, RELEASE_TAG, FALLBACK_REPO, releaseDownloadUrl };
+
+/** Where the source lives, so the census does not depend on the caller's directory. */
+export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 export const DIST_DIR = 'dist';
 export const OUT_DIR = 'dist-zip';
@@ -131,42 +139,115 @@ export function bootPage(indexHtml) {
   const handoff = /<script>\(function\(\)\{if\(location\.protocol!=='file:'\)return;[\s\S]*?<\/script>/;
   if (!handoff.test(indexHtml)) throw new Error('the folder explanation is missing from dist/index.html');
 
+  // Three head links that a page which is not served cannot use, and which the
+  // picker therefore owns:
+  //
+  //   the manifest       it is fetched, and a page off the disk cannot fetch
+  //   fonts/fonts.css    the sheet itself loads, but every woff2 inside it is
+  //                      CORS-restricted and the origin is opaque, so it costs five
+  //                      red errors for faces the folder build carries inline
+  //   the app stylesheet marked crossorigin, which an opaque origin cannot satisfy
+  //
+  // They come out of the head for both branches and go back in for the served one,
+  // so serving the extracted folder still gets the site exactly as Pages sends it.
+  // Each removal is asserted: if Vite ever writes them differently the build fails
+  // here, instead of shipping a front page with dead links in it.
+  const movable = [
+    { what: 'the manifest', re: /[ \t]*<link[^>]*rel="manifest"[^>]*>\n?/ },
+    { what: 'the font stylesheet', re: /[ \t]*<link[^>]*href="\.\/fonts\/fonts\.css"[^>]*>\n?/ },
+    { what: 'the app stylesheet', re: /[ \t]*<link[^>]*rel="stylesheet"[^>]*href="(\.\/assets\/[^"]+\.css)"[^>]*>\n?/, capture: true }
+  ];
+  let head = indexHtml;
+  let appCss = null;
+  for (const link of movable) {
+    const found = link.re.exec(head);
+    if (!found) throw new Error(`dist/index.html has no ${link.what} to hand to the picker — Vite writes it differently now`);
+    if (link.capture) appCss = found[1];
+    head = head.replace(link.re, '');
+  }
+  head = head.replace(/[ \t]*<link[^>]*rel="modulepreload"[^>]*>\n?/g, '');
+
   const boot = `<script>/* ${BOOT_MARK} */
 (function () {
-  var fromFolder = location.protocol === 'file:';
+  var proto = location.protocol;
+  // Served means http or https, and nothing else is served. A page on a disk
+  // arrives as file:, and a tablet file manager hands the browser content:
+  // instead. Every scheme that is not http refuses an ES module just as firmly as
+  // file: does, because the origin is opaque either way — so the folder build is
+  // the default and the module is the special case. Testing for file: alone put
+  // content: on the module path, which is how an archive that worked on a desktop
+  // still showed a hiccup on the device it was made for.
+  var served = proto === 'http:' || proto === 'https:';
+  // A blob: or data: page has no directory to resolve ./ against, so neither
+  // script could load and no amount of picking would change that. Say so, and say
+  // what to do, rather than blaming a folder that is sitting there intact.
+  var homeless = proto === 'blob:' || proto === 'data:' || proto === 'about:';
+  var el = document.getElementById('app');
+
+  function card(title, body) {
+    if (!el || el.children.length) return;
+    el.innerHTML = '<div style="max-width:540px;margin:48px auto;padding:20px;background:#fff8e8;' +
+      'border:3px solid #4f2f23;border-radius:18px;font-weight:700;text-align:left">' +
+      '<h2 style="margin:0 0 8px">' + title + '</h2>' + body + '</div>';
+  }
+
+  if (homeless) {
+    card('This page was handed to the browser, not opened from the folder',
+      '<p style="margin:0 0 8px">Your viewer passed it over as a <code>' + proto + '</code> address, which has no folder ' +
+      'behind it, so there is nothing here to load the kitchen from. Extract the zip somewhere first — a preview inside a ' +
+      'file manager or an email is not enough — then open <b>index.html</b> inside the extracted folder.</p>' +
+      '<p style="margin:0;opacity:0.8;font-size:0.9em">Nothing is wrong with the archive.</p>');
+    return;
+  }
+
+  function addCss(href, cross) {
+    var l = document.createElement('link');
+    l.rel = 'stylesheet';
+    if (cross) l.crossOrigin = 'anonymous';
+    l.href = href;
+    document.head.appendChild(l);
+  }
+
   var s = document.createElement('script');
-  if (fromFolder) {
-    // The head's stylesheet link carries a crossorigin attribute, which a page on
-    // the disk has no origin to satisfy, so the folder build brings its own. The
-    // two hold the same rules; this one is simply not minified.
-    var css = document.createElement('link');
-    css.rel = 'stylesheet';
-    css.href = './${CLASSIC_CSS}';
-    document.head.appendChild(css);
-    s.src = './${CLASSIC_JS}';
-  } else {
+  var tried;
+  if (served) {
+    addCss('${appCss}', true);
+    addCss('./fonts/fonts.css', false);
+    var manifest = document.createElement('link');
+    manifest.rel = 'manifest';
+    manifest.href = './manifest.webmanifest';
+    document.head.appendChild(manifest);
     s.type = 'module';
     s.crossOrigin = 'anonymous';
-    s.src = '${moduleSrc}';
+    tried = '${moduleSrc}';
+  } else {
+    // The folder build brings its own sheet, with the five faces inside it as data
+    // URLs. Linking the site fonts.css instead would cost five CORS errors off the
+    // disk and no custom type at all.
+    addCss('./${CLASSIC_CSS}', false);
+    tried = './${CLASSIC_JS}';
   }
+  s.src = tried;
   s.onerror = function () {
-    var el = document.getElementById('app');
-    if (el && !el.children.length) {
-      el.innerHTML = '<div style="max-width:520px;margin:48px auto;padding:20px;background:#fff8e8;border:3px solid #4f2f23;border-radius:18px;font-weight:700"><h2>Waffle Kitchen hiccup</h2><p>The kitchen script did not load. ' +
-        (fromFolder ? 'Check that ${CLASSIC_JS} is still in this folder next to index.html.' : 'Check that the assets folder is still next to index.html.') + '</p></div>';
-    }
+    // Names the scheme and the file it reached for. "The kitchen script did not
+    // load" on its own sent somebody hunting for a missing folder when the real
+    // answer was that their viewer had changed the protocol under the page.
+    card('Waffle Kitchen hiccup',
+      '<p style="margin:0 0 8px">The kitchen script did not load: <code>' + tried + '</code> at <code>' + proto + '</code>.</p>' +
+      '<p style="margin:0">' + (served
+        ? 'Check that the assets folder is still next to index.html.'
+        : 'Check that ${CLASSIC_JS} and ${CLASSIC_CSS} are still in this folder next to index.html. If they are, your browser is refusing local files, which Chrome and Edge both do when a file manager hands them a content address.') + '</p>');
   };
   document.body.appendChild(s);
 })();
 <\/script>`;
 
-  const withoutModule = indexHtml.replace(moduleTag[0], '');
+  const withoutModule = head.replace(moduleTag[0], '');
   const withoutHandoff = withoutModule.replace(handoff, '');
   const at = withoutHandoff.lastIndexOf('</body>');
   if (at === -1) throw new Error('dist/index.html has no </body> to put the picker before');
   return withoutHandoff.slice(0, at) + boot + withoutHandoff.slice(at);
 }
-
 const MB = 1024 * 1024;
 const mb = bytes => (bytes < MB
   ? `${Math.round(bytes / 1024)} KB`
@@ -174,6 +255,116 @@ const mb = bytes => (bytes < MB
 
 /** `1 file` / `2 files` — the release notes and the stamped README read these aloud. */
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/**
+ * Read the cabinet and work out which games a folder can run.
+ *
+ * Each game is its entrypoint plus the source of the files sitting beside it,
+ * because a page that pulls in a sibling script is only as folder-safe as that
+ * script. Classified by offline-facts.js, so the rule lives in one place and the
+ * numbers in every document come out of this one walk.
+ *
+ * Returns zeros rather than throwing when there is no catalog to read, which is
+ * what a scratch directory in a test looks like; buildZip refuses to pack a
+ * cabinet it measured as empty, so a real archive can never be stamped with them.
+ */
+export function measureCabinet(distDir) {
+  const catalogPath = path.join(distDir, 'games', 'catalog.json');
+  if (!fs.existsSync(catalogPath)) return measureGames([]);
+  const catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
+  const games = (Array.isArray(catalog) ? catalog : catalog.games || []).map(game => {
+    const entry = path.join(distDir, String(game.entrypoint || '').replace(/^\.?\//, ''));
+    let source = '';
+    try {
+      source = fs.readFileSync(entry, 'utf8');
+      const dir = path.dirname(entry);
+      for (const sibling of fs.readdirSync(dir)) {
+        // Not the .wasm itself: its bytes prove nothing, and the reference to it in
+        // the source beside it is what a browser would refuse.
+        if (!/\.(js|json)$/i.test(sibling)) continue;
+        try { source += fs.readFileSync(path.join(dir, sibling), 'utf8'); } catch {}
+      }
+    } catch {}
+    return { id: game.id, blockers: classifyGameSource(source) };
+  });
+  return measureGames(games);
+}
+
+/** A list of names as English reads it, for a sentence rather than a table. */
+export function andList(items) {
+  const all = [...items];
+  if (all.length < 2) return all.join('');
+  return `${all.slice(0, -1).join(', ')} and ${all[all.length - 1]}`;
+}
+
+/**
+ * Count the utilities a folder can run, from the source that was just shipped.
+ *
+ * The games are counted from the built cabinet because each one is a page of its
+ * own. The utilities are not: they are branches of a mount chain in eight modules,
+ * so this walks the chain instead — app.js says which module mounts which cupboard,
+ * that module's own imports say what it pulls in, and `classifyTools` says which of
+ * its tools reach a worker, an API or an AI.
+ *
+ * Returns null when there is no source to read, which is what CI looks like on its
+ * first `npm test`, before either build has happened.
+ *
+ * @param {string} repo the repository root
+ */
+export async function measureTools(repo) {
+  const appPath = path.join(repo, 'app.js');
+  const catalogPath = path.join(repo, 'catalog.js');
+  if (!fs.existsSync(appPath) || !fs.existsSync(catalogPath)) return null;
+  const read = name => {
+    try { return fs.readFileSync(path.join(repo, name), 'utf8'); } catch { return null; }
+  };
+  const appSource = read('app.js');
+  const { cupboards } = await import(pathToFileURL(catalogPath).href);
+  const map = toolModuleMap(appSource, cupboards.map(c => c.id));
+  const sources = { 'app.js': appSource };
+  const modulesByCupboard = {};
+  for (const c of cupboards) {
+    const mods = moduleSet(map[c.id], read);
+    modulesByCupboard[c.id] = mods;
+    for (const m of mods) sources[m] = read(m);
+  }
+  return classifyTools({ cupboards, sources, modulesByCupboard });
+}
+
+/**
+ * The counts in offline-facts.js are literals, because the folder build's own
+ * refusal quotes them and that bundle is compiled before the archive is packed, so
+ * it has no measurement to read. This is what stops them going stale: the census is
+ * run against the same source at pack time, and a disagreement stops the build with
+ * the number that moved.
+ */
+export function factsAgree(tools) {
+  const wrong = [];
+  if (tools.total !== FOLDER_FACTS.utilitiesTotal) {
+    wrong.push(`utilitiesTotal is ${FOLDER_FACTS.utilitiesTotal} in offline-facts.js and ${tools.total} in catalog.js`);
+  }
+  if (tools.offline !== FOLDER_FACTS.utilitiesOffline) {
+    wrong.push(`utilitiesOffline is ${FOLDER_FACTS.utilitiesOffline} in offline-facts.js and ${tools.offline} measured`);
+  }
+  const clean = [...tools.cleanCupboards].sort();
+  const saidClean = [...FOLDER_FACTS.offlineCupboards].sort();
+  if (clean.join('|') !== saidClean.join('|')) {
+    wrong.push(`offlineCupboards is ${saidClean.join(', ')} and the census found ${clean.join(', ')}`);
+  }
+  const english = tools.byCupboard.english;
+  if (english && english.blockedIds.length !== FOLDER_FACTS.englishTools) {
+    wrong.push(`englishTools is ${FOLDER_FACTS.englishTools} and ${english.blockedIds.length} English tools are blocked`);
+  }
+  const code = tools.byCupboard.code;
+  if (code) {
+    const found = tools.blockedIds.filter(b => b.cupboard === code.name).map(b => b.title).sort();
+    const saidCode = [...FOLDER_FACTS.codeBlocked].sort();
+    if (found.join('|') !== saidCode.join('|')) {
+      wrong.push(`codeBlocked is ${saidCode.join(', ')} and the census blocked ${found.join(', ')}`);
+    }
+  }
+  return wrong;
+}
 
 /** Recurse a directory into `{ files, bytes }`, following nothing exotic. */
 export function measure(dir) {
@@ -272,7 +463,7 @@ export function weightsIn(distDir) {
  */
 export const STAGED_BESIDES_SITE = [CLASSIC_JS, CLASSIC_CSS];
 
-export function factsFor(distDir, repo, sha) {
+export function factsFor(distDir, repo, sha, { games = measureCabinet(distDir), tools = null } = {}) {
   const dist = measure(distDir);
   // The folder build's two files are counted only if they are there. That is not
   // leniency: buildZip() refuses to pack at all without them, and it refuses
@@ -289,6 +480,8 @@ export function factsFor(distDir, repo, sha) {
   return {
     files: dist.files + EXTRAS.length + STAGED_BESIDES_SITE.length,
     extractedBytes: dist.bytes + extrasBytes,
+    games,
+    tools,
     weights,
     repo,
     sha,
@@ -301,8 +494,24 @@ export function factsFor(distDir, repo, sha) {
       WEIGHTS: weights.present
         ? `(weights included, ${mb(weights.bytes)} in ${plural(weights.files, 'file')})`
         : '(no weights in this build, so it downloads them the first time you ask it anything)',
-      // The same fact as a sentence, for the places where a parenthetical would not
-      // read — the release notes lead with it.
+      // Counts, so no document has to remember one. Every one of these is measured
+      // from what was just built: the games from the cabinet, the utilities from the
+      // mount chains. offline-facts.js holds the same numbers as literals for the
+      // folder build's refusal text, and factsAgree() is what keeps the two from
+      // drifting apart.
+      UTILITIES_TOTAL: tools ? tools.total : FOLDER_FACTS.utilitiesTotal,
+      UTILITIES_OFFLINE: tools ? tools.offline : FOLDER_FACTS.utilitiesOffline,
+      UTILITIES_BLOCKED: tools ? tools.blocked : FOLDER_FACTS.utilitiesTotal - FOLDER_FACTS.utilitiesOffline,
+      ENGLISH_TOOLS: tools && tools.byCupboard.english ? tools.byCupboard.english.blockedIds.length : FOLDER_FACTS.englishTools,
+      CODE_BLOCKED: tools && tools.byCupboard.code
+        ? andList(tools.blockedIds.filter(b => b.cupboard === tools.byCupboard.code.name).map(b => b.title))
+        : andList(FOLDER_FACTS.codeBlocked),
+      CODE_TOTAL: tools && tools.byCupboard.code ? tools.byCupboard.code.total : 15,
+      CODE_OFFLINE: tools && tools.byCupboard.code ? tools.byCupboard.code.offline : 10,
+      GAMES_TOTAL: games.total,
+      GAMES_PLAYABLE: games.playable,
+      GAMES_BLOCKED: games.blocked,
+      // The same fact as a sentence, for the places where a parenthetical would not read.
       WEIGHTS_SENTENCE: weights.present
         ? `The model weights Waffle AI runs on are in there too: ${mb(weights.bytes)} in ${plural(weights.files, 'file')}, so it answers without a network.`
         : 'This build came without the model weights, so Waffle AI downloads them the first time you ask it anything.'
@@ -368,9 +577,18 @@ export function verifyZip(zipPath, { expectWeights }) {
   // There is no literal `<script type="module">` to look for: the served branch
   // builds the element and sets `.type`, which is the only way to add a module to a
   // document that has already finished parsing.
-  for (const needle of [`s.src = './${CLASSIC_JS}'`, `css.href = './${CLASSIC_CSS}'`, "s.type = 'module'", /s\.src = '\.\/assets\/app-[^']+\.js'/]) {
+  for (const needle of [`tried = './${CLASSIC_JS}'`, `addCss('./${CLASSIC_CSS}', false)`, "s.type = 'module'", /tried = '\.\/assets\/app-[^']+\.js'/]) {
     const found = needle instanceof RegExp ? needle.test(front) : front.includes(needle);
     if (!found) throw new Error(`the front page picker is missing ${needle} — one of its two branches would not load anything`);
+  }
+  // The three links a page off the disk cannot use must be gone from the markup and
+  // owned by the picker instead. They are still in the file as JavaScript strings,
+  // which is why this looks for the tags and not for the filenames.
+  for (const tag of [/<link[^>]*rel="manifest"/, /<link[^>]*fonts\.css/, /<link[^>]*rel="stylesheet"[^>]*crossorigin/]) {
+    if (tag.test(front)) throw new Error(`the front page still has a ${tag} tag in its markup, which a folder cannot satisfy and which reads as an error in the console`);
+  }
+  if (!/var served = proto === 'http:' \|\| proto === 'https:'/.test(front)) {
+    throw new Error("the picker is not choosing by 'is it served' — anything that is not http would be sent down the module path again");
   }
   const entries = listing.split('\n')
     .map(l => l.trim().split(/\s+/).slice(3).join(' '))
@@ -386,7 +604,7 @@ export function verifyZip(zipPath, { expectWeights }) {
   return { entries: entries.length };
 }
 
-export function buildZip({ distDir = DIST_DIR, outDir = OUT_DIR, level = 9, log = console.log } = {}) {
+export function buildZip({ distDir = DIST_DIR, outDir = OUT_DIR, level = 9, log = console.log, tools = null } = {}) {
   if (!fs.existsSync(path.join(distDir, 'index.html'))) {
     throw new Error(`${distDir}/index.html is not there. Run \`npm run build\` first — the zip is the built site, not the source.`);
   }
@@ -404,13 +622,32 @@ export function buildZip({ distDir = DIST_DIR, outDir = OUT_DIR, level = 9, log 
     return r.status === 0 ? (r.stdout || '').trim() : '';
   })();
   const repo = resolveRepo();
-  const { files, extractedBytes, weights, facts } = factsFor(distDir, repo, sha);
+  // measureTools() is async and this is not, so the census is handed in: main() runs
+  // it, and the tests run it themselves. Without one the documents fall back to the
+  // literals in offline-facts.js, which is exactly what factsAgree() checks.
+  if (tools) {
+    const wrong = factsAgree(tools);
+    if (wrong.length) {
+      throw new Error(`offline-facts.js disagrees with the source it describes:\n  - ${wrong.join('\n  - ')}`);
+    }
+    if (tools.unresolved.length) {
+      throw new Error(`${tools.unresolved.length} tool(s) sit in a cupboard with a blocker but appear nowhere in its mount chain, so they cannot be counted: ${tools.unresolved.map(u => u.id).join(', ')}`);
+    }
+  }
+  const { files, extractedBytes, games, weights, facts } = factsFor(distDir, repo, sha, { tools });
+  // Zeros here mean the cabinet was not in the build, not that no game works from a
+  // folder. Stamping them would have every document in the archive claim the arcade
+  // is empty, which is the kind of lie that is only found by somebody reading it.
+  if (!games.total) {
+    throw new Error(`${distDir}/games/catalog.json is missing or empty, so there is no cabinet to measure — run \`npm run build\` first`);
+  }
 
   log(`[zip] ${repo}${sha ? ` at ${sha.slice(0, 7)}` : ''}: ${files} files, ${mb(extractedBytes)} extracted`);
   for (const row of biggestSubdirs(distDir)) {
     log(`[zip]   ${row.name.padEnd(18)} ${mb(row.bytes).padStart(9)}  ${plural(row.files, 'file')}`);
   }
   log(`[zip]   model weights     ${weights.present ? `${mb(weights.bytes)} in ${plural(weights.files, 'file')}` : 'none in this build'}`);
+  log(`[zip]   from a folder: ${tools ? tools.offline : FOLDER_FACTS.utilitiesOffline} of ${tools ? tools.total : FOLDER_FACTS.utilitiesTotal} utilities, ${games.playable} of ${games.total} games`);
 
   fs.mkdirSync(outDir, { recursive: true });
   const zipPath = path.resolve(outDir, ZIP_NAME);
@@ -463,9 +700,9 @@ export function buildZip({ distDir = DIST_DIR, outDir = OUT_DIR, level = 9, log 
   return { ...meta, notesPath, zipPath };
 }
 
-function main() {
+async function main() {
   try {
-    buildZip();
+    buildZip({ tools: await measureTools(REPO_ROOT) });
   } catch (err) {
     console.error(`[zip] ${err.message}`);
     process.exitCode = 1;
@@ -473,4 +710,4 @@ function main() {
 }
 
 // Importing this module must not start a 400 MB archive.
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) void main();

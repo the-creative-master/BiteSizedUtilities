@@ -17,16 +17,16 @@ explanation, not the entrance.
 
 WHAT WORKS FROM THE FOLDER, AND WHAT DOES NOT
 ---------------------------------------------
-Works      the kitchen, and all 115 utilities on its shelves
-Works      85 of them — the maths, science, text, art, music and video
-           cupboards, which never touch the network or a worker
-Works      the games cupboard, listing all 51 games
-Works      26 of those games, on tap
-Does not   the whole English & Languages cupboard: 14 of its 15 tools ask
-           Waffle AI, and the translator calls an API
-Does not   the other 25 games, which read their own files as they load
-Does not   CodeHub, JavaScript and Web, which run your code in a worker;
-           the rest of that cupboard is among the 85
+Works      the kitchen, and all {{UTILITIES_TOTAL}} utilities on its shelves
+Works      {{UTILITIES_OFFLINE}} of them, which do their work in the page: the
+           maths, science, text, art, music and video cupboards in full, plus
+           {{CODE_OFFLINE}} of the {{CODE_TOTAL}} coding tools
+Works      the games cupboard, listing all {{GAMES_TOTAL}} games
+Works      {{GAMES_PLAYABLE}} of those games, on tap
+Does not   the whole English & Languages cupboard: all {{ENGLISH_TOOLS}} of them
+           ask an AI, and the translator calls an API
+Does not   the other {{GAMES_BLOCKED}} games, which read their own files as they load
+Does not   {{CODE_BLOCKED}}, which run your code in a worker
 Does not   Waffle AI, or the images it makes
 
 A page opened off the disk gets an origin the browser will not trust, and from
@@ -34,7 +34,8 @@ one it refuses three things:
 
   1. an ES module                  — which is how the full site loads
   2. a worker                      — which is how the runtimes execute anything
-  3. a fetch of the file beside it — which is how the 25 games load their parts
+  3. a fetch of the file beside it — which is how the {{GAMES_BLOCKED}} games
+     load their parts
 
 None of that is a broken download and there is no setting to flip; it is the
 same rule everywhere, for every site. The folder build works around the first,
@@ -56,8 +57,8 @@ on port 8123, and stops when you close its window. Then open
 
   http://localhost:8123/index.html
 
-and the same index.html loads the full site instead of the folder build: all 51
-games, the runtimes, and Waffle AI running on the model weights in this folder
+and the same index.html loads the full site instead of the folder build: all
+{{GAMES_TOTAL}} games, the runtimes, and Waffle AI running on the model weights in this folder
 {{WEIGHTS}} — with nothing fetched from the internet.
 
 By hand, the same thing is
@@ -76,8 +77,8 @@ WHAT IS IN HERE
   kitchen.css       its styles
   START-HERE.html   this, as a page
   start-server.*    the optional local server, one per operating system
-  115 utilities     maths, writing, art, music, video, code
-  51 games          each its own page
+  the utilities     {{UTILITIES_TOTAL}} of them: maths, writing, art, music, video, code
+  the games         {{GAMES_TOTAL}}, each its own page
   CodeHub runtimes  Python, JavaScript, Bash, Luau, Befunge
   Waffle AI         {{WEIGHTS}}
   the site itself   every script, style, font, icon and runtime binary it serves

@@ -22,7 +22,7 @@ import { isBackupBuild } from './build-mode.js';
 export const APP_VERSION = '1.2.6';
 
 /** Test versions built after 1.2 shipped. Reset to 0 on every public release. */
-export const TVAR = 1;
+export const TVAR = 2;
 
 /**
  * The release cycle the open test build belongs to.
@@ -35,7 +35,7 @@ export const TVAR = 1;
  */
 export const TVAR_CYCLE = '1.2';
 
-/** `1.2 TVAR 1` — the extended label, used only while a test version is open. */
+/** `1.2 TVAR 2` — the extended label, used only while a test version is open. */
 export const APP_VERSION_EXTENDED = `${TVAR_CYCLE} TVAR ${TVAR}`;
 
 /** What the footer of the changelog should call this build. */
@@ -50,6 +50,45 @@ export function appVersionLabel() {
  * what is known to be rough — that is the whole point of writing them down.
  */
 export const TVAR_LOG = [
+  {
+    version: '1.2 TVAR 2',
+    date: 'November 23, 2026',
+    title: 'OFFLINE-HTML-TEST: the whole kitchen in one file, and a folder that stops hiccupping',
+    tvar: true,
+    groups: [
+      {
+        label: '\u{1F9C7} What this build is for',
+        items: [
+          'One addition and one repair, and nothing else. The addition is a button in this kitchen that hands you the entire site as a single HTML file. The repair is that opening an unzipped copy of the site from a folder no longer produces a Waffle Kitchen hiccup.',
+          'The public kitchen is untouched: same version, same model menu, same behaviour. The offline file is mentioned in this entry and in this kitchen only, because it is a test of a build shape and not a feature yet.'
+        ]
+      },
+      {
+        label: '\u2B07 The offline file',
+        items: [
+          'About 1.2 MB, one document: every tool, the stylesheet and all the fonts inlined as data URLs. There is nothing left to fetch, so it works from a folder with no server, no network and no neighbouring files.',
+          'It is a classic script and not a module, which is the whole trick. A browser refuses an ES module from a file: page outright, and that refusal is exactly what an unzipped site runs into.',
+          'npm run build:offline makes it from vite.offline.config.js. That is a second config rather than a third input to the first one, because Rollup will only inline dynamic imports when there is a single entry and the output format is not a module.'
+        ]
+      },
+      {
+        label: '\u{1F6AB} What it refuses, and why',
+        items: [
+          'Waffle AI, image generation, the CodeHub runtimes and the games are not in this file and say so. Their weights are downloaded, their engines are workers and WASM, and a file: page gets no cross-origin isolation, so none of them could run even if they were inlined. Every ordinary tool works.',
+          'The reason is a single folded flag: globalThis.__WAFFLE_OFFLINE__ becomes true in this build, and each guard sits immediately before the await import() it protects. onnxruntime-web carries its WASM inside its own JavaScript as base64, so the first attempt measured 190 MB. The guards, plus a stub that the three vendor packages resolve to, brought it to 1.2 MB.',
+          'That stub is the guarantee behind the guards. A guard that is missed, or a new import site added later without anyone remembering, now costs a refusal that explains itself instead of a 179 MB HTML file.'
+        ]
+      },
+      {
+        label: '\u{1F9EA} How it was checked',
+        items: [
+          'The built file was booted in jsdom at a file: URL instead of being read. That is what caught a temporal dead zone in the flattened bundle, where an exported constant was hoisted above the declaration it aliased and killed the kitchen before it rendered. No source-level check can see that, because the source is correct.',
+          'The build now fails rather than warns if the artifact contains base64 WASM, a script with a src, a stylesheet or manifest to fetch, a module script, or import.meta. Those five are precisely what breaks a page opened from a folder.',
+          'An unzipped source folder is answered by index.html itself: on a file: page and only there, it replaces its own contents with a short explanation and a link to the offline kitchen, instead of showing a hiccup that blames the visitor.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.2 TVAR 1',
     date: 'November 22, 2026',

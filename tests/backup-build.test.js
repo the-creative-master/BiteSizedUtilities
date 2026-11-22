@@ -47,16 +47,16 @@ test('the backup kitchen reports the test build it is, not the release beside it
   // 1.2.6 is what the public kitchen says. This build is a test version on top
   // of 1.2, so it says so — and the two labels are allowed to disagree, which is
   // the whole reason the cycle is its own constant instead of APP_VERSION.
-  assert.equal(TVAR, 1, 'one test build is open');
+  assert.equal(TVAR, 2, 'one test build is open');
   assert.equal(TVAR_CYCLE, '1.2', 'on the 1.2 cycle');
   assert.equal(APP_VERSION, '1.2.6', 'while the release has moved on without it');
-  assert.equal(appVersionLabel(), '1.2 TVAR 1', 'backup.html reports the build it is');
+  assert.equal(appVersionLabel(), '1.2 TVAR 2', 'backup.html reports the build it is');
   assert.equal(isBackupBuild(), true);
   assert.equal(isPublicBuild(), false);
 
   // The 1.1 test versions stay documented as history; they are not this build.
-  assert.equal(TVAR_LOG.length, 4, 'every extended minor version is still documented');
-  assert.deepEqual(TVAR_LOG.map(e => e.version), ['1.2 TVAR 1', '1.1 TVAR 3', '1.1 TVAR 2', '1.1 TVAR 1'],
+  assert.equal(TVAR_LOG.length, 5, 'every extended minor version is still documented');
+  assert.deepEqual(TVAR_LOG.map(e => e.version), ['1.2 TVAR 2', '1.2 TVAR 1', '1.1 TVAR 3', '1.1 TVAR 2', '1.1 TVAR 1'],
     'newest first, and an old entry keeps its own number');
   assert.equal(TVAR_LOG[0].version, APP_VERSION_EXTENDED,
     'the newest entry spells out the label this build reports, so it cannot be renumbered behind its own back');
@@ -77,12 +77,26 @@ test('the backup kitchen reports the test build it is, not the release beside it
   assert.match(all, /Hugging Face/, 'and records the extended AI error report');
 
   const open = textOf(TVAR_LOG[0]);
-  assert.match(open, /Falcon 3 1B/, '1.2 TVAR 1 names the model it added');
-  assert.match(open, /DONTASKMEWHATTHATIS\.txt/, 'and the file the build now ships as');
-  assert.match(open, /obfuscation and not encryption/, 'without pretending the disguise is a secret');
-  assert.ok(!open.includes('BACKUPKITCHEN'), 'and without printing the string that opens it');
+  // The name is in the title, and textOf() reads labels and items — asserting on
+  // `open` here would have been asserting on a string the entry never contains.
+  assert.match(TVAR_LOG[0].title, /OFFLINE-HTML-TEST/, '1.2 TVAR 2 is named after what it is testing');
+  assert.match(open, /single HTML file/, 'and says what it adds');
+  assert.match(open, /190 MB/, 'including the number the first attempt came to');
+  assert.match(open, /1\.2 MB/, 'and the number the guards brought it down to');
+  assert.match(open, /file:/, 'the whole entry is about a page with no server behind it');
+  assert.match(open, /classic script and not a module/, 'naming the one reason an unzipped copy cannot start');
+  assert.match(open, /temporal dead zone/, 'and the bug that booting the artifact caught');
+  assert.match(open, /cross-origin isolation/, 'so the refusals are explained, not just announced');
+  assert.match(open, /npm run build:offline/, 'with the command that makes it');
+  assert.ok(!open.includes('BACKUPKITCHEN'), 'without printing the string that opens this kitchen');
 
-  const latest = textOf(TVAR_LOG[1]);
+  const tvar1 = textOf(TVAR_LOG[1]);
+  assert.match(tvar1, /Falcon 3 1B/, '1.2 TVAR 1 names the model it added');
+  assert.match(tvar1, /DONTASKMEWHATTHATIS\.txt/, 'and the file the build now ships as');
+  assert.match(tvar1, /obfuscation and not encryption/, 'without pretending the disguise is a secret');
+  assert.ok(!tvar1.includes('BACKUPKITCHEN'), 'and without printing the string that opens it');
+
+  const latest = textOf(TVAR_LOG[2]);
   assert.match(latest, /Huawei/, 'TVAR 3 records the devices it was built for');
   assert.match(latest, /Kirin NPU cannot be reached from a web page/,
     'and says plainly what the NPU cannot do instead of implying it works');
@@ -92,7 +106,7 @@ test('the backup kitchen reports the test build it is, not the release beside it
   assert.match(latest, /1\.8 GB/, 'so is the tighter heap budget on a tablet');
   assert.match(latest, /ArkWeb/, 'and the mapping that dates a Huawei browser');
 
-  const tvar2 = textOf(TVAR_LOG[2]);
+  const tvar2 = textOf(TVAR_LOG[3]);
   assert.match(tvar2, /freez/, 'TVAR 2 records the freeze it was built to fix');
   assert.match(tvar2, /Only one inference runs at a time/, 'what replaced it');
   assert.match(tvar2, /45 seconds/, 'the watchdog window a visitor would actually hit');
@@ -136,13 +150,22 @@ test('backup.html is the only page that switches the extra build on', () => {
   assert.match(backup, /<script type="module" src="\.\/app\.js"><\/script>/, 'both pages run the same app');
   // The backup page also asks not to be indexed, which is the only other
   // difference: same app, same shell, same fallback loader.
-  // index.html carries one thing backup.html does not: the four-line head script
-  // that reads the door's stash and writes the decoded page. It has to be inline
-  // and it has to be in the head, and it belongs on the public page only — the
-  // backup kitchen has no door to open into itself.
+  // index.html carries two things backup.html does not, and both have to be
+  // inline, in the head, and public-only.
+  //
+  // The first is the four-line script that reads the door's stash and writes the
+  // decoded page: the backup kitchen has no door to open into itself.
+  //
+  // The second answers an unzipped folder. It does nothing at all unless the page
+  // was opened over file:, where a browser refuses the module that the rest of the
+  // document depends on; on a served page it returns on its first line. The backup
+  // page never needs it, because it is not in dist to be unzipped — the build
+  // removes it and the door writes it.
   const DOOR_SCRIPT = /<script>\(function\(\)\{try\{var h=sessionStorage[\s\S]*?<\/script>/;
+  const FILE_HANDOFF_SCRIPT = /<script>\(function\(\)\{if\(location\.protocol!=='file:'\)return;[\s\S]*?<\/script>/;
   const strip = (html, flag) => html
     .replace(DOOR_SCRIPT, '')
+    .replace(FILE_HANDOFF_SCRIPT, '')
     .replace(flag ? / data-backup="1"/g : /\u0000/g, '')
     .replace(/<meta name="robots" content="noindex,nofollow">/g, '')
     .replace(/<title>[^<]*<\/title>/g, '')
@@ -167,7 +190,10 @@ test('no tool is backup-only any more, and both kitchens hold the same 115', () 
 
 /* ============================== nothing advertises it ============================== */
 
-const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'runtimes', 'cabinet', 'fonts', '.playwright-cli']);
+// Build output is skipped, not searched: dist-offline/kitchen.js is the bundled
+// art-studio-layers.js, so it carries the same pre-rename project magic that the
+// ALLOWED map below permits in the source, minified beyond recognition.
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'dist-offline', '.git', 'runtimes', 'cabinet', 'fonts', '.playwright-cli']);
 const TEXT_EXT = new Set(['.js', '.mjs', '.cjs', '.html', '.css', '.json', '.md', '.webmanifest', '.yml', '.yaml', '.svg', '.txt']);
 const SKIP_FILES = new Set(['package-lock.json']);
 // Places where the retired word is allowed to survive, each with a reason.

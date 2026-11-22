@@ -1,3 +1,5 @@
+import { OFFLINE_BUILD_FLAG, OFFLINE_BUILD_REASON } from './build-mode.js';
+
 const SD_CACHE = 'waffle-sd-models-v1';
 const BASE_URL = './api/waffle-ai/sd-models/';
 
@@ -229,6 +231,11 @@ export async function detectImageCapabilities() {
 }
 
 async function getOrt(preferWebGPU = true) {
+  // Before the import, for the reason written on the flag: onnxruntime-web
+  // carries its WASM inside its own JavaScript as base64, and an iife build has
+  // to inline every dynamic import into the single chunk. This one line is the
+  // difference between a 1.5 MB file and a 190 MB one.
+  if (OFFLINE_BUILD_FLAG) throw new Error(OFFLINE_BUILD_REASON);
   if (ortState && (!preferWebGPU || ortState.backend === 'webgpu')) return ortState;
   const caps = await detectImageCapabilities();
   const useGpu = preferWebGPU && caps.hasWebGPU;

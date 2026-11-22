@@ -119,7 +119,8 @@ app.innerHTML = `
     ${isBackupBuild() ? `
     <div class="backup-banner" id="backup-banner" data-no-i18n>
       <span class="gbadge backup-banner-badge">🧇 BACKUP KITCHEN</span>
-      <span class="backup-banner-copy">Waffle AI is in the main kitchen now. This build is where new behaviour gets tried first, so everything here is unfinished on purpose.</span>
+      <span class="backup-banner-copy">Waffle AI is in the main kitchen now. This build is where new behaviour gets tried first, so everything here is unfinished on purpose. It can also hand you the whole kitchen as one HTML file that works with no server at all.</span>
+      <a class="gbtn gbtn-chip backup-banner-exit" href="./offline.html" download="BiteSizedUtilities-offline.html">⬇ Offline HTML</a>
       <a class="gbtn gbtn-chip backup-banner-exit" href="./index.html">Back to the kitchen</a>
     </div>` : ''}
     <header class="game-hud">

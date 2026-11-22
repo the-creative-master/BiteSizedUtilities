@@ -253,7 +253,13 @@ test('Waffle AI chatbot, streaming code boxes, DOCX creation/parsing, single Waf
   const fileToolsSrc = fs.readFileSync('file-tools-client.js', 'utf8');
   assert.ok(fileToolsSrc.includes('FlateDecode') && fileToolsSrc.includes('slides') && fileToolsSrc.includes('sharedStrings') && fileToolsSrc.includes('extractFilePayload'), 'file-tools-client supports PDF FlateDecode, PPTX, XLSX, and image payloads');
   assert.ok(browserAiSrc.includes('Qwen3_5ForConditionalGeneration') && browserAiSrc.includes('AutoProcessor') && browserAiSrc.includes('RawImage'), 'waffle-browser-ai supports multimodal image vision via Qwen3_5ForConditionalGeneration');
-  assert.ok(serverSrc.includes('BEGIN FILE') && uiSrc.includes('extractFilePayload') && uiSrc.includes('waffle-msg-img'), 'Server and UI explicitly handle inline file blocks and image previews');
+  // 1.2.5 moved the marker description out of the standing server persona and
+  // into the shared module, where it is only sent with a message that really
+  // carries a file. The UI is what writes the markers.
+  const personaSrc = fs.readFileSync('waffle-persona.js', 'utf8');
+  assert.ok(personaSrc.includes('BEGIN FILE') && uiSrc.includes('extractFilePayload') && uiSrc.includes('waffle-msg-img'), 'Persona and UI explicitly handle inline file blocks and image previews');
+  assert.ok(uiSrc.includes('--- BEGIN FILE: ${f.name} ---') && uiSrc.includes('--- END FILE: ${f.name} ---'), 'and the UI writes the filename form the persona describes');
+  assert.ok(!serverSrc.includes('BEGIN FILE'), 'the standing server persona no longer describes markers on every turn');
   const { WAFFLE_SYSTEM_PROMPT } = await import('../waffle-ai-server.js');
   assert.ok(!/maple syrup|crispy waffle|golden waffle/i.test(WAFFLE_SYSTEM_PROMPT), 'System prompt does not bias models with waffle/syrup roleplay');
   assert.ok(uiSrc.includes('!m.isWelcome') && uiSrc.includes('Text-only fallback is disabled for images'), 'Welcome message is excluded from LLM history and images never fall back to blind text models');

@@ -24,8 +24,8 @@ function pageWith(dataset) {
 
 test('the public kitchen reports a plain release version and knows nothing about TVAR', () => {
   pageWith({});
-  assert.equal(APP_VERSION, '1.2.1');
-  assert.equal(appVersionLabel(), '1.2.1', 'index.html says 1.2.1 and nothing else');
+  assert.equal(APP_VERSION, '1.2.5');
+  assert.equal(appVersionLabel(), '1.2.5', 'index.html says 1.2.5 and nothing else');
   assert.equal(isBackupBuild(), false);
   assert.equal(isPublicBuild(), true);
   assert.ok(!APP_VERSION.includes('TVAR'), 'the release version never carries a TVAR suffix');
@@ -34,12 +34,12 @@ test('the public kitchen reports a plain release version and knows nothing about
 
 test('the backup kitchen reports the test build it is, not the release beside it', () => {
   pageWith({ backup: '1' });
-  // 1.2.1 is what the public kitchen says. This build is a test version on top
+  // 1.2.5 is what the public kitchen says. This build is a test version on top
   // of 1.2, so it says so — and the two labels are allowed to disagree, which is
   // the whole reason the cycle is its own constant instead of APP_VERSION.
   assert.equal(TVAR, 1, 'one test build is open');
   assert.equal(TVAR_CYCLE, '1.2', 'on the 1.2 cycle');
-  assert.equal(APP_VERSION, '1.2.1', 'while the release has moved on without it');
+  assert.equal(APP_VERSION, '1.2.5', 'while the release has moved on without it');
   assert.equal(appVersionLabel(), '1.2 TVAR 1', 'backup.html reports the build it is');
   assert.equal(isBackupBuild(), true);
   assert.equal(isPublicBuild(), false);
@@ -95,7 +95,7 @@ test('TVAR entries reset with each release and are rendered only in the backup b
   assert.match(src, /export const APP_VERSION_EXTENDED = `\$\{TVAR_CYCLE\} TVAR \$\{TVAR\}`;/,
     'the extended label is derived, so bumping TVAR is a one-character change');
   assert.match(src, /export const TVAR_CYCLE = '1\.2';/,
-    'from the cycle it belongs to, which is a literal: APP_VERSION has moved on to 1.2.1 and deriving from it would announce a build that has never existed');
+    'from the cycle it belongs to, which is a literal: APP_VERSION has moved on to 1.2.5 and deriving from it would announce a build that has never existed');
   assert.match(src, /Reset to 0 on every public release/, 'the reset rule is written down where the counter lives');
   assert.match(src, /const releases = isBackupBuild\(\) \? \[\.\.\.TVAR_LOG, \.\.\.CHANGELOG\] : CHANGELOG;/,
     'the renderer only prepends TVAR entries in the backup build');

@@ -19,7 +19,7 @@ import { isBackupBuild } from './build-mode.js';
  * visitors on GitHub Pages never see repo files, and the release notes belong
  * where the kitchen is.
  */
-export const APP_VERSION = '1.2.1';
+export const APP_VERSION = '1.2.5';
 
 /** Test versions built after 1.2 shipped. Reset to 0 on every public release. */
 export const TVAR = 1;
@@ -30,7 +30,7 @@ export const TVAR = 1;
  * Its own constant rather than APP_VERSION, because the two are not the same
  * string any more: 1.2.1 is what the public kitchen reports, while the backup
  * kitchen is still testing on top of 1.2. Deriving the extended label from
- * APP_VERSION would have announced "1.2.1 TVAR 1" — a build that has never
+ * APP_VERSION would have announced "1.2.5 TVAR 1" — a build that has never
  * existed — and renumbered the entry below it that documents the one that has.
  */
 export const TVAR_CYCLE = '1.2';
@@ -259,6 +259,38 @@ export const TVAR_LOG = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: '1.2.5',
+    date: 'November 22, 2026',
+    title: 'Sir Waffle introduces himself, and stops wrapping answers in file markers',
+    groups: [
+      {
+        label: '\u{1F9C7} A name and a job description',
+        items: [
+          'The assistant now knows what it is. Two sentences at the top of its instructions say who it is — Sir Waffle — and what this site is: a free set of small utilities that runs in your browser, covering writing and language tools, maths, art, code and games.',
+          'Two sentences is the entire introduction, on purpose. A small model reads its instructions as a sample of the house style and imitates them, so a paragraph of waffle imagery is how every answer ends up being about breakfast. The instructions now say the opposite as well: answer the question that was asked, and mention the site or the waffle only when the question is about them.',
+          'The narrow tools keep their own instructions. A translator told to output only the translated text, or a flashcard maker told to output only FRONT || BACK || HINT lines, gets no biography at all — an identity is useful in a conversation and gets in the way of a tool.'
+        ]
+      },
+      {
+        label: '\u{1F41B} --- BEGIN FILE ---',
+        items: [
+          'Falcon 3 1B answered everything, including "hello", wrapped in --- BEGIN FILE --- and --- END FILE ---. Nothing was wrong with the model or with its weights: the instructions described those markers on every single turn, whether or not a file was attached, and a 1B model treated them as the shape an answer takes.',
+          'That description now travels only with a message that really does carry a file, and it names the markers this kitchen actually uses — the old text described a format the app never wrote. It also says plainly that the markers belong to the incoming file and not to the reply.',
+          'As a second line of defence, any model that still emits them has them removed before the answer reaches you, including half-written ones mid-stream, so a marker never flashes on screen and then disappears.',
+          'The same cleaning covers the web-search markers, and it leaves ordinary Markdown alone: a --- rule, a bullet list and a fenced code block all come through untouched.'
+        ]
+      },
+      {
+        label: '\u{1F527} Underneath',
+        items: [
+          'The introduction and the answer cleaning now live in one small module that the chat, the in-browser engines and the optional on-device server all import, so the two kitchens cannot drift apart on who they are or on what a clean answer looks like.',
+          'The server recognises one of our prompts by its opening line instead of by comparing whole strings, so it no longer repeats the language rule at a prompt that already carries it — which matters now that a turn with an attached file has a prompt of its own.',
+          'Tokens streamed back from the on-device server are cleaned as they arrive. They used to be shown exactly as generated, with the tidy-up applied only to the finished answer.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.2.1',
     date: 'November 22, 2026',

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { buildWaffleSystemPrompt, isWafflePersona, stripModelScaffolding } from './waffle-persona.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -25,14 +26,17 @@ export const SERVER_MODELS = {
   }
 };
 
-export const WAFFLE_SYSTEM_PROMPT = [
-  'You are a helpful, accurate AI assistant inside BiteSizedUtilities.',
-  'Always respond in English unless the user explicitly asks you to write in another language.',
-  'Keep answers clear, truthful, factual, and well-formatted in Markdown.',
-  'When writing code, always use standard fenced code blocks with the language name (like ```python).',
-  'Only when the user asks you to make, create, or generate a downloadable file (such as .docx, .md, .txt, .csv, .json, .html, .py, .js), wrap the full file contents inside a fenced block whose tag is file:filename.ext (for example ```file:notes.docx or ```file:hello.py).',
-  'CRITICAL: Whenever the user attaches or uploads a file, its extracted contents are ALREADY placed directly inside the user message between --- BEGIN FILE --- and --- END FILE --- markers. Read and use that extracted text directly — NEVER say you cannot see, read, or access attached files.'
-].join(' ');
+/**
+ * The standing persona for the llama.cpp server path, built by the same function
+ * the browser uses so the two cannot drift apart on who they are.
+ *
+ * It deliberately carries no attached-file rule. This prompt is fixed when the
+ * session is created, so it cannot know whether the next message has a file in
+ * it — and describing the markers on every turn is exactly what taught Falcon 3
+ * 1B to answer "hello" wrapped in them. The browser sends the rule with the
+ * turns that need it, as a custom system prompt.
+ */
+export const WAFFLE_SYSTEM_PROMPT = buildWaffleSystemPrompt();
 
 let llamaInstance = null;
 let modelInstance = null;
@@ -173,7 +177,7 @@ function buildChatHistory(messages, customSystemPrompt) {
     : WAFFLE_SYSTEM_PROMPT;
   const langGuard = hasSpeakHint
     ? ' Follow the requested output language at the end of the prompt.'
-    : (baseSys === WAFFLE_SYSTEM_PROMPT ? '' : ' Respond in English unless instructed otherwise.');
+    : (isWafflePersona(baseSys) ? '' : ' Respond in English unless instructed otherwise.');
   const sysText = baseSys + langGuard;
   const history = [{ type: 'system', text: sysText }];
 
@@ -463,7 +467,7 @@ export function attachWaffleAiMiddleware(middlewares) {
           }
         });
 
-        const finalText = (reply || fullText || '').replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
+        const finalText = stripModelScaffolding(reply || fullText || '').trim();
         if (stream) {
           sendSse(res, 'done', { text: finalText, model: targetCfg.label, modelId: targetCfg.id, engine: 'node-llama.cpp' });
           if (!res.writableEnded) res.end();

@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   TEXT_MODELS,
+  DEFAULT_TEXT_MODEL_ID,
   offeredTextModels,
   allOfferedTextModels,
   planAutoPrecache,
@@ -340,7 +341,9 @@ test('--all-small selects by measured size, smallest first', () => {
     'the deploy pre-caches what either menu offers');
 
   const sel = selectSmallModels(allOfferedTextModels(TEXT_MODELS));
-  assert.ok(sel.includes('smollm2-135m'), 'the default model, which every visitor uses, is in');
+  assert.ok(sel.includes(DEFAULT_TEXT_MODEL_ID), 'the default model, which every visitor uses, is in');
+  assert.ok(!sel.includes('smollm2-135m'),
+    'and the model 1.2.6 retired is not: pre-caching weights nobody can pick spends the Pages budget on nothing');
   assert.ok(!sel.includes('qwen2.5-1.5b'), 'and the 882 MB one is not');
   assert.ok(!sel.includes('smollm2-1.7b'), 'nor the ~1 GB one — it is over the per-model ceiling');
   assert.ok(!sel.includes('smollm2-360m'), 'nor the 360M, which went to 16-bit and over the ceiling with it');
@@ -354,17 +357,19 @@ test('--all-small selects by measured size, smallest first', () => {
   // The budget is read out of the command the deploy runs, so this cannot drift
   // from it: 1.2 moved the default model to full 16-bit, ~270 MB rather than 93,
   // and the budget had to move with it or the site would ship no model at all.
+  // 1.2.6 moved the default again, to a 320 MB Qwen, and the budget covers it.
   const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
   const deployMB = Number(/--max-mb=(\d+)/.exec(pkg.scripts.precache)[1]);
-  assert.ok(deployMB >= 270, `the deploy budget can hold the default model (${deployMB} MB)`);
+  const defaultMB = TEXT_MODELS.find(m => m.id === DEFAULT_TEXT_MODEL_ID).ggufMB;
+  assert.ok(deployMB >= defaultMB, `the deploy budget can hold the default model (${deployMB} MB vs ${defaultMB} MB)`);
 
   const plan = planBudget(
     sel.map(id => ({ modelId: id, size: TEXT_MODELS.find(m => m.id === id).ggufMB * MB })),
     deployMB * MB
   );
-  assert.deepEqual(plan.take.map(p => p.modelId), ['smollm2-135m'],
+  assert.deepEqual(plan.take.map(p => p.modelId), [DEFAULT_TEXT_MODEL_ID],
     'the deploy ships exactly the model every visitor meets first');
-  assert.equal(Math.round(plan.used / MB), 270);
+  assert.equal(Math.round(plan.used / MB), defaultMB);
 });
 
 test('the quant picker prefers the configured quant and refuses shards', () => {

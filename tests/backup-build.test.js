@@ -24,22 +24,32 @@ function pageWith(dataset) {
 
 test('the public kitchen reports a plain release version and knows nothing about TVAR', () => {
   pageWith({});
-  assert.equal(APP_VERSION, '1.2.5');
-  assert.equal(appVersionLabel(), '1.2.5', 'index.html says 1.2.5 and nothing else');
+  assert.equal(APP_VERSION, '1.2.6');
+  assert.equal(appVersionLabel(), '1.2.6', 'index.html says 1.2.6 and nothing else');
   assert.equal(isBackupBuild(), false);
   assert.equal(isPublicBuild(), true);
   assert.ok(!APP_VERSION.includes('TVAR'), 'the release version never carries a TVAR suffix');
   assert.ok(!JSON.stringify(CHANGELOG).includes('TVAR'), 'and the public release notes never mention one');
+  // That the backup kitchen exists is public and has been since 1.1.1 — three
+  // released entries say so, and one of them says it got harder to get into
+  // "on purpose". What may never appear in the public notes is the *mechanism*:
+  // the TVAR label, the disguised filename, the page it decodes to, or the
+  // string that opens it. The release notes are the most discoverable page on
+  // the site, so they are the last place any of that belongs.
+  const publicCopy = JSON.stringify(CHANGELOG).toLowerCase();
+  for (const forbidden of ['tvar', 'dontaskme', 'backup.html', 'backupkitchen', 'passphrase']) {
+    assert.ok(!publicCopy.includes(forbidden), `the public notes never reveal "${forbidden}"`);
+  }
 });
 
 test('the backup kitchen reports the test build it is, not the release beside it', () => {
   pageWith({ backup: '1' });
-  // 1.2.5 is what the public kitchen says. This build is a test version on top
+  // 1.2.6 is what the public kitchen says. This build is a test version on top
   // of 1.2, so it says so — and the two labels are allowed to disagree, which is
   // the whole reason the cycle is its own constant instead of APP_VERSION.
   assert.equal(TVAR, 1, 'one test build is open');
   assert.equal(TVAR_CYCLE, '1.2', 'on the 1.2 cycle');
-  assert.equal(APP_VERSION, '1.2.5', 'while the release has moved on without it');
+  assert.equal(APP_VERSION, '1.2.6', 'while the release has moved on without it');
   assert.equal(appVersionLabel(), '1.2 TVAR 1', 'backup.html reports the build it is');
   assert.equal(isBackupBuild(), true);
   assert.equal(isPublicBuild(), false);
@@ -95,7 +105,7 @@ test('TVAR entries reset with each release and are rendered only in the backup b
   assert.match(src, /export const APP_VERSION_EXTENDED = `\$\{TVAR_CYCLE\} TVAR \$\{TVAR\}`;/,
     'the extended label is derived, so bumping TVAR is a one-character change');
   assert.match(src, /export const TVAR_CYCLE = '1\.2';/,
-    'from the cycle it belongs to, which is a literal: APP_VERSION has moved on to 1.2.5 and deriving from it would announce a build that has never existed');
+    'from the cycle it belongs to, which is a literal: APP_VERSION has moved on to 1.2.6 and deriving from it would announce a build that has never existed');
   assert.match(src, /Reset to 0 on every public release/, 'the reset rule is written down where the counter lives');
   assert.match(src, /const releases = isBackupBuild\(\) \? \[\.\.\.TVAR_LOG, \.\.\.CHANGELOG\] : CHANGELOG;/,
     'the renderer only prepends TVAR entries in the backup build');

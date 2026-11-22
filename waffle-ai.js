@@ -7,6 +7,7 @@ import { copyToClipboard } from './ui-kit.js';
 import { createDocxBlob, extractFilePayload, triggerFileDownload } from './file-tools-client.js';
 import {
   TEXT_MODELS,
+  DEFAULT_TEXT_MODEL_ID,
   streamBrowserChat,
   streamWllamaChat,
   getSelectedTextModel,
@@ -514,7 +515,12 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     attempts.push({ kind: 'server', id, label: cfg.label });
   };
   const pushChromiumSafetyNet = () => {
-    const tiny = TEXT_MODELS.find(x => x.id === 'smollm2-135m');
+    // The last resort follows the starting model rather than naming one. It used
+    // to be hardcoded to SmolLM2 135M, which 1.2.6 took off the menu: a safety
+    // net pointing at a model nobody can select, and that a deploy no longer
+    // pre-caches, is a net with a hole in it — the rescue would have depended on
+    // reaching Hugging Face too, which is the thing that just failed.
+    const tiny = TEXT_MODELS.find(x => x.id === DEFAULT_TEXT_MODEL_ID);
     if (!tiny || cfg.id === tiny.id) return;
     pushWllama(false, tiny);
     pushBrowser('wasm', tiny.id);

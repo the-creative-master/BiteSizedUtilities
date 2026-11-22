@@ -19,7 +19,7 @@ import { isBackupBuild } from './build-mode.js';
  * visitors on GitHub Pages never see repo files, and the release notes belong
  * where the kitchen is.
  */
-export const APP_VERSION = '1.2.5';
+export const APP_VERSION = '1.2.6';
 
 /** Test versions built after 1.2 shipped. Reset to 0 on every public release. */
 export const TVAR = 1;
@@ -30,7 +30,7 @@ export const TVAR = 1;
  * Its own constant rather than APP_VERSION, because the two are not the same
  * string any more: 1.2.1 is what the public kitchen reports, while the backup
  * kitchen is still testing on top of 1.2. Deriving the extended label from
- * APP_VERSION would have announced "1.2.5 TVAR 1" — a build that has never
+ * APP_VERSION would have announced "1.2.6 TVAR 1" — a build that has never
  * existed — and renumbered the entry below it that documents the one that has.
  */
 export const TVAR_CYCLE = '1.2';
@@ -259,6 +259,37 @@ export const TVAR_LOG = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: '1.2.6',
+    date: 'November 22, 2026',
+    title: 'Every model is now in the normal kitchen',
+    groups: [
+      {
+        label: '\u{1F916} Every model, in every kitchen',
+        items: [
+          'All seven are in Waffle AI for everybody: Qwen 2.5 0.5B, Qwen 3 0.6B, Qwen 3.5 0.8B, Falcon 3 1B, SmolLM2 360M, Qwen 2.5 1.5B and SmolLM2 1.7B. They were tried in the backup kitchen first, and they have been tried, so now they are the list.',
+          'The notes for 1.2.5 mentioned Falcon 3 1B, which nobody could actually pick in this kitchen. That is the mistake this release corrects: a release note may only name a model the reader can choose.',
+          'The menu is ordered by what a model costs to download, from 320 MB to roughly 1 GB, because on a tablet that is the only order a model list gets read in.'
+        ]
+      },
+      {
+        label: '\u{1F31F} The model you start with',
+        items: [
+          'Qwen 2.5 0.5B is the new starting model, at 320 MB: the smallest one on the menu that a deploy serves from this site itself, so the first message does not depend on reaching somebody else\u2019s server. Qwen 3 0.6B is still the one marked most reliable, and sits one row above the middle.',
+          'SmolLM2 135M comes off the menu and SmolLM2 360M takes its place. The 135M was 270 MB of 16-bit weights and answered like 135M parameters; the 360M is the same family with roughly twice the model in it.',
+          'If you had picked the 135M before, your setting moves to the new starting model rather than to something you can no longer see in the picker.'
+        ]
+      },
+      {
+        label: '\u{1F527} Underneath',
+        items: [
+          'The last-resort model the fallback chain reaches for, when a browser will not run anything else, now follows the starting model instead of being hardcoded to one that is no longer on the menu. A safety net pointing at a model the build no longer ships is a net with a hole in it.',
+          'Retired models stay in the table rather than being deleted: the pre-cache budget, the source reports and a stored preference from an older visit all read that table by id.',
+          'A choice stored in an older visit is checked against the menu before it is honoured, so nobody ends up with a model selected that the picker cannot show.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.2.5',
     date: 'November 22, 2026',

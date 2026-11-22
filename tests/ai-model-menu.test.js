@@ -31,10 +31,17 @@ function shimStorage() {
   return store;
 }
 
-test('the menu is the five models 1.2 offers, in the order they are listed', () => {
-  assert.deepEqual(OFFERED_TEXT_MODEL_IDS,
-    ['smollm2-135m', 'qwen3-0.6b', 'qwen3.5-0.8b', 'qwen2.5-1.5b', 'smollm2-1.7b']);
+test('the menu is the seven models Waffle AI offers, cheapest download first', () => {
+  assert.deepEqual(OFFERED_TEXT_MODEL_IDS, [
+    'qwen2.5-0.5b', 'qwen3-0.6b', 'qwen3.5-0.8b', 'falcon3-1b',
+    'smollm2-360m', 'qwen2.5-1.5b', 'smollm2-1.7b'
+  ]);
   assert.deepEqual(offeredTextModels().map(m => m.id), OFFERED_TEXT_MODEL_IDS);
+  // 1.2.6 put every model in the normal kitchen and ordered the menu by what a
+  // model costs to fetch, because on a tablet that is the only order a list of
+  // models gets read in.
+  const ladder = offeredTextModels().map(m => m.ggufMB);
+  assert.deepEqual(ladder, [...ladder].sort((a, b) => a - b), 'top to bottom is cheap to expensive');
   for (const m of offeredTextModels()) {
     assert.ok(m.label && m.desc && m.badge, `${m.id} can be shown in the picker`);
     assert.ok(m.hfGgufRepo && m.ggufFile, `${m.id} has a GGUF source`);
@@ -48,37 +55,44 @@ test('the table keeps the models the menu stopped offering', () => {
   // report if somebody has one stored.
   const gone = TEXT_MODELS.filter(m => !OFFERED_TEXT_MODEL_IDS.includes(m.id)).map(m => m.id).sort();
   assert.deepEqual(gone, [
-    'deepseek-r1-1.5b', 'falcon3-1b', 'granite-code-0.5b', 'llama3.2-1b',
-    'qwen2.5-0.5b', 'qwen2.5-coder-1.5b', 'smollm2-360m'
-  ], 'off the public menu, and three of them only because they are on the other one');
+    'deepseek-r1-1.5b', 'granite-code-0.5b', 'llama3.2-1b', 'qwen2.5-coder-1.5b', 'smollm2-135m'
+  ], 'off the menu, and still readable by id');
   assert.equal(TEXT_MODELS.length, 12, 'the ten 1.2 shipped, plus Falcon 3 1B and the reserved Granite');
-  assert.ok(TEXT_MODELS.some(m => m.id === 'falcon3-1b'), 'and the new ones are really in the table');
+  // SmolLM2 135M is the one 1.2.6 retired: SmolLM2 360M took its place. A
+  // visitor who chose it before has it in localStorage, and the source reports
+  // still price it by id, so it stays in the table and comes off the menu.
+  const retired = TEXT_MODELS.find(m => m.id === 'smollm2-135m');
+  assert.ok(retired, 'the retired model is still in the table');
+  assert.match(retired.badge, /Off the menu/, 'and it says so where a picker would have shown it');
+  assert.match(retired.desc, /retired from the menu in 1\.2\.6/, 'in the line a visitor would read');
+  assert.ok(TEXT_MODELS.some(m => m.id === 'smollm2-360m'), 'its replacement is in the table too');
 
-  // One entry is in the table and on no menu at all: it is reserved for CodeHub's
-  // error diagnostics, and its weights have not arrived. It must not be pickable,
-  // and it must not be downloadable, and both of those fall out of it being on
-  // neither list.
+  // Both kitchens render the same menu now, so "off the public menu" and "on no
+  // menu at all" are the same five. One of them is reserved for CodeHub's error
+  // diagnostics and its weights have not arrived: it must not be pickable and
+  // must not be downloadable, and both fall out of it being on neither list.
   const reserved = TEXT_MODELS.filter(m => !ALL_OFFERED_TEXT_MODEL_IDS.includes(m.id)).map(m => m.id).sort();
-  assert.deepEqual(reserved, ['deepseek-r1-1.5b', 'granite-code-0.5b', 'llama3.2-1b', 'qwen2.5-coder-1.5b']);
+  assert.deepEqual(reserved, gone, 'nothing is offered in one kitchen and not the other any more');
   const granite = TEXT_MODELS.find(m => m.id === 'granite-code-0.5b');
   assert.equal(granite.arrivesIn, 'a later update', 'it says when it is coming instead of guessing a repo');
   assert.equal(granite.hfGgufRepo, undefined, 'and there is no repo to be wrong about');
 });
 
-test('the backup kitchen offers eight, and only the backup kitchen', () => {
-  // 1.2 TVAR 1 is the tighter set: this is where a wider menu gets compared for
-  // reliability before the public kitchen is asked to live with it. The switch is
-  // the same one the rest of the build uses, so there is no second mechanism.
+test('both kitchens render the same menu, and the seam between them still works', () => {
+  // 1.2 TVAR 1 was the tighter set: a wider menu got compared for reliability in
+  // the second kitchen before the public one was asked to live with it. It has
+  // been tested, so 1.2.6 made it the only menu. The switch is the same one the
+  // rest of the build uses, so there is no second mechanism — and it stays, so
+  // the next model can be tried in one kitchen before everybody gets it.
   assert.equal(offeredModelIds(), OFFERED_TEXT_MODEL_IDS, 'no page means no test build');
 
   const store = shimStorage();
   globalThis.document = { documentElement: { dataset: { backup: '1' } } };
   try {
-    assert.equal(offeredModelIds(), TVAR_OFFERED_TEXT_MODEL_IDS);
-    assert.deepEqual(TVAR_OFFERED_TEXT_MODEL_IDS, [
-      'smollm2-135m', 'smollm2-360m', 'qwen2.5-0.5b', 'qwen3-0.6b',
-      'qwen3.5-0.8b', 'falcon3-1b', 'qwen2.5-1.5b', 'smollm2-1.7b'
-    ]);
+    assert.equal(offeredModelIds(), TVAR_OFFERED_TEXT_MODEL_IDS, 'the backup build reads its own constant');
+    assert.deepEqual(TVAR_OFFERED_TEXT_MODEL_IDS, OFFERED_TEXT_MODEL_IDS, 'and the two lists now hold the same models');
+    assert.ok(TVAR_OFFERED_TEXT_MODEL_IDS !== OFFERED_TEXT_MODEL_IDS,
+      'as two separate lists, not one alias: a model tested in the second kitchen must not appear in the first');
     assert.deepEqual(offeredTextModels().map(m => m.id), TVAR_OFFERED_TEXT_MODEL_IDS, 'and the menu renders in that order');
     for (const m of offeredTextModels()) {
       assert.ok(m.label && m.desc && m.badge, `${m.id} can be shown in the picker`);
@@ -86,8 +100,10 @@ test('the backup kitchen offers eight, and only the backup kitchen', () => {
     }
     assert.ok(!offeredTextModels().some(m => m.arrivesIn), 'nothing on a menu is waiting for weights');
 
-    // A preference stored for a backup-only model must not be honoured on the
-    // public page, and vice versa: the same localStorage is shared by both builds.
+    // Both builds share one localStorage, so a choice made in one kitchen is
+    // read in the other. That used to be a hazard — a model offered only in the
+    // backup build could be stored there and then be unselectable here. With one
+    // menu it is simply continuity.
     setSelectedTextModel('falcon3-1b');
     assert.equal(getSelectedTextModel(), 'falcon3-1b', 'offered here, so it sticks');
     // An id on neither menu is refused rather than stored, and refusing it must
@@ -97,14 +113,15 @@ test('the backup kitchen offers eight, and only the backup kitchen', () => {
   } finally {
     delete globalThis.document;
   }
-  assert.equal(getSelectedTextModel(), DEFAULT_TEXT_MODEL_ID, 'and falls back to the default once the page is not the backup build');
+  assert.equal(getSelectedTextModel(), 'falcon3-1b',
+    'and it survives the trip back to the public page, because that page offers it too now');
   delete globalThis.localStorage;
   store.clear();
 
-  assert.deepEqual(ALL_OFFERED_TEXT_MODEL_IDS,
-    [...OFFERED_TEXT_MODEL_IDS, 'smollm2-360m', 'qwen2.5-0.5b', 'falcon3-1b'],
-    'the union adds exactly what the test build offers on top, with no duplicates');
-  assert.equal(allOfferedTextModels().length, 8);
+  assert.deepEqual(ALL_OFFERED_TEXT_MODEL_IDS, [...OFFERED_TEXT_MODEL_IDS],
+    'the union is the menu now: the test build offers nothing on top of it');
+  assert.equal(new Set(ALL_OFFERED_TEXT_MODEL_IDS).size, ALL_OFFERED_TEXT_MODEL_IDS.length, 'and it has no duplicates');
+  assert.equal(allOfferedTextModels().length, 7);
 });
 
 test('each model is limited to the quantisations it may be fetched at', () => {
@@ -189,15 +206,23 @@ test('the picker and the pre-cache panel render the menu, not the archive', () =
     'and a deploy pre-caches what either menu offers, not weights nobody can pick');
 });
 
-test('the default is the model this site serves from its own origin', () => {
-  assert.equal(DEFAULT_TEXT_MODEL_ID, 'smollm2-135m');
+test('the default is the smallest model a deploy serves from its own origin', () => {
+  assert.equal(DEFAULT_TEXT_MODEL_ID, 'qwen2.5-0.5b');
+  // It used to be Qwen 2.5 1.5B, a `server` model, which on a static host means
+  // the first message falls back through the whole chain before anything runs.
+  // Then it was SmolLM2 135M. The rule that picks it has not changed: the
+  // smallest model on the menu that a deploy pre-caches, so the first message
+  // does not depend on reaching somebody else's server.
+  assert.ok(OFFERED_TEXT_MODEL_IDS.includes(DEFAULT_TEXT_MODEL_ID),
+    'the default is on the menu — getSelectedTextModel falls back to it, so a default nobody can pick would leave the picker empty');
+  assert.equal(OFFERED_TEXT_MODEL_IDS[0], DEFAULT_TEXT_MODEL_ID, 'and first on it, since the menu is a download ladder');
+  const def = TEXT_MODELS.find(m => m.id === DEFAULT_TEXT_MODEL_ID);
+  assert.ok(def.ggufMB <= 400, `${def.ggufMB} MB is inside the per-model ceiling a deploy self-hosts under`);
+  assert.ok(offeredTextModels().every(m => m.ggufMB >= def.ggufMB), 'and nothing on the menu is cheaper to fetch');
   const store = shimStorage();
   try {
-    assert.equal(getSelectedTextModel(), DEFAULT_TEXT_MODEL_ID, 'nothing stored means the 135M');
-    // It used to be Qwen 2.5 1.5B, a `server` model, which on a static host
-    // means the first message falls back through the whole chain before anything
-    // runs. The 135M is the one a deploy pre-caches, so it is the one that starts.
-    assert.equal(TEXT_MODELS.find(m => m.id === DEFAULT_TEXT_MODEL_ID).kind, 'browser');
+    assert.equal(getSelectedTextModel(), DEFAULT_TEXT_MODEL_ID, 'nothing stored means the default');
+    assert.equal(def.kind, 'browser');
   } finally {
     delete globalThis.localStorage;
     store.clear();

@@ -64,16 +64,22 @@ export const TEXT_MODELS = [
   {
     id: 'smollm2-135m',
     label: 'SmolLM2 135M',
-    badge: 'Default · F16 ~270 MB',
+    badge: 'Off the menu · F16 ~270 MB',
     kind: 'browser',
     hfId: 'HuggingFaceTB/SmolLM2-135M-Instruct-ONNX',
     hfIdAlts: ['onnx-community/SmolLM2-135M-Instruct', 'HuggingFaceTB/SmolLM2-135M-Instruct'],
     dtype: 'q4',
     hfGgufRepo: 'bartowski/SmolLM2-135M-Instruct-GGUF',
     // Full 16-bit. A 3-bit quant of a 135M model throws away most of what the
-    // model knows, and this is the one every visitor meets first, so it is the
-    // one worth keeping lossless. The fetch script asks the repo for F16 and
-    // falls through its quant chain if the repo does not publish it.
+    // model knows, so the file that does exist is the lossless one. The fetch
+    // script asks the repo for F16 and falls through its quant chain if the repo
+    // does not publish it.
+    //
+    // 1.2.6 took this entry off the menu: at 135M parameters it answered like
+    // 135M parameters, and SmolLM2 360M is the same family with roughly twice
+    // the model in it. It stays in the table because a visitor who picked it
+    // before has it in their stored preference, and because the source reports
+    // and the pre-cache budget still read every row by id.
     hfGgufQuant: 'F16',
     ggufQuants: ['F16'],
     ggufFile: 'smollm2-135m.gguf',
@@ -86,7 +92,7 @@ export const TEXT_MODELS = [
     // deploy will self-host it, and 270 MB is the honest order of magnitude
     // for both. (The Q3_K_L file it replaces measured 93.0 MB.)
     ggufMB: 270,
-    desc: 'The default: SmolLM2 135M at full 16-bit (~270 MB), served from this site when the deploy pre-cached it'
+    desc: 'SmolLM2 135M at full 16-bit (~270 MB) — retired from the menu in 1.2.6, kept for stored preferences'
   },
   {
     id: 'smollm2-360m',
@@ -154,7 +160,7 @@ export const TEXT_MODELS = [
   {
     id: 'qwen2.5-0.5b',
     label: 'Qwen 2.5 0.5B',
-    badge: 'Browser · ~320 MB',
+    badge: 'Default · ~320 MB',
     kind: 'browser',
     hfId: 'onnx-community/Qwen2.5-0.5B-Instruct',
     hfIdAlts: ['onnx-community/Qwen2.5-0.5B-Instruct-ONNX'],
@@ -252,27 +258,36 @@ export const TEXT_MODELS = [
 ];
 
 /**
- * What 1.2 offers. The table above keeps every model it has ever had: CI, the
- * pre-cache budget, the source reports and a dozen tests all read it by id, and
- * deleting an entry breaks them for no benefit. So the menu lives here, and
- * every list the UI renders — and every preference it honours — goes through it.
+ * What Waffle AI offers, in every kitchen. Ordered by what it costs to download,
+ * because on a tablet that is the only order anybody reads a model list in: the
+ * starting model first, then the ladder up to the 1.7B.
+ *
+ * This used to be five models here and eight in the backup kitchen, so that the
+ * tighter list could be tested before the public kitchen had to live with it. It
+ * has been tested, so 1.2.6 made it the list. A release note that names a model
+ * is only honest if the reader can pick that model, and 1.2.5 named one they
+ * could not.
+ *
+ * The table above keeps every model this file has ever had: CI, the pre-cache
+ * budget, the source reports and a dozen tests all read it by id, and deleting
+ * an entry breaks them for no benefit. So the menu lives here, and every list
+ * the UI renders — and every preference it honours — goes through it.
  */
-export const OFFERED_TEXT_MODEL_IDS = ['smollm2-135m', 'qwen3-0.6b', 'qwen3.5-0.8b', 'qwen2.5-1.5b', 'smollm2-1.7b'];
+export const OFFERED_TEXT_MODEL_IDS = [
+  'qwen2.5-0.5b', 'qwen3-0.6b', 'qwen3.5-0.8b', 'falcon3-1b',
+  'smollm2-360m', 'qwen2.5-1.5b', 'smollm2-1.7b'
+];
 
 /**
- * What the backup kitchen offers, and only the backup kitchen. This is the whole
- * content of 1.2 TVAR 1: eight models instead of five, each one limited to the
- * quants it may be fetched at, so a test build can find out what a tighter list
- * does to reliability before anybody asks the public kitchen to live with it.
+ * What the backup kitchen offers. As of 1.2.6 that is the same list, and it
+ * stays a separate constant on purpose: the point of the second kitchen is to
+ * try a model before everybody gets it, and that needs somewhere to put one.
  *
  * Both lists are ids into the same table, and the table keeps every model it has
  * ever had — deleting entries breaks CI, the source reports, and the stored
  * preference of any visitor who chose one.
  */
-export const TVAR_OFFERED_TEXT_MODEL_IDS = [
-  'smollm2-135m', 'smollm2-360m', 'qwen2.5-0.5b', 'qwen3-0.6b',
-  'qwen3.5-0.8b', 'falcon3-1b', 'qwen2.5-1.5b', 'smollm2-1.7b'
-];
+export const TVAR_OFFERED_TEXT_MODEL_IDS = [...OFFERED_TEXT_MODEL_IDS];
 
 /** The menu this page renders: the test build's in the backup kitchen, the release's everywhere else. */
 export function offeredModelIds() {
@@ -369,12 +384,22 @@ function writePref(key, val) {
 }
 
 /**
- * The model a visitor starts with. It used to be Qwen 2.5 1.5B, a `server`
- * model, which on a static host means the first message has to fall back through
- * the whole chain before anything runs. The 135M is the one this site serves
- * from its own origin, so it is the one that starts.
+ * The model a visitor starts with.
+ *
+ * It used to be Qwen 2.5 1.5B, a `server` model, which on a static host means
+ * the first message has to fall back through the whole chain before anything
+ * runs. Then it was SmolLM2 135M, which a deploy serves from this site's own
+ * origin. 1.2.6 took the 135M off the menu, and the rule that picks its
+ * successor is the same one that picked it: the smallest model on the menu that
+ * a deploy pre-caches, so the first message does not depend on reaching somebody
+ * else's server. At 320 MB this is inside the pre-cache ceiling; the next model
+ * up the ladder is 385 MB and is not.
+ *
+ * It also has to be a model the menu offers — `getSelectedTextModel` checks the
+ * stored preference against the menu and falls back to this, so a default that
+ * is not on the list would leave the picker with nothing selected.
  */
-export const DEFAULT_TEXT_MODEL_ID = 'smollm2-135m';
+export const DEFAULT_TEXT_MODEL_ID = 'qwen2.5-0.5b';
 
 export function getSelectedTextModel() {
   const saved = readPref(KEY_TEXT, DEFAULT_TEXT_MODEL_ID);

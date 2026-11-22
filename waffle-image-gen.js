@@ -1,4 +1,3 @@
-import { FOLDER_BUILD_FLAG, FOLDER_BUILD_REASON } from './build-mode.js';
 
 const SD_CACHE = 'waffle-sd-models-v1';
 const BASE_URL = './api/waffle-ai/sd-models/';
@@ -234,7 +233,6 @@ async function getOrt(preferWebGPU = true) {
   // Before the import, for the reason written on the flag: onnxruntime-web carries
   // its WASM inside its own JavaScript as base64, and an iife build has to inline
   // every dynamic import into the single chunk.
-  if (FOLDER_BUILD_FLAG) throw new Error(FOLDER_BUILD_REASON);
   if (ortState && (!preferWebGPU || ortState.backend === 'webgpu')) return ortState;
   const caps = await detectImageCapabilities();
   const useGpu = preferWebGPU && caps.hasWebGPU;

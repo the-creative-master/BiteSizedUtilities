@@ -208,10 +208,10 @@ test('the paused dialog is still dismissible, and counts nothing', () => {
   assert.ok(!css.includes('waffle-ai-locked-tap-hint'), 'the hint styling went with the hint');
 });
 
-test('the changelog puts 1.2.6 above 1.2.5 above 1.2.1 above 1.2 above 1.1.1 above 1.1 above 1.0.1 above the original 1.0 release', () => {
-  assert.equal(APP_VERSION, '1.2.6');
-  assert.equal(CHANGELOG.length, 8, 'every release is documented');
-  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.2.6', '1.2.5', '1.2.1', '1.2', '1.1.1', '1.1', '1.0.1', '1.0'], 'newest release is listed first');
+test('the changelog puts 1.2.7 above 1.2.6 above 1.2.5 above 1.2.1 above 1.2 above 1.1.1 above 1.1 above 1.0.1 above the original 1.0 release', () => {
+  assert.equal(APP_VERSION, '1.2.7');
+  assert.equal(CHANGELOG.length, 9, 'every release is documented');
+  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.2.7', '1.2.6', '1.2.5', '1.2.1', '1.2', '1.1.1', '1.1', '1.0.1', '1.0'], 'newest release is listed first');
 
   for (const entry of CHANGELOG) {
     assert.match(entry.version, /^\d+\.\d+(\.\d+)?$/);
@@ -228,6 +228,21 @@ test('the changelog puts 1.2.6 above 1.2.5 above 1.2.1 above 1.2 above 1.1.1 abo
     assert.ok(entry, `${v} is documented`);
     return entry.groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
   };
+
+  // 1.2.7 is the release that took the offline download back out, and it has to say
+  // so plainly: somebody who read the notes for 1.2.6 and went looking for an archive
+  // should find out here that it is gone, why, and what still works with no connection.
+  const removed = textOf('1.2.7');
+  assert.match(removed, /no longer builds or publishes an offline archive/, 'it says what stopped happening');
+  assert.match(removed, /release it lived under has been deleted/, 'and that there is nothing left to download');
+  assert.match(removed, /If you already have a copy, it still opens/, 'without pretending a folder on somebody\u2019s disk stopped working');
+  assert.match(removed, /exactly as it was in 1\.2\.6/, 'and without implying the kitchen changed');
+  assert.match(removed, /an ES module, a worker, and a fetch of the file sitting beside it/, 'with the browser rule that beat it, not a shrug');
+  assert.match(removed, /95 of the 115 utilities/, 'keeping what the last build measured before it went');
+  assert.match(removed, /a browser feature and not a promise/, 'the offline copy the site keeps is detected, never promised');
+  for (const gone of ['zip:offline', 'build:classic', 'START-HERE', 'node-llama']) {
+    assert.ok(!removed.includes(gone), `${gone} is build machinery, and the public notes do not hand anybody a command to run`);
+  }
 
   const latest = textOf('1.1');
   assert.match(latest, /WAFFLE-CALC-2500/, '1.1 names the calculator chassis it shipped');
@@ -314,7 +329,7 @@ test('Sir Waffle stops advertising Waffle AI while the feature is paused', () =>
   // the endpoint string the existing suite asserts on is still present. The folder
   // build shares the gate: there is no server to ask, and a fetch of ./api/... off
   // the disk is refused and printed before it fails.
-  assert.match(appSrc, /if \(aiLocked \|\| isFolderBuild\(\)\) \{[\s\S]{0,320}?return;\s*\}\s*\n\s*if \(wallQuipAbort\)/);
+  assert.match(appSrc, /if \(aiLocked\) \{[\s\S]{0,240}?return;\s*\}\s*\n\s*if \(wallQuipAbort\)/);
   assert.ok(appSrc.includes('/api/waffle-ai/wall-quip'), 'the backup build still calls the quip endpoint');
   assert.ok(appSrc.includes('openWaffleAI'), 'Sir Waffle still opens the AI surface');
   assert.ok(!appSrc.includes('waffle-hud-btn'), 'still exactly one Waffle button');

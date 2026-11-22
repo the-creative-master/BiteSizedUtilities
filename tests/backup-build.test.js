@@ -24,8 +24,8 @@ function pageWith(dataset) {
 
 test('the public kitchen reports a plain release version and knows nothing about TVAR', () => {
   pageWith({});
-  assert.equal(APP_VERSION, '1.2.6');
-  assert.equal(appVersionLabel(), '1.2.6', 'index.html says 1.2.6 and nothing else');
+  assert.equal(APP_VERSION, '1.2.7');
+  assert.equal(appVersionLabel(), '1.2.7', 'index.html says 1.2.7 and nothing else');
   assert.equal(isBackupBuild(), false);
   assert.equal(isPublicBuild(), true);
   assert.ok(!APP_VERSION.includes('TVAR'), 'the release version never carries a TVAR suffix');
@@ -44,19 +44,19 @@ test('the public kitchen reports a plain release version and knows nothing about
 
 test('the backup kitchen reports the test build it is, not the release beside it', () => {
   pageWith({ backup: '1' });
-  // 1.2.6 is what the public kitchen says. This build is a test version on top
+  // 1.2.7 is what the public kitchen says. This build is a test version on top
   // of 1.2, so it says so — and the two labels are allowed to disagree, which is
   // the whole reason the cycle is its own constant instead of APP_VERSION.
-  assert.equal(TVAR, 5, 'one test build is open');
+  assert.equal(TVAR, 2, 'the counter sits at the build this kitchen reports');
   assert.equal(TVAR_CYCLE, '1.2', 'on the 1.2 cycle');
-  assert.equal(APP_VERSION, '1.2.6', 'while the release has moved on without it');
-  assert.equal(appVersionLabel(), '1.2 TVAR 5', 'backup.html reports the build it is');
+  assert.equal(APP_VERSION, '1.2.7', 'while the release has moved on without it');
+  assert.equal(appVersionLabel(), '1.2 TVAR 2', 'backup.html reports the build it is');
   assert.equal(isBackupBuild(), true);
   assert.equal(isPublicBuild(), false);
 
   // The 1.1 test versions stay documented as history; they are not this build.
-  assert.equal(TVAR_LOG.length, 8, 'every extended minor version is still documented');
-  assert.deepEqual(TVAR_LOG.map(e => e.version), ['1.2 TVAR 5', '1.2 TVAR 4', '1.2 TVAR 3', '1.2 TVAR 2', '1.2 TVAR 1', '1.1 TVAR 3', '1.1 TVAR 2', '1.1 TVAR 1'],
+  assert.equal(TVAR_LOG.length, 5, 'every extended minor version is still documented');
+  assert.deepEqual(TVAR_LOG.map(e => e.version), ['1.2 TVAR 2', '1.2 TVAR 1', '1.1 TVAR 3', '1.1 TVAR 2', '1.1 TVAR 1'],
     'newest first, and an old entry keeps its own number');
   assert.equal(TVAR_LOG[0].version, APP_VERSION_EXTENDED,
     'the newest entry spells out the label this build reports, so it cannot be renumbered behind its own back');
@@ -76,70 +76,33 @@ test('the backup kitchen reports the test build it is, not the release beside it
   assert.match(all, /test version after release/, 'the log explains what TVAR stands for');
   assert.match(all, /Hugging Face/, 'and records the extended AI error report');
 
-  const open = textOf(TVAR_LOG[0]);
+  const scrapped = textOf(TVAR_LOG[0]);
   // The name is in the title, and textOf() reads labels and items — asserting on
-  // `open` here would have been asserting on a string the entry never contains.
-  assert.match(TVAR_LOG[0].title, /NO-SERVER/, '1.2 TVAR 5 is named after what it is testing');
-  assert.match(open, /content:/, 'it names the protocol a tablet file manager actually hands the browser');
-  assert.match(open, /The folder was intact/, 'and says what the old hiccup message got wrong');
-  assert.match(open, /Served now means http or https and nothing else/, 'the rule that replaced the file: test');
-  assert.match(open, /blob: or data:/, 'including the addresses that have no folder behind them at all');
-  assert.match(open, /the manifest/, 'it lists what a disk page used to ask for and could not have');
-  assert.match(open, /service worker/i, 'and the registration that had no scope to register into');
-  assert.match(open, /80 KB of woff2/, 'with the size of the faces it now carries inline');
-  assert.match(open, /five places/, 'the copies of one list that drifted inside a single session');
-  assert.match(open, /offline-facts\.js/, 'and the module that replaced them');
-  assert.match(open, /26 playable from a folder/, 'the cabinet is measured, not remembered');
-  assert.match(open, /four protocols/, 'tested at every protocol a person can arrive by');
-  assert.match(open, /jsdom does not enforce/, 'honest about what the passing test did not prove');
-  assert.ok(!open.includes('BACKUPKITCHEN'), 'without printing the string that opens this kitchen');
+  // `scrapped` here would have been asserting on a string the entry never contains.
+  assert.match(TVAR_LOG[0].title, /SCRAPPED/, '1.2 TVAR 2 is the entry that closed the offline package down');
+  assert.match(scrapped, /whole offline package/i, 'it says what went, in one place, rather than by omission');
+  assert.match(scrapped, /release it lived under is deleted/i, 'including the archive somebody could still go and fetch');
+  assert.match(scrapped, /public kitchen is untouched/, 'and that the served site never loaded any of it');
+  assert.match(scrapped, /an ES module, a worker, and a fetch of the file sitting next to it/, 'with the rule that beat four builds of it');
+  assert.match(scrapped, /95 of them working/, 'keeping the count that was measured rather than remembered');
+  assert.match(scrapped, /26 of the 51 games/, 'and the cabinet beside it');
+  assert.match(scrapped, /node-llama-cpp/, 'naming the engine that was asked for, and the fact that it is Node-only');
+  assert.match(scrapped, /every language it offers/, 'and why CodeHub goes as a whole cupboard rather than one tool at a time');
+  assert.match(scrapped, /all 115 utilities work off the disk/, 'it records the copy that oversold it, since that is why the counts were measured at all');
+  assert.match(scrapped, /only 85 do when 95 actually did/, 'and the one that undersold it');
+  assert.match(scrapped, /1\.2\.6/, 'the release this build sits beside, so the entry can be dated by something real');
+  for (const gone of ['npm run build:classic', 'npm run zip:offline', 'START-HERE']) {
+    assert.ok(!scrapped.includes(gone), `${gone} is not offered to anybody any more, not even as a command to type`);
+  }
+  assert.ok(!scrapped.includes('BACKUPKITCHEN'), 'without printing the string that opens this kitchen');
 
-  const folderKitchen = textOf(TVAR_LOG[1]);
-  // The name is in the title, and textOf() reads labels and items — asserting on
-  // `open` here would have been asserting on a string the entry never contains.
-  assert.match(TVAR_LOG[1].title, /FOLDER-KITCHEN/, '1.2 TVAR 4 stays documented as the build it was');
-  assert.match(folderKitchen, /explained itself instead of being the kitchen/, 'it says what the last build got wrong');
-  assert.match(folderKitchen, /assumed a tool/, 'and that assuming Python was the worse half of it');
-  assert.match(folderKitchen, /nothing about opening a folder should require one/, 'the rule this build was made to satisfy');
-  assert.match(folderKitchen, /npm run build:classic/, 'with the command that makes the folder build');
-  assert.match(folderKitchen, /classic script/, 'naming the one kind of script a file: page will run');
-  assert.match(folderKitchen, /190 MB/, 'and the size aliasing the AI engines out of it avoids');
-  assert.match(folderKitchen, /Unable to load the offline arcade/, 'including the error the bundled catalog replaced');
-  assert.match(folderKitchen, /26 of those games/, 'with the count of what actually plays from a folder');
-  assert.match(folderKitchen, /no prerequisite software/, 'nothing has to be installed to open it');
-  assert.match(folderKitchen, /still optional/, 'the server is offered, and the entry says so');
-  assert.match(folderKitchen, /unzipped and booted/, 'and the claim is tested against the finished archive');
-  assert.match(folderKitchen, /1 file\u201d instead of \u201c1 files/, 'down to the pluralisation in the release notes');
-  assert.ok(!folderKitchen.includes('BACKUPKITCHEN'), 'without printing the string that opens this kitchen');
-
-  const zipBuild = textOf(TVAR_LOG[2]);
-  assert.match(TVAR_LOG[2].title, /OFFLINE-ZIP/, '1.2 TVAR 3 stays documented as the build it was');
-  assert.match(zipBuild, /single HTML file from the last test build is gone/, 'it says what it retired, not only what it added');
-  assert.match(zipBuild, /entire site as a zip/, 'and what replaced it');
-  assert.match(zipBuild, /release asset/, 'where the archive lives');
-  assert.match(zipBuild, /661 MB/, 'with the number that ruled out shipping it inside the site');
-  assert.match(zipBuild, /440 downloads/, 'and the one that ruled out its bandwidth');
-  assert.match(zipBuild, /127\.0\.0\.1/, 'the launcher serves the folder to this machine only');
-  assert.match(zipBuild, /one thread deep/, 'honest about the WASM a plain server cannot isolate');
-  assert.match(zipBuild, /all 51 game entrypoints/, 'checked against the extracted folder, not assumed');
-  assert.match(zipBuild, /offline-zip\.json/, 'including the stale-metadata bug that check found');
-  assert.match(zipBuild, /npm run zip:offline/, 'with the command that packs it');
-  assert.ok(!zipBuild.includes('BACKUPKITCHEN'), 'without printing the string that opens this kitchen');
-
-  const single = textOf(TVAR_LOG[3]);
-  assert.match(TVAR_LOG[3].title, /OFFLINE-HTML-TEST/, '1.2 TVAR 2 stays documented as the build it was');
-  assert.match(single, /single HTML file/, 'it says what it added');
-  assert.match(single, /1\.2 MB/, 'including the number the guards brought it down to');
-  assert.match(single, /temporal dead zone/, 'and the bug that booting the artifact caught');
-  assert.match(single, /npm run build:offline/, 'with the command that made it, since retired');
-
-  const tvar1 = textOf(TVAR_LOG[4]);
+  const tvar1 = textOf(TVAR_LOG[1]);
   assert.match(tvar1, /Falcon 3 1B/, '1.2 TVAR 1 names the model it added');
   assert.match(tvar1, /DONTASKMEWHATTHATIS\.txt/, 'and the file the build now ships as');
   assert.match(tvar1, /obfuscation and not encryption/, 'without pretending the disguise is a secret');
   assert.ok(!tvar1.includes('BACKUPKITCHEN'), 'and without printing the string that opens it');
 
-  const latest = textOf(TVAR_LOG[5]);
+  const latest = textOf(TVAR_LOG[2]);
   assert.match(latest, /Huawei/, 'TVAR 3 records the devices it was built for');
   assert.match(latest, /Kirin NPU cannot be reached from a web page/,
     'and says plainly what the NPU cannot do instead of implying it works');
@@ -149,7 +112,7 @@ test('the backup kitchen reports the test build it is, not the release beside it
   assert.match(latest, /1\.8 GB/, 'so is the tighter heap budget on a tablet');
   assert.match(latest, /ArkWeb/, 'and the mapping that dates a Huawei browser');
 
-  const tvar2 = textOf(TVAR_LOG[6]);
+  const tvar2 = textOf(TVAR_LOG[3]);
   assert.match(tvar2, /freez/, 'TVAR 2 records the freeze it was built to fix');
   assert.match(tvar2, /Only one inference runs at a time/, 'what replaced it');
   assert.match(tvar2, /45 seconds/, 'the watchdog window a visitor would actually hit');
@@ -162,7 +125,7 @@ test('TVAR entries reset with each release and are rendered only in the backup b
   assert.match(src, /export const APP_VERSION_EXTENDED = `\$\{TVAR_CYCLE\} TVAR \$\{TVAR\}`;/,
     'the extended label is derived, so bumping TVAR is a one-character change');
   assert.match(src, /export const TVAR_CYCLE = '1\.2';/,
-    'from the cycle it belongs to, which is a literal: APP_VERSION has moved on to 1.2.6 and deriving from it would announce a build that has never existed');
+    'from the cycle it belongs to, which is a literal: APP_VERSION has moved on to 1.2.7 and deriving from it would announce a build that has never existed');
   assert.match(src, /Reset to 0 on every public release/, 'the reset rule is written down where the counter lives');
   assert.match(src, /const releases = isBackupBuild\(\) \? \[\.\.\.TVAR_LOG, \.\.\.CHANGELOG\] : CHANGELOG;/,
     'the renderer only prepends TVAR entries in the backup build');
@@ -233,13 +196,11 @@ test('no tool is backup-only any more, and both kitchens hold the same 115', () 
 
 /* ============================== nothing advertises it ============================== */
 
-// Build output is skipped, not searched: dist-offline/kitchen.js is the bundled
-// art-studio-layers.js, so it carries the same pre-rename project magic that the
-// ALLOWED map below permits in the source, minified beyond recognition.
-// Build outputs are skipped: they are generated from files this sweep already
-// reads, and the folder build in particular bundles the whole kitchen into one
-// script, so anything anywhere in the source would appear in it a second time.
-const SKIP_DIRS = new Set(['node_modules', 'dist', 'dist-offline', 'dist-zip', 'dist-classic', '.git', 'runtimes', 'cabinet', 'fonts', '.playwright-cli']);
+// Build output is skipped, not searched: dist/ is generated from files this sweep
+// already reads, and it bundles the whole kitchen, so anything anywhere in the
+// source would appear in it a second time — including the pre-rename project magic
+// the ALLOWED map below permits in art-studio-layers.js alone.
+const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'runtimes', 'cabinet', 'fonts', '.playwright-cli']);
 const TEXT_EXT = new Set(['.js', '.mjs', '.cjs', '.html', '.css', '.json', '.md', '.webmanifest', '.yml', '.yaml', '.svg', '.txt']);
 const SKIP_FILES = new Set(['package-lock.json']);
 // Places where the retired word is allowed to survive, each with a reason.

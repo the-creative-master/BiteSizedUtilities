@@ -1,4 +1,4 @@
-import { isBackupBuild, FOLDER_BUILD_FLAG, FOLDER_BUILD_REASON } from './build-mode.js';
+import { isBackupBuild } from './build-mode.js';
 import { stripModelScaffolding } from './waffle-persona.js';
 
 // Rough GGUF size per model at the quant that entry asks for first, in MB.
@@ -2317,9 +2317,6 @@ function resolveOrtWasmPaths(diag, expectedVersion) {
 }
 
 async function getTransformers() {
-  // Before the import, not after: this guard is what keeps the whole ONNX stack out
-  // of the folder build rather than bundling 179 MB and refusing to use it.
-  if (FOLDER_BUILD_FLAG) throw new Error(FOLDER_BUILD_REASON);
   const mod = await import('@huggingface/transformers');
   if (mod.env) {
     mod.env.allowLocalModels = false;
@@ -2670,7 +2667,6 @@ async function getModelManager() {
   if (sharedModelManager) return sharedModelManager;
   if (sharedModelManagerErr) throw sharedModelManagerErr;
   try {
-    if (FOLDER_BUILD_FLAG) throw new Error(FOLDER_BUILD_REASON);
     const { ModelManager } = await import('@wllama/wllama');
     sharedModelManager = new ModelManager({ parallelDownloads: 1 });
     return sharedModelManager;
@@ -2947,11 +2943,6 @@ export async function precacheFromThisOrigin(modelId, { onProgress, signal, fetc
  * only, and it cancels itself the moment a chat starts.
  */
 export async function autoPrecacheServedModels({ onProgress, signal, fetchImpl = fetch, now = Date.now(), force = false } = {}) {
-  // Nothing to pre-cache from a folder. The models are served over http by the
-  // live site, and OPFS is not available to a page off the disk either — so every
-  // probe here would fail. app.js kicks this on idle after every boot, which means
-  // a folder open would otherwise spend its first minute printing failed fetches.
-  if (FOLDER_BUILD_FLAG) return { run: false, reason: 'the folder build has nothing to pre-cache', done: [] };
   if (autoPrecacheController) return { run: false, reason: 'a pre-cache is already running', done: [] };
   const controller = new AbortController();
   const onOuterAbort = () => { try { controller.abort('interrupted'); } catch {} };
@@ -3119,7 +3110,6 @@ export async function streamWllamaChat({
   onStatus,
   onToken
 }) {
-  if (FOLDER_BUILD_FLAG) throw new Error(FOLDER_BUILD_REASON);
   const { Wllama } = await import('@wllama/wllama');
   const diag = await detectDeviceDiagnostics().catch(() => null);
   const preset = QUANT_PRESETS.find(q => q.id === getSelectedQuantPreset()) || QUANT_PRESETS[0];

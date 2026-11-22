@@ -19,10 +19,10 @@ import { isBackupBuild } from './build-mode.js';
  * visitors on GitHub Pages never see repo files, and the release notes belong
  * where the kitchen is.
  */
-export const APP_VERSION = '1.2.6';
+export const APP_VERSION = '1.2.7';
 
 /** Test versions built after 1.2 shipped. Reset to 0 on every public release. */
-export const TVAR = 5;
+export const TVAR = 2;
 
 /**
  * The release cycle the open test build belongs to.
@@ -51,183 +51,48 @@ export function appVersionLabel() {
  */
 export const TVAR_LOG = [
   {
-    version: '1.2 TVAR 5',
-    date: 'November 23, 2026',
-    title: 'NO-SERVER: the folder opens on a tablet, and stops shouting in the console',
-    tvar: true,
-    groups: [
-      {
-        label: '\u{1F9C7} What this build fixes',
-        items: [
-          'The last test build\u2019s archive still showed a hiccup on the device it was made for. Its front page chose between two scripts by testing whether the protocol was file:, and a tablet file manager does not hand the browser a file: address \u2014 it hands it content:. That fell into the served branch, which loads an ES module, which a content: page refuses exactly as firmly as a file: page does.',
-          'The card it produced said to check that the assets folder was still next to index.html. The folder was intact. The real answer was the protocol, and nothing on the page said so \u2014 which is the worst kind of error message, because it sends somebody looking at the one thing that is fine.',
-          'Served now means http or https and nothing else, so every other scheme gets the folder build, which is the only kind of script that has a chance. A page with no folder behind it at all \u2014 blob: or data:, which is what an in-app preview uses \u2014 gets its own card saying to extract the zip first, because no relative path can resolve from an address like that.'
-        ]
-      },
-      {
-        label: '\u{1F507} A quiet console',
-        items: [
-          'Opening the folder printed errors before this build, and every one of them was the page asking a disk for something a disk cannot give: the manifest, the font stylesheet, an app stylesheet marked crossorigin, a service worker registration, and three separate fetches of ./api/ endpoints that do not exist off a server.',
-          'The first three are gone from the markup and owned by the picker instead, which puts them back only in the served branch \u2014 so serving the extracted folder still gets the site exactly as Pages sends it, manifest and faces and all. Each removal is asserted at pack time, so a change in how Vite writes them fails the build rather than shipping dead links.',
-          'The service worker, the warm-up, the status probe and the idle pre-cache are gated on the folder build. There is no scope for a worker on a disk page and nothing to pre-cache without a server, and app.js asks for all of them within a second of every boot \u2014 which is why a folder open used to start with a red console before anything was tapped.'
-        ]
-      },
-      {
-        label: '\u{1F524} The faces come along now',
-        items: [
-          'Fonts are CORS-restricted, and a page off the disk has an opaque origin to satisfy them with, so all five woff2 files came back blocked. That is five errors for a kitchen that otherwise worked, and it is why the front page no longer links the site\u2019s stylesheet at all.',
-          'They are inside the folder build\u2019s own sheet instead: 80 KB of woff2 as about 109 KB of base64, in a stylesheet that ships inside a 228 MB archive. The folder kitchen keeps the site\u2019s own type rather than falling back to whatever the device has, and the build fails if any url() in that sheet points at a file instead of carrying it.'
-        ]
-      },
-      {
-        label: '\u{1F9EE} One source of truth for what works',
-        items: [
-          'The list of what a folder can and cannot run was written out by hand in five places, and five copies of one fact drifted inside a single working session \u2014 one of them claimed all 115 utilities work off the disk, when the whole English & Languages cupboard asks an AI to do the work.',
-          'offline-facts.js now holds the counts and the rule, and the packer measures both cupboards from the source it just built. Every game is classified by whether it fetches, uses a worker, loads a module or pulls in WASM; every utility by which branch of its cupboard\u2019s mount chain reaches an AI, a worker or an API. The result is stamped into every document \u2014 51 games, 26 playable from a folder, 25 needing a server \u2014 measured in under a second rather than remembered.',
-          'The first census of the utilities moved the count in both directions at once. English & Languages is blocked as a whole, because all fifteen of its tools are mounted with one shared runner built above the dispatch, and not one of their own branches mentions a model. The coding cupboard is not blocked as a whole: ten of its fifteen do their work in the page, and only the five that run your code in a worker do not. These documents said 85 utilities work off the disk, which quietly wrote those ten off, and the packer now refuses to build with a count the source disagrees with.',
-          'The folder build\u2019s own refusal message is generated from the same facts, so what a person reads in the kitchen and what they read in START-HERE.html cannot disagree. It also stopped pointing at a terminal: the alternative it offers is the site\u2019s own offline copy, which needs no server and no install either.'
-        ]
-      },
-      {
-        label: '\u{1F9EA} How it is tested',
-        items: [
-          'The shipped archive is booted at four protocols \u2014 file:, content:, http: and blob: \u2014 and each one is asserted on separately, because only one of the four is the case the previous test covered and that is exactly how the tablet bug shipped.',
-          'The test that passed on the last build proved the kitchen rendered; it did not prove the console was clean, because jsdom does not enforce the rules a browser does about fonts, manifests and workers on a disk page. Those refusals are pinned at the source instead: no link tag in the markup, and each boot-time call gated.',
-          'A document that hardcodes a count offline-facts.js owns now fails the suite, so the numbers cannot go stale the way they did. And the packer refuses to stamp a cabinet it measured as empty, which is what a missing catalog looks like from here.'
-        ]
-      }
-    ]
-  },
-  {
-    version: '1.2 TVAR 4',
-    date: 'November 23, 2026',
-    title: 'FOLDER-KITCHEN: the archive\u2019s index.html opens into the kitchen',
-    tvar: true,
-    groups: [
-      {
-        label: '\u{1F9C7} What this build corrects',
-        items: [
-          'The last test build shipped an archive whose index.html explained itself instead of being the kitchen. Double-clicking it gave a card about file: pages and a wall of instructions, with a terminal command at the bottom of it \u2014 and a download that cannot be opened without reading it first is a download most people will not open at all.',
-          'Worse, the instructions assumed a tool. Every route it offered into the site needed Python 3, and a person on a machine without it \u2014 which is most machines that are not a developer\u2019s \u2014 had nothing left to try. Not everybody has a shell ready, and nothing about opening a folder should require one.',
-          'So the archive now carries a second copy of the kitchen, built the one way a browser will still run off the disk, and its index.html picks between the two by looking at how it was opened. Off the disk it starts the folder build; served over http it starts the real module app. One tap, either way, and no prerequisite software in either branch.'
-        ]
-      },
-      {
-        label: '\u{1F50C} The folder build, and why it is a different build',
-        items: [
-          'npm run build:classic makes dist-classic/kitchen.js: the whole kitchen as one classic script, about 1 MB, plus its own kitchen.css. A browser refuses an ES module from a file: page, refuses a worker from one, and refuses a fetch of the file beside it \u2014 and a classic script is the one thing left that runs. That is not a setting or a polyfill; it is the same rule in every browser.',
-          'The AI engines are aliased out of it, and that is what keeps it at a megabyte. onnxruntime-web carries its WASM binaries inside its own JavaScript as base64, and inlining every dynamic import into one script would have pulled 190 MB of them along. Waffle AI therefore reports itself unavailable in the folder build rather than pretending, and says so in the same words it uses when a network is missing.',
-          'The game catalog is bundled instead of fetched, which is the difference between a games cupboard and an error. From a file: page the fetch is refused and the cupboard reads \u201cUnable to load the offline arcade\u201d in the one place where an empty arcade is most confusing \u2014 a folder holding all 51 games. The served build keeps fetching it, through an alias that resolves the same import to null, so its 32 KB stays lazy.'
-        ]
-      },
-      {
-        label: '\u{1F3AE} What a folder gives you now, measured',
-        items: [
-          'The kitchen, all 115 utilities on its shelves, 85 of them working outright \u2014 the maths, science, text, art, music and video cupboards, whose modules contain no fetch and no worker at all \u2014 the games cupboard listing all 51 games, and 26 of those games playable on tap. The game count is not a guess: each cabinet page was read and classified by whether it fetches, uses a worker, loads a module or pulls in WASM, and 26 of them are a whole game in one page with nothing else to read.',
-          'The other 25 games read their own files as they load, which is the one refusal the folder build cannot work around. They are in the archive and they are listed in the cupboard; they open properly once the folder is served.',
-          'Three groups stay asleep, and each is named rather than waved at: the whole English & Languages cupboard, because 14 of its 15 tools ask Waffle AI and the fifteenth calls a translation API; CodeHub, JavaScript and Web, because they run your code in a worker, the rest of that cupboard being among the 85; and Waffle AI itself, along with the other 25 games. Each of them says why instead of failing quietly, and nothing here needs a network, an account, or anything installed.'
-        ]
-      },
-      {
-        label: '\u{1F5A5} The server is still there, and still optional',
-        items: [
-          'start-server.bat, start-server.command and start-server.sh are unchanged: Python 3, bound to 127.0.0.1, port 8123, stopping when the window closes. Serving the folder lifts every refusal at once, and the same index.html then loads the full site \u2014 all 51 games, the runtimes, and Waffle AI on the weights that came in the archive.',
-          'What changed is its place in the instructions. It is no longer the price of admission and it is no longer the first thing the archive says. START-HERE.html and README.txt now lead with the tap, list what works without a server, and offer the server as one double-click for the rest.',
-          'A phone or tablet still cannot run a local server without a third-party app, and this build does not pretend otherwise. It can open index.html and get the kitchen and the games that work from a folder \u2014 though a tablet\u2019s file manager picks the browser, and some of those refuse local files outright. Where the site itself was already visited, its own offline mode remains the better route there.'
-        ]
-      },
-      {
-        label: '\u{1F9EA} How it is proven, not assumed',
-        items: [
-          'The archive is unzipped and booted. A test takes index.html, kitchen.js and kitchen.css out of the finished zip into a temporary folder, opens the first as a file: URL with a real DOM doing the loading, and asserts the kitchen rendered, that the games cupboard opened onto shelves, and that neither the hiccup card nor the old explanation is anywhere in the mount point.',
-          'The picker itself is checked in the archive rather than in the staging directory, because replacing an entry is exactly the kind of thing zip can quietly not do. Both of its branches are asserted on, since only one of them runs in a test and the other is the live site.',
-          'The packer refuses to run at all without dist-classic/kitchen.js, and the workflow builds it before it packs. The file count in the stamped docs counts the folder build\u2019s two files now, which it did not, and the weights sentence says \u201c1 file\u201d instead of \u201c1 files\u201d.'
-        ]
-      }
-    ]
-  },
-  {
-    version: '1.2 TVAR 3',
-    date: 'November 23, 2026',
-    title: 'OFFLINE-ZIP: the entire site as one download, and the single file retired',
-    tvar: true,
-    groups: [
-      {
-        label: '\u{1F9C7} What this build is for',
-        items: [
-          'The single HTML file from the last test build is gone \u2014 the config that made it, the stub that kept the AI engines out of it, the flag that folded it, the button that downloaded it and the tests that pinned it. In its place there is one download and one button: the entire site as a zip.',
-          'A zip is the honest shape for this site. The single file could only ever hold what a browser will run from a folder, which is the tools and nothing else; the zip holds every game, runtime and model weight, and the price is that it has to be served rather than double-clicked.'
-        ]
-      },
-      {
-        label: '\u{1F4E6} What is in the archive',
-        items: [
-          'Every file the site serves, unpacked at the archive root so extracting gives a folder you can use rather than one you have to rearrange: the built app, all 51 games, the CodeHub runtimes and their WASM, both ONNX runtimes, the GGUF engine, the fonts, the icons, the service worker, and the model weights Waffle AI runs on.',
-          'Measured rather than estimated. Without the weights it is 209 files, 338 MB extracted, 139 MB to download \u2014 41 percent, because WASM compresses to about a quarter of itself and the games only to about two thirds, being single-file pages with their assets already encoded inside them. With the weights a deploy ships roughly 224 MB.',
-          'Packed in 29 seconds by npm run zip:offline, which is scripts/make-offline-zip.mjs reading dist/ after the build has copied the weights into it. That ordering is the whole trick: the weights are in dist/ because the build put them there, which is what makes this an offline archive rather than a copy of the source.'
-        ]
-      },
-      {
-        label: '\u{1F5A5} Why it needs a computer, said plainly',
-        items: [
-          'A browser refuses three things from a file: page \u2014 an ES module, a worker, and one page opening another. Between them those are the kitchen, the code runtimes and every game. Nothing written into the archive can change that, so the archive explains it instead: START-HERE.html opens from a folder, says which of the two situations you are in, and gives the one command that ends it.',
-          'start-server.bat, start-server.command and start-server.sh each need Python 3, serve the folder to 127.0.0.1 only, on port 8123, and stop when their window closes. The executable bits are stored in git, so a double-click still works after extracting.',
-          'Two caveats are written into the archive rather than left to be discovered. Threaded WASM runs one thread deep, because shared-memory threads need cross-origin isolation headers that python http.server cannot send, and the site detects that and drops a thread instead of failing. And a phone or tablet cannot do the serving at all without a third-party app, so this download is for a computer.'
-        ]
-      },
-      {
-        label: '\u{1F527} How it is published, and why not on the site',
-        items: [
-          'The archive is a GitHub release asset under the offline-zip tag, rebuilt and replaced on every deploy to main. At 224 MB, shipping it inside the site would have taken Pages from 437 MB to 661 MB against a 1 GB soft limit, re-uploaded it on every deploy, and served every download out of the site\u2019s own 100 GB a month \u2014 roughly 440 downloads. A release asset costs the site nothing and allows 2 GB.',
-          'The button works out the URL from the Pages origin instead of hardcoding it, so a fork points at its own archive rather than handing out somebody else\u2019s. The size on the button is fetched from offline-zip.json, which the packer writes into dist/ after closing the archive, because no build step can know the number before the file exists.',
-          'The archive is listed back and checked once it is built: sixteen required entries, plus the weights when the build has any. zip reports success on a directory missing half its contents, and that failure would only surface on somebody\u2019s machine weeks later.'
-        ]
-      },
-      {
-        label: '\u{1F9EA} What was checked, and what it caught',
-        items: [
-          'The archive was extracted into a scratch folder and start-server.sh was run on it, exactly as the instructions say. Then every cross-reference in the folder was resolved over http: all 28 service-worker precache entries, all 51 game entrypoints, and the runtimes including the Luau and Bash vendor binaries. All of them answer 200.',
-          'START-HERE.html was booted in jsdom twice, at a file: URL and at an http one, because it shows a different page in each and both halves have to be right. index.html was booted from the extracted folder too, and its explanation now points at START-HERE.html instead of a file that no longer exists.',
-          'It caught one bug of its own making: the packer writes offline-zip.json into dist/, so a second run packed the previous run\u2019s metadata into the next archive, stale and quoting the wrong size. The file is now deleted before packing and rewritten after. A first check that grepped the archive for the words import.meta also had to go \u2014 the release notes describe that trap, so the words are legitimately in there.'
-        ]
-      }
-    ]
-  },
-  {
     version: '1.2 TVAR 2',
     date: 'November 23, 2026',
-    title: 'OFFLINE-HTML-TEST: the whole kitchen in one file, and a folder that stops hiccupping',
+    title: 'SCRAPPED: the offline download, and the wall four builds of it kept finding',
     tvar: true,
     groups: [
       {
-        label: '\u{1F9C7} What this build is for',
+        label: '\u{1F5D1}\u{FE0F} What is gone',
         items: [
-          'One addition and one repair, and nothing else. The addition is a button in this kitchen that hands you the entire site as a single HTML file. The repair is that opening an unzipped copy of the site from a folder no longer produces a Waffle Kitchen hiccup.',
-          'The public kitchen is untouched: same version, same model menu, same behaviour. The offline file is mentioned in this entry and in this kitchen only, because it is a test of a build shape and not a feature yet.'
+          'The whole offline package: the archive, the packer that made it, the second build of the kitchen it opened into, the pages and launcher scripts that came with it, the button in this kitchen that handed it over, and the workflow steps that built, verified and published it on every deploy. The release it lived under is deleted as well, so there is no 228 MB file to download and nothing left that looks like one.',
+          'The public kitchen is untouched by any of it. The folder build never loaded on the served site, the button only ever appeared here, and the four builds that produced the archive never changed what a visitor sees.',
+          'What stays is the offline route the site already had, and it needs no download at all: after one visit the kitchen keeps a copy of itself in the browsers that allow one, along with the model weights it can serve, so it survives losing the connection.'
         ]
       },
       {
-        label: '\u2B07 The offline file',
+        label: '\u{1F9F1} The wall, stated once',
         items: [
-          'About 1.2 MB, one document: every tool, the stylesheet and all the fonts inlined as data URLs. There is nothing left to fetch, so it works from a folder with no server, no network and no neighbouring files.',
-          'It is a classic script and not a module, which is the whole trick. A browser refuses an ES module from a file: page outright, and that refusal is exactly what an unzipped site runs into.',
-          'npm run build:offline makes it from vite.offline.config.js. That is a second config rather than a third input to the first one, because Rollup will only inline dynamic imports when there is a single entry and the output format is not a module.'
+          'A page opened off the disk gets an origin the browser will not trust, and from one it refuses three things: an ES module, a worker, and a fetch of the file sitting next to it. That is not a bug in this site and there is no setting to flip. It is the same rule everywhere, which is why four builds of packaging all arrived at the same place.',
+          'One of the three was beatable. The folder build compiled the whole kitchen into a single classic script, which a page on the disk will run, and the kitchen did open: 115 utilities on the shelves, 95 of them working, and 26 of the 51 games playable on tap, all of it measured from the source rather than remembered.',
+          'The other two are not. Waffle AI needs a worker, or a module, or a fetch of 93 MB of weights, and every engine there is to choose from \u2014 Wllama, ONNX Runtime, node-llama-cpp \u2014 needs at least one of the three. CodeHub needs a worker for every language it offers, and every one of them fails the same way, which is why the whole cupboard goes with a single line about a runtime that could not load over file:.'
         ]
       },
       {
-        label: '\u{1F6AB} What it refuses, and why',
+        label: '\u{1F4DC} The four builds this one replaces',
         items: [
-          'Waffle AI, image generation, the CodeHub runtimes and the games are not in this file and say so. Their weights are downloaded, their engines are workers and WASM, and a file: page gets no cross-origin isolation, so none of them could run even if they were inlined. Every ordinary tool works.',
-          'The reason is a single folded flag: globalThis.__WAFFLE_OFFLINE__ becomes true in this build, and each guard sits immediately before the await import() it protects. onnxruntime-web carries its WASM inside its own JavaScript as base64, so the first attempt measured 190 MB. The guards, plus a stub that the three vendor packages resolve to, brought it to 1.2 MB.',
-          'That stub is the guarantee behind the guards. A guard that is missed, or a new import site added later without anyone remembering, now costs a refusal that explains itself instead of a 179 MB HTML file.'
+          'The first was the whole kitchen as one HTML file, which proved the bundling worked and that a file that size is not something anybody opens twice. The second replaced it with the entire site as an archive, because one file cannot hold 400 MB of games, runtimes and weights, and because shipping it inside the site would have taken Pages to 661 MB and burned the monthly bandwidth in about 440 downloads.',
+          'The third was the correction: the archive\u2019s own front page explained itself instead of being the kitchen, and assumed a reader had Python or a terminal ready. It became a second build of the kitchen as a classic script, with the AI engines aliased out \u2014 which is what kept 190 MB of base64 WASM out of it \u2014 and the game catalog bundled in, so a double-click landed in the kitchen instead of in a wall of instructions.',
+          'The fourth was the closest to working, and is the one this entry closes. It fixed a picker that had only ever recognised file:, so a tablet\u2019s content: address got the folder build instead of a module it would refuse; it moved the manifest, the fonts and the app stylesheet into that picker; it inlined the five faces into the folder build\u2019s own sheet; and it stopped the console shouting about a service worker, a warm-up, a status probe and a pre-cache that a page on the disk cannot do.'
         ]
       },
       {
-        label: '\u{1F9EA} How it was checked',
+        label: '\u{1F9EE} What was worth keeping from it',
         items: [
-          'The built file was booted in jsdom at a file: URL instead of being read. That is what caught a temporal dead zone in the flattened bundle, where an exported constant was hoisted above the declaration it aliased and killed the kitchen before it rendered. No source-level check can see that, because the source is correct.',
-          'The build now fails rather than warns if the artifact contains base64 WASM, a script with a src, a stylesheet or manifest to fetch, a module script, or import.meta. Those five are precisely what breaks a page opened from a folder.',
-          'An unzipped source folder is answered by index.html itself: on a file: page and only there, it replaces its own contents with a short explanation and a link to the offline kitchen, instead of showing a hiccup that blames the visitor.'
+          'The habit of measuring instead of remembering. The last build counted what a folder could run from the source it had just built \u2014 every game classified by whether it fetches, uses a worker, loads a module or pulls in WASM, every utility by which branch of its cupboard\u2019s mount chain reaches an AI \u2014 and refused to pack an archive whose own documents disagreed with the count.',
+          'It caught the copy lying in both directions: once claiming all 115 utilities work off the disk, and once claiming only 85 do when 95 actually did. Both numbers had been written by hand, in five places, and neither had been checked against anything.',
+          'The machinery went with the archive it was built for, because a served site has nothing to refuse. The lesson did not: a count in a document is a claim about the source, and belongs in a test that reads the source.'
+        ]
+      },
+      {
+        label: '\u{2705} How the removal was checked',
+        items: [
+          'By the suite rather than by eye. Nothing in the source may mention the packer, the folder flag, the archive\u2019s front page or the button that offered it; the workflow may contain no step that builds, verifies or publishes an archive; and the page that answers a folder double-click may not point at a file that no longer ships.',
+          'The release beside this one is the same kitchen as 1.2.6 with all of that lifted out, so the version moves because the codebase does, not because anything a visitor can see has changed.'
         ]
       }
     ]
@@ -441,6 +306,43 @@ export const TVAR_LOG = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: '1.2.7',
+    date: 'November 23, 2026',
+    title: 'The offline download is gone, and nothing you use went with it',
+    groups: [
+      {
+        label: '\u{1F9F9} An experiment that ended',
+        items: [
+          'This site no longer builds or publishes an offline archive. For four test builds it handed out the entire kitchen as one download \u2014 every game, every code runtime and the model weights \u2014 so that somebody with no connection could unzip it and open index.html. That download is gone, and the release it lived under has been deleted with it.',
+          'If you already have a copy, it still opens and still works: it is a folder on your disk, and nothing here can reach it. There will simply be no newer one.',
+          'Every tool, game, model and cupboard on the site is exactly as it was in 1.2.6. The version moves because a large amount of machinery came out of the codebase, not because anything you can see has changed.'
+        ]
+      },
+      {
+        label: '\u{1F9F1} Why, which is a browser rule and not a bug',
+        items: [
+          'A page opened straight off a disk gets an origin the browser will not trust, and from one it refuses three things: an ES module, a worker, and a fetch of the file sitting beside it. It is the same rule in every browser and there is no setting that flips it.',
+          'Packaging got around the first of those, and the kitchen did open from a folder: 95 of the 115 utilities worked, and 26 of the 51 games played. It never got around the other two, and the two things that need them are the two worth downloading for \u2014 Waffle AI, which needs a worker and 93 MB of weights, and CodeHub, whose languages all run in workers and so all fail together with a single line about a runtime that could not load.',
+          'A download that cannot do the two things it was for is not a smaller version of the site. It is a wall with a kitchen in front of it, so the wall came down.'
+        ]
+      },
+      {
+        label: '\u{1F4F6} Offline the way the site already does it',
+        items: [
+          'There is still an offline route, and it needs no download, no install and no terminal. In the browsers that allow it, the kitchen keeps a copy of itself after a visit, along with the small models it can serve from its own origin, so losing the connection afterwards costs nothing.',
+          'That copy is a browser feature and not a promise, so the site detects what it has rather than claiming what it does not: where a browser will not keep one, the kitchen says so instead of failing quietly later.'
+        ]
+      },
+      {
+        label: '\u{1F50E} What else changed',
+        items: [
+          'Nothing a visitor can reach. The code that came out was a second build of the kitchen, a packer, a set of instructions and a button in the other build; the served site never loaded any of it.',
+          'The page that answers a double-click on an unzipped copy of the source still does, and now says what to run instead of pointing at instructions that no longer ship with anything.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.2.6',
     date: 'November 22, 2026',

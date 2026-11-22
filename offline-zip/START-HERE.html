@@ -6,13 +6,16 @@
 <meta name="robots" content="noindex,nofollow">
 <title>BiteSizedUtilities — the whole site, offline</title>
 <!--
-  The page you land on when you unzip BiteSizedUtilities.
+  A page about the folder you just unzipped. It is not the way in — index.html is,
+  and index.html is the kitchen. This page is here for the one thing index.html
+  should never do: explain. Read it if something refuses to work and you want to
+  know why, or if you want the parts of the site that a browser will not run
+  straight off the disk.
 
   Two rules shaped it. It is a classic script with inline CSS and nothing to
-  fetch, because a browser refuses an ES module from a file: page — the same
-  reason the kitchen itself cannot start straight off the disk. And it tells the
-  truth about that instead of looking broken: from a folder, this page and
-  index.html's own explanation are the only two things that will run.
+  fetch, because a browser refuses an ES module from a file: page. And it tells
+  the truth rather than looking broken: from a folder some things work and some
+  do not, and which is which is not a guess — it is what the browser allows.
 
   The upper-case words in double braces are stamped by
   scripts/make-offline-zip.mjs when the zip is built, so this page describes the
@@ -58,6 +61,9 @@
   .go:active { transform: translateY(1px); }
   ul { margin: 8px 0 0; padding-left: 22px; }
   li { margin: 5px 0; }
+  .yes, .no { font-weight: 800; white-space: nowrap; }
+  .yes { color: #2f6b1f; }
+  .no { color: #9c4a1a; }
   .pill {
     display: inline-block; padding: 3px 10px; border: 2px solid #4f2f23;
     border-radius: 999px; font-size: 0.78rem; font-weight: 800;
@@ -71,15 +77,46 @@
   <h1>🧇 BiteSizedUtilities</h1>
   <p class="sub">The whole site in one folder — {{FILES}} files, {{EXTRACTED}} extracted, built {{BUILT}}.</p>
 
+  <div class="card good">
+    <h2>Start with index.html</h2>
+    <p style="margin-top:0"><b>index.html is the kitchen.</b> Double-click it. There is nothing to install, no terminal to open, no server to start and no account to make — the folder carries its own copy of the kitchen built the one way a browser will still run off the disk.</p>
+    <a class="go" href="index.html">Open the kitchen →</a>
+    <p style="margin-bottom:0">You are reading this page instead of that one, which is fine — it is the explanation, not the entrance.</p>
+  </div>
+
   <div class="card" id="status">
     <h2>Checking how you opened this…</h2>
-    <p style="margin:0">This page works either way. Everything else in the folder depends on it.</p>
+    <p style="margin:0">Everything below depends on it, and this page works either way.</p>
   </div>
 
   <div class="card" id="folder-view" hidden>
-    <h2><span class="pill">From a folder</span> &nbsp;One command wakes all of it</h2>
-    <p>A browser will not run this site straight off the disk, and it is not a broken download. Three separate rules get in the way: it refuses an ES module from a <code>file:</code> page, it refuses to start a worker from one, and it refuses to let one <code>file:</code> page open another. That is the kitchen, the code runtimes and all 51 games.</p>
-    <p>Serve the folder over <code>http://localhost</code> and every one of those rules stops applying. Pick your machine:</p>
+    <h2><span class="pill">From a folder</span> &nbsp;What works, and what is waiting on a server</h2>
+    <p style="margin-top:0">A page opened off the disk gets an origin the browser will not trust, and from one it refuses three things: an <b>ES module</b>, a <b>worker</b>, and a <b>fetch of the file sitting next to it</b>. That is not a broken download and there is no setting to flip — it is the same rule everywhere, for every site.</p>
+    <p>The folder build works around the first of those, which is why the kitchen opens at all. The other two are why a few things stay asleep until the folder is served:</p>
+    <table>
+      <tr><th style="width:52%">From a folder</th><th style="width:24%">Works?</th><th>Why</th></tr>
+      <tr><td>The kitchen, and all 115 utilities on its shelves</td><td><span class="yes">Yes</span></td><td>that is what <code>kitchen.js</code> is for</td></tr>
+      <tr><td>85 of them — the maths, science, text, art, music and video cupboards</td><td><span class="yes">Yes</span></td><td>those six never touch the network or a worker</td></tr>
+      <tr><td>The games cupboard, listing all 51 games</td><td><span class="yes">Yes</span></td><td>its catalog is bundled, not fetched</td></tr>
+      <tr><td>26 of those games, on tap</td><td><span class="yes">Yes</span></td><td>a whole game in one page, nothing else to read</td></tr>
+      <tr><td>The whole English &amp; Languages cupboard — all 15</td><td><span class="no">No</span></td><td>14 ask Waffle AI, and the translator calls an API</td></tr>
+      <tr><td>The other 25 games</td><td><span class="no">No</span></td><td>they read their own files as they load</td></tr>
+      <tr><td>CodeHub, JavaScript and Web — the rest of that cupboard is in the 85</td><td><span class="no">No</span></td><td>these three run your code in a worker</td></tr>
+      <tr><td>Waffle AI, and the images it makes</td><td><span class="no">No</span></td><td>the engines load as modules and use workers</td></tr>
+    </table>
+    <p style="margin-bottom:0">The sleeping ones say so rather than failing quietly. If you want them, the next card is one double-click.</p>
+  </div>
+
+  <div class="card good" id="served-view" hidden>
+    <h2><span class="pill">Server running</span> &nbsp;Everything in this folder is awake</h2>
+    <p style="margin-top:0">All 115 utilities, all 51 games, the code runtimes, and Waffle AI running on the model weights that came in this folder — with nothing fetched from the internet.</p>
+    <a class="go" href="index.html">Open the kitchen →</a>
+    <p style="margin-bottom:0">Leave the server window open while you use it. The site also registers a service worker, so after one visit your browser keeps a copy of its own and the kitchen can survive the server being closed.</p>
+  </div>
+
+  <div class="card warn">
+    <h2>Want the rest? One double-click — optional</h2>
+    <p style="margin-top:0">Serving the folder over <code>http://localhost</code> lifts every one of those refusals at once, and the same index.html then loads the full site instead of the folder build. Pick your machine:</p>
     <table>
       <tr><th style="width:34%">If you are on</th><th>Do this</th></tr>
       <tr><td><b>Windows</b></td><td>double-click <code>start-server.bat</code></td></tr>
@@ -88,51 +125,38 @@
       <tr><td><b>Any of them, by hand</b></td><td><pre class="cmd">cd path/to/this/folder
 python3 -m http.server 8123 --bind 127.0.0.1</pre>then open <code>http://localhost:8123/index.html</code></td></tr>
     </table>
-    <p style="margin-bottom:0">All three scripts need <b>Python 3</b>, which macOS and most Linux installs already have and Windows gets from <code>python.org</code>. They serve this folder to your own machine only, and they stop when you close the window.</p>
+    <p style="margin-bottom:0">All three scripts need <b>Python 3</b>, which macOS and most Linux installs already have and Windows gets from <code>python.org</code>. They serve this folder to your own machine only, on port 8123, and they stop when you close the window. <b>None of this is required to use the kitchen</b> — it is the price of the parts a browser will not run off the disk.</p>
   </div>
 
-  <div class="card good" id="served-view" hidden>
-    <h2><span class="pill">Server running</span> &nbsp;Everything in this folder is awake</h2>
-    <p style="margin-top:0">The kitchen, all 115 tools, all 51 games, the code runtimes, and Waffle AI running on the model weights that came in this folder — with nothing fetched from the internet.</p>
-    <a class="go" href="index.html">Open the kitchen →</a>
-    <p style="margin-bottom:0">Leave the server window open while you use it. The site also registers a service worker, so after one visit your browser keeps a copy of its own and the kitchen can survive the server being closed.</p>
-  </div>
-
-  <div class="card warn">
+  <div class="card">
     <h2>What is in here</h2>
     <table>
-      <tr><th style="width:44%">Piece</th><th>Needs</th></tr>
-      <tr><td>115 utilities — maths, writing, art, music, video, code</td><td>the kitchen, so a local server</td></tr>
-      <tr><td>51 games</td><td>a local server, twice over: each is its own page</td></tr>
-      <tr><td>CodeHub runtimes — Python, JavaScript, Bash, Luau, Befunge</td><td>a local server for the workers</td></tr>
-      <tr><td>Waffle AI {{WEIGHTS}}</td><td>a local server, and a few hundred MB of RAM</td></tr>
-      <tr><td>This page, and index.html's own explanation</td><td>nothing — they run from a folder</td></tr>
+      <tr><th style="width:34%">File or folder</th><th>What it is</th></tr>
+      <tr><td><code>index.html</code></td><td>the kitchen, and the few lines that decide how to start it</td></tr>
+      <tr><td><code>kitchen.js</code>, <code>kitchen.css</code></td><td>the folder build: the whole kitchen as one classic script, used only when the page came off the disk</td></tr>
+      <tr><td><code>START-HERE.html</code>, <code>README.txt</code></td><td>this explanation, as a page and as plain text</td></tr>
+      <tr><td><code>start-server.*</code></td><td>the optional local server, one per operating system</td></tr>
+      <tr><td>the rest</td><td>every script, style, font, icon, game and runtime binary the site serves — Waffle AI {{WEIGHTS}}</td></tr>
     </table>
   </div>
 
   <div class="card">
-    <h2>Two honest caveats</h2>
+    <h2>Three honest caveats</h2>
     <ul>
       <li><b>Threaded WASM will run one thread deep.</b> Shared-memory threads need cross-origin isolation headers, which <code>python -m http.server</code> cannot send. The site detects that and drops to a single thread, so the runtimes and Waffle AI still work — some of them just take longer.</li>
-      <li><b>A phone or tablet cannot do the serving.</b> There is no local server on a tablet without a third-party app, so this folder is for a computer. That is a limit of the device, not of the zip.</li>
+      <li><b>A phone or tablet cannot run the local server</b> without a third-party app. It can still open <code>index.html</code> and get the kitchen and the games that work from a folder — but a tablet's file manager chooses which browser opens it, and some of those refuse local files outright. If this folder came from the site you were already visiting, the site's own offline mode is the better route there: visit it once while online and it keeps working after.</li>
+      <li><b>This folder is a snapshot.</b> The zip is rebuilt on every deploy of the site, so a folder this old may be behind the live one. Nothing in it phones home to check.</li>
     </ul>
   </div>
 
-  <p class="foot">Built {{BUILT}} from {{SOURCE}}. The zip is rebuilt on every deploy of the site, so a folder this old may be behind the live one.</p>
+  <p class="foot">Built {{BUILT}} from {{SOURCE}}. Deleting the folder is the whole uninstall: it writes nothing outside itself, and the only thing it ever stores is your browser's own cache and saved work, which live in the browser.</p>
 </div>
 
 <script>
 (function () {
   var served = location.protocol === 'http:' || location.protocol === 'https:';
-  var status = document.getElementById('status');
-  var folder = document.getElementById('folder-view');
-  var servedView = document.getElementById('served-view');
-  status.hidden = true;
-  if (served) {
-    servedView.hidden = false;
-  } else {
-    folder.hidden = false;
-  }
+  document.getElementById('status').hidden = true;
+  document.getElementById(served ? 'served-view' : 'folder-view').hidden = false;
 })();
 </script>
 </body>

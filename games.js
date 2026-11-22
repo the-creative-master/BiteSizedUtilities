@@ -1,5 +1,6 @@
 /** 2.5D Offline Arcade — 51 Games (offline cabinet + four originals + two MIT guests + Roper Fancade) */
 import { gamePropSVG } from './icons-25d.js';
+import bundledCatalog from './folder-game-catalog.js';
 import { playPop, playSquish, playSparkle } from './sfx.js';
 
 export let gameCount = 0;
@@ -215,6 +216,10 @@ export async function mountGames(root) {
   }
 
   try {
+    // In the folder build this is the catalog itself, bundled in, because a page
+    // off the disk cannot fetch the JSON beside it. In the served build it is null
+    // and the fetch below runs exactly as it always did.
+    if (!cachedCatalog && bundledCatalog) cachedCatalog = bundledCatalog;
     if (!cachedCatalog) {
       const response = await fetch(assetURL('games/catalog.json'));
       if (!response.ok) throw new Error(`Catalog request failed (${response.status})`);

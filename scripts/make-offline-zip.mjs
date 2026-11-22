@@ -11,7 +11,16 @@
  * and downloaded out of the site's own monthly bandwidth. See the `Publish the
  * offline zip` step in .github/workflows/pages.yml.
  *
- * Two things are worth knowing before editing this.
+ * The archive's index.html is not the site's index.html. That is the single most
+ * important thing in this file, and it is why the archive is worth having: a
+ * browser refuses an ES module from a page opened off the disk, so the site's own
+ * front page cannot start that way, and an archive you have to read instructions
+ * before you can use is an archive nobody uses. So the packer rewrites it into a
+ * page that picks whichever kind of script the way it was opened allows — the
+ * classic folder build from a folder, the real module app when it is served — and
+ * a double-click on index.html opens the kitchen either way. See bootPage().
+ *
+ * Three more things are worth knowing before editing this.
  *
  * The extras are stamped, not copied. START-HERE.html and README.txt describe
  * the folder they are shipped in — file count, extracted size, whether the model
@@ -43,6 +52,14 @@ export const OUT_DIR = 'dist-zip';
 export const STAGE_DIR = path.join(OUT_DIR, 'stage');
 export const EXTRAS_DIR = 'offline-zip';
 
+/** The folder build, made by `npm run build:classic`. See vite.classic.config.js. */
+export const CLASSIC_DIR = 'dist-classic';
+export const CLASSIC_JS = 'kitchen.js';
+export const CLASSIC_CSS = 'kitchen.css';
+
+/** Marks the rewritten front page, so a test can tell it from the site's own. */
+export const BOOT_MARK = 'waffle-folder-boot';
+
 /** Everything that is added to the root of the zip on top of dist/. */
 export const EXTRAS = [
   'START-HERE.html',
@@ -61,6 +78,8 @@ const EXECUTABLE = new Set(['start-server.sh', 'start-server.command']);
  */
 export const REQUIRED_ENTRIES = [
   'index.html',
+  CLASSIC_JS,
+  CLASSIC_CSS,
   'START-HERE.html',
   'README.txt',
   'start-server.sh',
@@ -83,10 +102,78 @@ const WEIGHTS_GLOB = 'api/waffle-ai/gguf/*.gguf';
 /** Written into dist/ so the live site can put a real number on the button. */
 export const META_NAME = 'offline-zip.json';
 
+/**
+ * The archive's front page: the site's own index.html, with the module tag replaced
+ * by a picker and the folder explanation removed.
+ *
+ * The picker is a classic script, because that is the one kind a `file:` page will
+ * run, and it decides by protocol rather than by trying and failing: from a folder
+ * it loads the folder build, and served over http it injects the same module tag
+ * Vite put in the head, so the archive over a local server is the whole site —
+ * Waffle AI, CodeHub runtimes, all 51 games — with nothing fetched from anywhere.
+ *
+ * Two details that are easy to get wrong and were.
+ *
+ * The script goes at the end of the body, not where the module tag was. Vite moves
+ * that tag into the head, and a head script calling `document.body.appendChild`
+ * gets a null body. The module case is unaffected by the move: module scripts are
+ * deferred either way.
+ *
+ * The folder explanation goes, because in this archive it would be a lie. The
+ * kitchen does start from this folder. The site's own index.html keeps it, for
+ * anybody who unzips the source instead.
+ */
+export function bootPage(indexHtml) {
+  const moduleTag = /<script type="module"[^>]*\ssrc="([^"]+)"[^>]*><\/script>/.exec(indexHtml);
+  if (!moduleTag) throw new Error('no module script tag in dist/index.html — nothing to pick between');
+  const moduleSrc = moduleTag[1];
+
+  const handoff = /<script>\(function\(\)\{if\(location\.protocol!=='file:'\)return;[\s\S]*?<\/script>/;
+  if (!handoff.test(indexHtml)) throw new Error('the folder explanation is missing from dist/index.html');
+
+  const boot = `<script>/* ${BOOT_MARK} */
+(function () {
+  var fromFolder = location.protocol === 'file:';
+  var s = document.createElement('script');
+  if (fromFolder) {
+    // The head's stylesheet link carries a crossorigin attribute, which a page on
+    // the disk has no origin to satisfy, so the folder build brings its own. The
+    // two hold the same rules; this one is simply not minified.
+    var css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = './${CLASSIC_CSS}';
+    document.head.appendChild(css);
+    s.src = './${CLASSIC_JS}';
+  } else {
+    s.type = 'module';
+    s.crossOrigin = 'anonymous';
+    s.src = '${moduleSrc}';
+  }
+  s.onerror = function () {
+    var el = document.getElementById('app');
+    if (el && !el.children.length) {
+      el.innerHTML = '<div style="max-width:520px;margin:48px auto;padding:20px;background:#fff8e8;border:3px solid #4f2f23;border-radius:18px;font-weight:700"><h2>Waffle Kitchen hiccup</h2><p>The kitchen script did not load. ' +
+        (fromFolder ? 'Check that ${CLASSIC_JS} is still in this folder next to index.html.' : 'Check that the assets folder is still next to index.html.') + '</p></div>';
+    }
+  };
+  document.body.appendChild(s);
+})();
+<\/script>`;
+
+  const withoutModule = indexHtml.replace(moduleTag[0], '');
+  const withoutHandoff = withoutModule.replace(handoff, '');
+  const at = withoutHandoff.lastIndexOf('</body>');
+  if (at === -1) throw new Error('dist/index.html has no </body> to put the picker before');
+  return withoutHandoff.slice(0, at) + boot + withoutHandoff.slice(at);
+}
+
 const MB = 1024 * 1024;
 const mb = bytes => (bytes < MB
   ? `${Math.round(bytes / 1024)} KB`
   : `${(bytes / MB).toFixed(bytes < 10 * MB ? 1 : 0)} MB`);
+
+/** `1 file` / `2 files` — the release notes and the stamped README read these aloud. */
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 /** Recurse a directory into `{ files, bytes }`, following nothing exotic. */
 export function measure(dir) {
@@ -175,30 +262,49 @@ export function weightsIn(distDir) {
   return { present: files.length > 0, bytes, files: files.length };
 }
 
+/**
+ * The files the archive adds *beside* the built site.
+ *
+ * `index.html` is deliberately not in here: it is stamped over the built one
+ * rather than placed next to it, so it changes no count. These two do — and both
+ * the staged copy and the file count in the stamped docs read this one list, so
+ * they cannot drift apart.
+ */
+export const STAGED_BESIDES_SITE = [CLASSIC_JS, CLASSIC_CSS];
+
 export function factsFor(distDir, repo, sha) {
   const dist = measure(distDir);
-  const extrasBytes = EXTRAS.reduce((n, f) => n + fs.statSync(path.join(EXTRAS_DIR, f)).size, 0);
+  // The folder build's two files are counted only if they are there. That is not
+  // leniency: buildZip() refuses to pack at all without them, and it refuses
+  // before it ever gets here, so a real archive is always measured whole. This
+  // stays tolerant because the suite measures a scratch directory to check the
+  // arithmetic — and it runs in CI before either build has happened.
+  const classicBytes = STAGED_BESIDES_SITE.reduce((n, f) => {
+    const at = path.join(CLASSIC_DIR, f);
+    return n + (fs.existsSync(at) ? fs.statSync(at).size : 0);
+  }, 0);
+  const extrasBytes = EXTRAS.reduce((n, f) => n + fs.statSync(path.join(EXTRAS_DIR, f)).size, 0) + classicBytes;
   const weights = weightsIn(distDir);
   const date = new Date();
   return {
-    files: dist.files + EXTRAS.length,
+    files: dist.files + EXTRAS.length + STAGED_BESIDES_SITE.length,
     extractedBytes: dist.bytes + extrasBytes,
     weights,
     repo,
     sha,
     builtAt: date.toISOString(),
     facts: {
-      FILES: `${dist.files + EXTRAS.length}`,
+      FILES: `${dist.files + EXTRAS.length + STAGED_BESIDES_SITE.length}`,
       EXTRACTED: mb(dist.bytes + extrasBytes),
       BUILT: date.toISOString().slice(0, 16).replace('T', ' ') + ' UTC',
       SOURCE: sha ? `${repo} at ${sha.slice(0, 7)}` : `a local build of ${repo}`,
       WEIGHTS: weights.present
-        ? `(weights included, ${mb(weights.bytes)} in ${weights.files} files)`
+        ? `(weights included, ${mb(weights.bytes)} in ${plural(weights.files, 'file')})`
         : '(no weights in this build, so it downloads them the first time you ask it anything)',
       // The same fact as a sentence, for the places where a parenthetical would not
       // read — the release notes lead with it.
       WEIGHTS_SENTENCE: weights.present
-        ? `The model weights Waffle AI runs on are in there too: ${mb(weights.bytes)} in ${weights.files} files, so it answers without a network.`
+        ? `The model weights Waffle AI runs on are in there too: ${mb(weights.bytes)} in ${plural(weights.files, 'file')}, so it answers without a network.`
         : 'This build came without the model weights, so Waffle AI downloads them the first time you ask it anything.'
     }
   };
@@ -219,8 +325,14 @@ function haveZip() {
   return !res.error && res.status === 0;
 }
 
-/** Write the stamped extras somewhere they can be added at the zip root. */
-export function stageExtras(facts, stageDir = STAGE_DIR) {
+/**
+ * Write everything that is added to the archive root on top of dist/, into one
+ * directory: the stamped extras, the folder build, and the rewritten front page.
+ *
+ * Adding a name the archive already holds replaces it, which is how the site's
+ * index.html becomes the archive's.
+ */
+export function stageExtras(facts, { stageDir = STAGE_DIR, distDir = DIST_DIR } = {}) {
   fs.rmSync(stageDir, { recursive: true, force: true });
   fs.mkdirSync(stageDir, { recursive: true });
   for (const name of EXTRAS) {
@@ -232,12 +344,34 @@ export function stageExtras(facts, stageDir = STAGE_DIR) {
     fs.writeFileSync(out, body);
     if (EXECUTABLE.has(name)) fs.chmodSync(out, 0o755);
   }
-  return EXTRAS.map(name => path.join(stageDir, name));
+  for (const name of STAGED_BESIDES_SITE) {
+    fs.copyFileSync(path.join(CLASSIC_DIR, name), path.join(stageDir, name));
+  }
+  fs.writeFileSync(path.join(stageDir, 'index.html'), bootPage(fs.readFileSync(path.join(distDir, 'index.html'), 'utf8')));
+  return [...EXTRAS, ...STAGED_BESIDES_SITE, 'index.html'].map(name => path.join(stageDir, name));
 }
 
 /** Does the archive actually hold what it claims? */
 export function verifyZip(zipPath, { expectWeights }) {
   const listing = run('unzip', ['-l', zipPath]);
+  // The one entry that is rewritten on the way in, checked in the archive rather
+  // than in the staging directory: replacing an entry is exactly the kind of thing
+  // `zip` can silently not do.
+  const front = run('unzip', ['-p', zipPath, 'index.html']);
+  if (!front.includes(BOOT_MARK)) {
+    throw new Error('the archive still holds the site\'s index.html, not the folder front page \u2014 a double-click would open an explanation instead of the kitchen');
+  }
+  if (front.includes("if(location.protocol!=='file:')return;")) {
+    throw new Error('the archive\'s front page still carries the folder explanation, which the folder build makes a lie');
+  }
+  // Both branches of the picker, spelled the way the generated script spells them.
+  // There is no literal `<script type="module">` to look for: the served branch
+  // builds the element and sets `.type`, which is the only way to add a module to a
+  // document that has already finished parsing.
+  for (const needle of [`s.src = './${CLASSIC_JS}'`, `css.href = './${CLASSIC_CSS}'`, "s.type = 'module'", /s\.src = '\.\/assets\/app-[^']+\.js'/]) {
+    const found = needle instanceof RegExp ? needle.test(front) : front.includes(needle);
+    if (!found) throw new Error(`the front page picker is missing ${needle} — one of its two branches would not load anything`);
+  }
   const entries = listing.split('\n')
     .map(l => l.trim().split(/\s+/).slice(3).join(' '))
     .filter(Boolean);
@@ -256,6 +390,11 @@ export function buildZip({ distDir = DIST_DIR, outDir = OUT_DIR, level = 9, log 
   if (!fs.existsSync(path.join(distDir, 'index.html'))) {
     throw new Error(`${distDir}/index.html is not there. Run \`npm run build\` first — the zip is the built site, not the source.`);
   }
+  for (const name of STAGED_BESIDES_SITE) {
+    if (!fs.existsSync(path.join(CLASSIC_DIR, name))) {
+      throw new Error(`${CLASSIC_DIR}/${name} is not there. Run \`npm run build:classic\` first \u2014 without the folder build, index.html in the archive would open into an explanation instead of the kitchen.`);
+    }
+  }
   if (!haveZip()) {
     throw new Error('the `zip` command is not available. On Debian/Ubuntu: apt-get install zip. It is preinstalled on the GitHub runners.');
   }
@@ -269,9 +408,9 @@ export function buildZip({ distDir = DIST_DIR, outDir = OUT_DIR, level = 9, log 
 
   log(`[zip] ${repo}${sha ? ` at ${sha.slice(0, 7)}` : ''}: ${files} files, ${mb(extractedBytes)} extracted`);
   for (const row of biggestSubdirs(distDir)) {
-    log(`[zip]   ${row.name.padEnd(18)} ${mb(row.bytes).padStart(9)}  ${row.files} files`);
+    log(`[zip]   ${row.name.padEnd(18)} ${mb(row.bytes).padStart(9)}  ${plural(row.files, 'file')}`);
   }
-  log(`[zip]   model weights     ${weights.present ? `${mb(weights.bytes)} in ${weights.files} files` : 'none in this build'}`);
+  log(`[zip]   model weights     ${weights.present ? `${mb(weights.bytes)} in ${plural(weights.files, 'file')}` : 'none in this build'}`);
 
   fs.mkdirSync(outDir, { recursive: true });
   const zipPath = path.resolve(outDir, ZIP_NAME);
@@ -280,13 +419,16 @@ export function buildZip({ distDir = DIST_DIR, outDir = OUT_DIR, level = 9, log 
   // second run the previous archive's file is sitting in dist/ waiting to be packed
   // into the next one — stale, and quoting the wrong size. Out first, back in after.
   fs.rmSync(path.join(distDir, META_NAME), { force: true });
-  const staged = stageExtras(facts);
+  const staged = stageExtras(facts, { distDir });
 
   // From inside dist/, so the archive root is the site root: extracting gives
   // index.html, not dist/index.html, which is the difference between a folder a
   // person can use and one they have to rearrange first.
   run('zip', [`-${level}`, '-r', '-X', '-q', zipPath, '.'], { cwd: path.resolve(distDir) });
-  run('zip', ['-X', '-q', zipPath, ...staged.map(f => path.basename(f))], { cwd: path.resolve(STAGE_DIR) });
+  // Same level as the first pass: these are the two biggest text files in the
+  // archive root, and a default-level pass after a -9 one would show up as a
+  // mysteriously larger zip.
+  run('zip', [`-${level}`, '-X', '-q', zipPath, ...staged.map(f => path.basename(f))], { cwd: path.resolve(STAGE_DIR) });
 
   const zipped = fs.statSync(zipPath).size;
   const verified = verifyZip(zipPath, { expectWeights: weights.present });

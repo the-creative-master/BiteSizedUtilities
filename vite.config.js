@@ -236,7 +236,11 @@ function attachLocalModelRoutes(middlewares) {
 export default defineConfig({
   base: './',
   define: {
-    'import.meta.env.WAFFLE_WEBNN': JSON.stringify(process.env.WAFFLE_WEBNN || '')
+    'import.meta.env.WAFFLE_WEBNN': JSON.stringify(process.env.WAFFLE_WEBNN || ''),
+    // Always false here. The single-file build is made by vite.offline.config.js,
+    // which defines it as true; a normal build that folded this the other way
+    // would ship a kitchen with no AI in it.
+    'globalThis.__WAFFLE_OFFLINE__': 'false'
   },
   resolve: {
     alias: {

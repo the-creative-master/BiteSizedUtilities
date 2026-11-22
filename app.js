@@ -11,6 +11,7 @@ import { mountVideo } from './tools-video.js';
 import { mountGames } from './games.js';
 import { openWaffleAI, warmupWaffleAI, isWaffleAiLocked, WAFFLE_AI_LOCK_MESSAGE } from './waffle-ai.js';
 import { isBackupBuild } from './build-mode.js';
+import { offlineZipUrl, annotateOfflineZipButton } from './offline-download.js';
 import { openChangelog } from './changelog.js';
 import { APP_LANGUAGES, getAppLanguage, setAppLanguage, initAppI18n } from './i18n.js';
 import { gameSlider } from './ui-kit.js';
@@ -119,8 +120,8 @@ app.innerHTML = `
     ${isBackupBuild() ? `
     <div class="backup-banner" id="backup-banner" data-no-i18n>
       <span class="gbadge backup-banner-badge">🧇 BACKUP KITCHEN</span>
-      <span class="backup-banner-copy">Waffle AI is in the main kitchen now. This build is where new behaviour gets tried first, so everything here is unfinished on purpose. It can also hand you the whole kitchen as one HTML file that works with no server at all.</span>
-      <a class="gbtn gbtn-chip backup-banner-exit" href="./offline.html" download="BiteSizedUtilities-offline.html">⬇ Offline HTML</a>
+      <span class="backup-banner-copy">Waffle AI is in the main kitchen now. This build is where new behaviour gets tried first, so everything here is unfinished on purpose. It can also hand you the entire site as one zip — every game, runtime and model weight — to run on a computer with no internet.</span>
+      <a class="gbtn gbtn-chip backup-banner-exit" data-offline-zip href="${offlineZipUrl()}">⬇ Download BSU (.zip)<span data-offline-zip-size></span></a>
       <a class="gbtn gbtn-chip backup-banner-exit" href="./index.html">Back to the kitchen</a>
     </div>` : ''}
     <header class="game-hud">
@@ -1186,6 +1187,10 @@ $('#settings-overlay').addEventListener('click', e => {
 bindActions();
 try { route(); } catch (e) { console.error(e); home(); }
 try { initAppI18n(); } catch (e) { console.error(e); }
+// The zip's size is not known until the archive exists, which is after this page
+// was built, so the button starts without a number and earns one. Fire and forget:
+// if the metadata is missing the button still downloads, it just does not warn.
+if (BACKUP_BUILD) annotateOfflineZipButton().catch(() => {});
 
 setTimeout(() => { try { warmupWaffleAI(); } catch {} }, 800);
 

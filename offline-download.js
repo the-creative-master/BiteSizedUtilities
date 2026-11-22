@@ -79,7 +79,16 @@ export async function annotateOfflineZipButton(doc = (typeof document === 'undef
     if (typeof meta.extractedBytes === 'number') parts.push(`${Math.round(meta.extractedBytes / MB)} MB extracted`);
     if (meta.weights && typeof meta.weights.bytes === 'number') parts.push(`${Math.round(meta.weights.bytes / MB)} MB of model weights`);
     if (typeof meta.builtAt === 'string') parts.push(`built ${meta.builtAt.slice(0, 10)}`);
-    if (parts.length) link.title = `The entire site in one zip: ${parts.join(', ')}. Needs a computer to run.`;
+    if (parts.length) {
+      // It used to end "Needs a computer to run", which stopped being true when
+      // the archive grew a folder build: index.html now opens the kitchen on
+      // anything that can open a local file, and only the pieces a browser refuses
+      // off the disk — the workers, the engines, the games that read their own
+      // files — still want a server.
+      link.title = `The entire site in one zip: ${parts.join(', ')}. `
+        + 'Unzip it and index.html is the kitchen, with nothing to install. '
+        + 'The parts a browser will not run off the disk need a computer.';
+    }
     return meta;
   } catch {
     return null;

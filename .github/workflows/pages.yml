@@ -44,6 +44,13 @@ jobs:
       # visitor will download them from Hugging Face again.
       - name: Report the weights this deploy will serve
         run: ls -l .cache/waffle-ai/*.gguf || echo "no self-hosted model weights in this deploy"
+      # A second copy of the kitchen, as one classic script. It is not deployed —
+      # nothing on the served site loads it — it exists for the archive, because a
+      # browser will not run an ES module from a page opened off the disk and the
+      # zip's index.html has to open into the kitchen anyway. The packer refuses to
+      # run without it rather than quietly shipping an archive that explains itself.
+      - name: Build the folder kitchen the offline zip opens into
+        run: npm run build:classic
       # The zip is made from dist/, so it has to come after the build — and after
       # the model weights are copied into it, which the build also does. That is
       # what makes this an offline archive rather than a copy of the source.

@@ -9,9 +9,11 @@
  * rather than merely unused.
  *
  * The pages: booted in jsdom, because START-HERE.html shows a different page
- * depending on whether the folder is being served, and index.html shows a third
- * thing when it is opened off the disk. Reading those files proves nothing about
- * which of the three a person gets.
+ * depending on whether the folder is being served, and because the archive's
+ * index.html starts the kitchen one way off the disk and another way over http.
+ * Reading those files proves nothing about which of them a person gets — and the
+ * one question that actually matters about this zip is which of them a person
+ * gets when they double-click index.html, so that one is booted, not read.
  *
  * The archive: only when it exists. In CI the suite runs before the build does, so
  * these skip there and the workflow runs this file a second time after packing —
@@ -32,7 +34,8 @@ import {
 import {
   ZIP_NAME, RELEASE_TAG, META_NAME, EXTRAS, REQUIRED_ENTRIES, CONTENT_LABELS,
   measure, biggestSubdirs, stamp, weightsIn, contentsTable, factsFor, verifyZip,
-  buildZip, resolveRepo
+  buildZip, resolveRepo, bootPage, BOOT_MARK, STAGED_BESIDES_SITE,
+  CLASSIC_DIR, CLASSIC_JS, CLASSIC_CSS
 } from '../scripts/make-offline-zip.mjs';
 
 const read = rel => fs.readFileSync(path.resolve(rel), 'utf8');
@@ -82,7 +85,9 @@ test('one button, in the backup kitchen, pointing at a release asset', () => {
   assert.match(app, /if \(BACKUP_BUILD\) annotateOfflineZipButton\(\)\.catch\(\(\) => \{\}\);/,
     'the size is fetched only where the button exists, and a failure changes nothing');
   assert.match(app, /every game, runtime and model weight/, 'the banner says what is in it');
-  assert.match(app, /to run on a computer/, 'and does not let a tablet think otherwise');
+  assert.match(app, /index\.html is the kitchen/, 'and says what you get when you open it');
+  assert.match(app, /nothing to install/, 'which is the part that makes it usable at all');
+  assert.match(app, /wake up on a computer/, 'without letting a tablet think the rest of it works there too');
 });
 
 test('the URL follows the site it is served from, so a fork ships its own archive', () => {
@@ -126,7 +131,8 @@ test('the button quotes a real size, and stays quiet when it cannot', async () =
     assert.match(link.title, /338 MB extracted/);
     assert.match(link.title, /94 MB of model weights/);
     assert.match(link.title, /built 2026-11-22/);
-    assert.match(link.title, /Needs a computer to run/);
+    assert.match(link.title, /index\.html is the kitchen, with nothing to install/);
+    assert.match(link.title, /need a computer/, 'the honest half of the old claim, kept');
   } finally {
     globalThis.fetch = realFetch;
   }
@@ -167,7 +173,8 @@ test('the packer measures, stamps and refuses, without touching an archive', () 
       'an unknown placeholder fails the build instead of shipping as literal braces');
 
     const facts = factsFor(dir, 'owner/repo', 'abcdef1234567').facts;
-    assert.equal(facts.FILES, '7', '2 files measured plus the 5 extras packed on top');
+    assert.equal(facts.FILES, `${2 + EXTRAS.length + STAGED_BESIDES_SITE.length}`,
+      '2 files measured, plus the extras and the folder build packed on top — index.html is stamped over the built one, so it adds nothing');
     assert.match(facts.BUILT, /^\d{4}-\d\d-\d\d \d\d:\d\d UTC$/);
     assert.match(facts.SOURCE, /^owner\/repo at abcdef1$/);
     assert.match(facts.WEIGHTS, /no weights in this build/);
@@ -251,8 +258,26 @@ test('START-HERE.html works from a folder and fetches nothing', () => {
   }
   assert.match(src, /python3 -m http\.server 8123 --bind 127\.0\.0\.1/, 'and the command for doing it by hand');
   assert.match(src, /one thread deep/, 'honest about the WASM a plain server cannot isolate');
-  assert.match(src, /tablet cannot do the serving/, 'and about the device that cannot serve at all');
+  assert.match(src, /cannot run the local server/, 'and about the device that cannot serve at all');
   assert.match(src, /not a broken download/, 'it does not let a person think they downloaded it wrong');
+  // The reason this page exists at all, and the claim it must not contradict.
+  assert.match(src, /index\.html is the kitchen/i, 'it points at the kitchen instead of standing in for it');
+  assert.match(src, /href="index\.html"/, 'with a link a person can tap rather than a filename to type');
+  assert.match(src, /nothing to install/, 'and it says so in the words somebody looking for a catch would look for');
+  for (const claim of ['all 115 utilities', 'all 51 games', '26 of those games']) {
+    assert.ok(src.includes(claim), `it counts ${claim} rather than gesturing at them`);
+  }
+  // Counting what works is not enough: the page has to name what does not, or
+  // somebody who opens the English cupboard thinks their download is broken.
+  for (const asleep of ['English &amp; Languages', 'CodeHub, JavaScript and Web', 'Waffle AI']) {
+    assert.ok(src.includes(asleep), `it names ${asleep} as one of the things a folder will not run`);
+  }
+  // The 85 is a measurement, not a vibe. Those six cupboards are served by five
+  // modules containing no fetch, no XMLHttpRequest, no worker and no WASM.
+  assert.ok(src.includes('85 of them'), 'and it puts a number on what does work');
+  assert.ok(!/all 115 utilities<\/td><td><span class="yes">/.test(src),
+    'without claiming all 115 of them run off the disk, because 15 of them ask an AI');
+  assert.match(src, /optional/i, 'the server is offered, never demanded');
   for (const ph of ['{{FILES}}', '{{EXTRACTED}}', '{{BUILT}}', '{{SOURCE}}', '{{WEIGHTS}}']) {
     assert.ok(src.includes(ph), `${ph} is stamped rather than hardcoded, so the page cannot drift from the folder`);
   }
@@ -355,8 +380,9 @@ test('the release notes are stamped and quote the archive they describe', { skip
   assert.match(notes, /\*\*\d+ MB\*\* to download/, 'leading with the size of the file just built');
   assert.match(notes, /START-HERE\.html/, 'they say what to open first');
   assert.match(notes, /python3 -m http\.server 8123/, 'and how to serve it');
-  assert.match(notes, /one thread deep/, 'with the same two caveats the folder carries');
-  assert.match(notes, /tablet cannot do the serving/);
+  assert.match(notes, /one thread deep/, 'with the same three caveats the folder carries');
+  assert.match(notes, /cannot run the local server/);
+  assert.match(notes, /double-click `index\.html`\. That is the kitchen/, 'leading with the tap, not the terminal');
   assert.match(notes, /\| `games\/` — all 51 games/, 'and a table derived from what was packed');
 });
 
@@ -373,4 +399,136 @@ test('the archive holds the whole site and none of the site metadata', { skip: !
   assert.match(listing, /START-HERE\.html/, 'the front page is at the root');
   assert.match(listing, /start-server\.command/, 'so are the launchers');
   assert.ok(!/dist\//.test(listing), 'and nothing is nested under dist/, which would make the folder need rearranging');
+});
+
+/* ==================== the archive opens into the kitchen, not an explanation ==================== */
+
+test('bootPage swaps the module tag for a picker that survives both protocols', { skip: !exists('dist/index.html') }, () => {
+  const built = read('dist/index.html');
+  const front = bootPage(built);
+
+  assert.ok(front.includes(BOOT_MARK), 'the picker is marked, so verifyZip can find it in the archive');
+  assert.ok(!front.includes("if(location.protocol!=='file:')return;"),
+    'the folder explanation is gone — the folder build made it a lie');
+  assert.ok(!/<script[^>]*type="module"[^>]*src=/.test(front),
+    'and so is the module tag Vite injected, because a file: page would refuse it and the picker adds its own');
+  assert.equal(front.match(/<\/body>/g).length, 1, 'one </body>: the picker went in before it, not inside a string');
+  assert.ok(front.lastIndexOf(BOOT_MARK) < front.lastIndexOf('</body>'),
+    'the picker is the last thing in the body, so #app exists by the time it runs');
+
+  // Both branches, spelled the way the generated script spells them. There is no
+  // literal `<script type="module">` to look for: the served branch builds the
+  // element and sets `.type`, which is the only way to add a module to a document
+  // that has already finished parsing.
+  assert.ok(front.includes(`s.src = './${CLASSIC_JS}'`), 'off the disk it loads the folder build');
+  assert.ok(front.includes(`css.href = './${CLASSIC_CSS}'`), 'with its own stylesheet, which is not the minified one the site ships');
+  assert.ok(front.includes("s.type = 'module'"), 'served, it loads a module');
+  assert.match(front, /s\.src = '\.\/assets\/app-[^']+\.js'/, 'and the same hashed bundle Vite just built');
+  assert.match(front, /Waffle Kitchen hiccup/, 'if neither loads it says so, instead of leaving a blank page');
+
+  // The module tag it replaced is the one from the build being packed, so a rename
+  // in dist/ cannot leave the picker pointing at a file that is not there.
+  const hashed = built.match(/assets\/app-[^"']+\.js/);
+  assert.ok(hashed && front.includes(hashed[0]), `it points at ${hashed?.[0]} because that is what this build made`);
+});
+
+test('the folder build carries the game catalog, and the served build still fetches it', () => {
+  const games = read('games.js');
+  assert.match(games, /^import bundledCatalog from '\.\/folder-game-catalog\.js';$/m,
+    'games.js imports the catalog as a module, so a bundler can put it in the script');
+  const seed = games.indexOf('if (!cachedCatalog && bundledCatalog) cachedCatalog = bundledCatalog;');
+  const fetchAt = games.indexOf("await fetch(assetURL('games/catalog.json'))");
+  assert.ok(seed > -1 && fetchAt > -1 && seed < fetchAt,
+    'and seeds the cache before the fetch, so the fetch is skipped rather than attempted and failed');
+
+  assert.match(read('folder-game-catalog.js'), /export \{ default \} from '\.\/games\/catalog\.json';/,
+    'the folder build re-exports the real catalog — two builds, one source of truth');
+  assert.match(read('folder-stubs/no-catalog.js'), /export default null;/,
+    'the served build gets null, which means "go and fetch it"');
+  assert.match(read('vite.config.js'), /'\.\/folder-game-catalog\.js': path\.resolve\('folder-stubs\/no-catalog\.js'\)/,
+    'and that is what the alias in the served build says');
+
+  // A file: page has an opaque origin, so the fetch of the JSON sitting beside it
+  // is refused and the cupboard reads "Unable to load the offline arcade" in the
+  // one place where an empty arcade is most confusing — a folder holding all 51.
+  if (exists(path.join(CLASSIC_DIR, CLASSIC_JS))) {
+    const kitchen = read(path.join(CLASSIC_DIR, CLASSIC_JS));
+    assert.ok(kitchen.includes('games/cabinet/2048.html'), 'the folder build has the catalog inside it');
+    const app = fs.readdirSync(path.resolve('dist', 'assets')).find(f => /^app-.*\.js$/.test(f));
+    if (app) {
+      assert.ok(!read(path.join('dist', 'assets', app)).includes('games/cabinet/2048.html'),
+        'and the served build does not: it keeps its 32 KB lazy');
+      assert.ok(read(path.join('dist', 'assets', app)).includes('games/catalog.json'),
+        'it still fetches the catalog when the cupboard opens');
+    }
+  }
+});
+
+test('CI builds the folder kitchen, and builds it before it packs', () => {
+  const yml = read('.github/workflows/pages.yml');
+  const classic = yml.indexOf('run: npm run build:classic');
+  const pack = yml.indexOf('run: npm run build && npm run zip:offline');
+  assert.ok(classic > -1, 'there is a step that makes the folder build');
+  assert.ok(pack > -1, 'and the step that packs is still one line, which is how the precache test finds it');
+  assert.ok(classic < pack, 'the folder build comes first: the packer refuses to run without it');
+  assert.match(read('package.json'), /"build:classic":\s*"vite build --config vite\.classic\.config\.js"/,
+    'the script it runs is the one in package.json');
+});
+
+test('a double-click on the archive’s index.html opens the kitchen', { skip: !exists(ZIP_PATH) || !have('unzip') }, async () => {
+  // The whole reason this zip exists. Everything else in this file could pass and
+  // this could still fail, so it is tested against the archive that shipped: three
+  // files are unzipped into a temporary folder and opened the way a person opens
+  // them — as a file: URL, with the browser doing the loading, not us.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bsu-front-'));
+  try {
+    const out = spawnSync('unzip', ['-o', '-q', ZIP_PATH, 'index.html', CLASSIC_JS, CLASSIC_CSS, '-d', dir], { encoding: 'utf8' });
+    assert.equal(out.status, 0, `three files came out of the archive${out.stderr ? `: ${out.stderr}` : ''}`);
+
+    const { JSDOM, VirtualConsole } = await import('jsdom');
+    const noise = [];
+    const vc = new VirtualConsole();
+    vc.on('jsdomError', e => noise.push(String(e.message || e).slice(0, 160)));
+    const dom = new JSDOM(fs.readFileSync(path.join(dir, 'index.html'), 'utf8'), {
+      runScripts: 'dangerously',
+      resources: 'usable',        // load ./kitchen.js off the disk, like a browser would
+      pretendToBeVisual: true,
+      virtualConsole: vc,
+      url: `file://${dir}/index.html`
+    });
+    try {
+      const doc = dom.window.document;
+      await new Promise(r => setTimeout(r, 3500));
+
+      assert.match(doc.querySelector(`script[src="./${CLASSIC_JS}"]`)?.getAttribute('src') || '', /kitchen\.js/,
+        'the picker chose the folder build');
+      const app = doc.getElementById('app');
+      assert.equal(app.children.length > 0, true, 'and the kitchen mounted into #app');
+      // #app, not body: body.textContent includes the source of every inline
+      // script, and the picker's own onerror handler contains the words it is
+      // being asked not to have written. Reading the mount point reads what a
+      // person sees.
+      const text = app.textContent.replace(/\s+/g, ' ');
+      assert.match(text, /WELCOME TO THE TINY UTILITY KITCHEN/, 'the kitchen, rendered');
+      assert.ok(doc.querySelectorAll('button').length > 15, `${doc.querySelectorAll('button').length} buttons: cupboards, not a card of prose`);
+      assert.ok(!/Waffle Kitchen hiccup/.test(text), 'no hiccup');
+      assert.ok(!/This folder is not a server/.test(text), 'no explanation where the kitchen should be');
+      assert.ok(!/npm install/.test(text), 'and nobody is being told to install anything');
+
+      // The cupboard, opened the way a person opens it. This is the part that
+      // fails if the catalog is fetched instead of bundled: from a file: page the
+      // fetch is refused and this reads "Unable to load the offline arcade".
+      const cupboard = [...doc.querySelectorAll('button')].find(b => /Games & Fun/.test(b.textContent));
+      assert.ok(cupboard, 'the games cupboard is on the shelf');
+      cupboard.click();
+      await new Promise(r => setTimeout(r, 2500));
+      const open = doc.getElementById('app').textContent.replace(/\s+/g, ' ');
+      assert.ok(!/Unable to load the offline arcade/.test(open), 'it loaded the arcade rather than reporting it could not');
+      assert.match(open, /FAN FAVORITIES|MORE ARCADE/, 'and put games on a shelf');
+    } finally {
+      dom.window.close();
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -22,7 +22,7 @@ import { isBackupBuild } from './build-mode.js';
 export const APP_VERSION = '1.2.6';
 
 /** Test versions built after 1.2 shipped. Reset to 0 on every public release. */
-export const TVAR = 3;
+export const TVAR = 4;
 
 /**
  * The release cycle the open test build belongs to.
@@ -35,7 +35,7 @@ export const TVAR = 3;
  */
 export const TVAR_CYCLE = '1.2';
 
-/** `1.2 TVAR 3` — the extended label, used only while a test version is open. */
+/** `1.2 TVAR 4` — the extended label, used only while a test version is open. */
 export const APP_VERSION_EXTENDED = `${TVAR_CYCLE} TVAR ${TVAR}`;
 
 /** What the footer of the changelog should call this build. */
@@ -50,6 +50,54 @@ export function appVersionLabel() {
  * what is known to be rough — that is the whole point of writing them down.
  */
 export const TVAR_LOG = [
+  {
+    version: '1.2 TVAR 4',
+    date: 'November 23, 2026',
+    title: 'FOLDER-KITCHEN: the archive\u2019s index.html opens into the kitchen',
+    tvar: true,
+    groups: [
+      {
+        label: '\u{1F9C7} What this build corrects',
+        items: [
+          'The last test build shipped an archive whose index.html explained itself instead of being the kitchen. Double-clicking it gave a card about file: pages and a wall of instructions, with a terminal command at the bottom of it \u2014 and a download that cannot be opened without reading it first is a download most people will not open at all.',
+          'Worse, the instructions assumed a tool. Every route it offered into the site needed Python 3, and a person on a machine without it \u2014 which is most machines that are not a developer\u2019s \u2014 had nothing left to try. Not everybody has a shell ready, and nothing about opening a folder should require one.',
+          'So the archive now carries a second copy of the kitchen, built the one way a browser will still run off the disk, and its index.html picks between the two by looking at how it was opened. Off the disk it starts the folder build; served over http it starts the real module app. One tap, either way, and no prerequisite software in either branch.'
+        ]
+      },
+      {
+        label: '\u{1F50C} The folder build, and why it is a different build',
+        items: [
+          'npm run build:classic makes dist-classic/kitchen.js: the whole kitchen as one classic script, about 1 MB, plus its own kitchen.css. A browser refuses an ES module from a file: page, refuses a worker from one, and refuses a fetch of the file beside it \u2014 and a classic script is the one thing left that runs. That is not a setting or a polyfill; it is the same rule in every browser.',
+          'The AI engines are aliased out of it, and that is what keeps it at a megabyte. onnxruntime-web carries its WASM binaries inside its own JavaScript as base64, and inlining every dynamic import into one script would have pulled 190 MB of them along. Waffle AI therefore reports itself unavailable in the folder build rather than pretending, and says so in the same words it uses when a network is missing.',
+          'The game catalog is bundled instead of fetched, which is the difference between a games cupboard and an error. From a file: page the fetch is refused and the cupboard reads \u201cUnable to load the offline arcade\u201d in the one place where an empty arcade is most confusing \u2014 a folder holding all 51 games. The served build keeps fetching it, through an alias that resolves the same import to null, so its 32 KB stays lazy.'
+        ]
+      },
+      {
+        label: '\u{1F3AE} What a folder gives you now, measured',
+        items: [
+          'The kitchen, all 115 utilities on its shelves, 85 of them working outright \u2014 the maths, science, text, art, music and video cupboards, whose modules contain no fetch and no worker at all \u2014 the games cupboard listing all 51 games, and 26 of those games playable on tap. The game count is not a guess: each cabinet page was read and classified by whether it fetches, uses a worker, loads a module or pulls in WASM, and 26 of them are a whole game in one page with nothing else to read.',
+          'The other 25 games read their own files as they load, which is the one refusal the folder build cannot work around. They are in the archive and they are listed in the cupboard; they open properly once the folder is served.',
+          'Three groups stay asleep, and each is named rather than waved at: the whole English & Languages cupboard, because 14 of its 15 tools ask Waffle AI and the fifteenth calls a translation API; CodeHub, JavaScript and Web, because they run your code in a worker, the rest of that cupboard being among the 85; and Waffle AI itself, along with the other 25 games. Each of them says why instead of failing quietly, and nothing here needs a network, an account, or anything installed.'
+        ]
+      },
+      {
+        label: '\u{1F5A5} The server is still there, and still optional',
+        items: [
+          'start-server.bat, start-server.command and start-server.sh are unchanged: Python 3, bound to 127.0.0.1, port 8123, stopping when the window closes. Serving the folder lifts every refusal at once, and the same index.html then loads the full site \u2014 all 51 games, the runtimes, and Waffle AI on the weights that came in the archive.',
+          'What changed is its place in the instructions. It is no longer the price of admission and it is no longer the first thing the archive says. START-HERE.html and README.txt now lead with the tap, list what works without a server, and offer the server as one double-click for the rest.',
+          'A phone or tablet still cannot run a local server without a third-party app, and this build does not pretend otherwise. It can open index.html and get the kitchen and the games that work from a folder \u2014 though a tablet\u2019s file manager picks the browser, and some of those refuse local files outright. Where the site itself was already visited, its own offline mode remains the better route there.'
+        ]
+      },
+      {
+        label: '\u{1F9EA} How it is proven, not assumed',
+        items: [
+          'The archive is unzipped and booted. A test takes index.html, kitchen.js and kitchen.css out of the finished zip into a temporary folder, opens the first as a file: URL with a real DOM doing the loading, and asserts the kitchen rendered, that the games cupboard opened onto shelves, and that neither the hiccup card nor the old explanation is anywhere in the mount point.',
+          'The picker itself is checked in the archive rather than in the staging directory, because replacing an entry is exactly the kind of thing zip can quietly not do. Both of its branches are asserted on, since only one of them runs in a test and the other is the live site.',
+          'The packer refuses to run at all without dist-classic/kitchen.js, and the workflow builds it before it packs. The file count in the stamped docs counts the folder build\u2019s two files now, which it did not, and the weights sentence says \u201c1 file\u201d instead of \u201c1 files\u201d.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.2 TVAR 3',
     date: 'November 23, 2026',

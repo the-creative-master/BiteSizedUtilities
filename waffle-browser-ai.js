@@ -1,4 +1,4 @@
-import { isBackupBuild } from './build-mode.js';
+import { isBackupBuild, FOLDER_BUILD_FLAG, FOLDER_BUILD_REASON } from './build-mode.js';
 import { stripModelScaffolding } from './waffle-persona.js';
 
 // Rough GGUF size per model at the quant that entry asks for first, in MB.
@@ -2317,6 +2317,9 @@ function resolveOrtWasmPaths(diag, expectedVersion) {
 }
 
 async function getTransformers() {
+  // Before the import, not after: this guard is what keeps the whole ONNX stack out
+  // of the folder build rather than bundling 179 MB and refusing to use it.
+  if (FOLDER_BUILD_FLAG) throw new Error(FOLDER_BUILD_REASON);
   const mod = await import('@huggingface/transformers');
   if (mod.env) {
     mod.env.allowLocalModels = false;
@@ -2667,6 +2670,7 @@ async function getModelManager() {
   if (sharedModelManager) return sharedModelManager;
   if (sharedModelManagerErr) throw sharedModelManagerErr;
   try {
+    if (FOLDER_BUILD_FLAG) throw new Error(FOLDER_BUILD_REASON);
     const { ModelManager } = await import('@wllama/wllama');
     sharedModelManager = new ModelManager({ parallelDownloads: 1 });
     return sharedModelManager;
@@ -3110,6 +3114,7 @@ export async function streamWllamaChat({
   onStatus,
   onToken
 }) {
+  if (FOLDER_BUILD_FLAG) throw new Error(FOLDER_BUILD_REASON);
   const { Wllama } = await import('@wllama/wllama');
   const diag = await detectDeviceDiagnostics().catch(() => null);
   const preset = QUANT_PRESETS.find(q => q.id === getSelectedQuantPreset()) || QUANT_PRESETS[0];

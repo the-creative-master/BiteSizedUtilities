@@ -120,7 +120,7 @@ app.innerHTML = `
     ${isBackupBuild() ? `
     <div class="backup-banner" id="backup-banner" data-no-i18n>
       <span class="gbadge backup-banner-badge">🧇 BACKUP KITCHEN</span>
-      <span class="backup-banner-copy">Waffle AI is in the main kitchen now. This build is where new behaviour gets tried first, so everything here is unfinished on purpose. It can also hand you the entire site as one zip — every game, runtime and model weight — to run on a computer with no internet.</span>
+      <span class="backup-banner-copy">Waffle AI is in the main kitchen now. This build is where new behaviour gets tried first, so everything here is unfinished on purpose. It can also hand you the entire site as one zip — every game, runtime and model weight. Unzip it and index.html is the kitchen, with nothing to install; the parts a browser will not run off the disk wake up on a computer, with no internet.</span>
       <a class="gbtn gbtn-chip backup-banner-exit" data-offline-zip href="${offlineZipUrl()}">⬇ Download BSU (.zip)<span data-offline-zip-size></span></a>
       <a class="gbtn gbtn-chip backup-banner-exit" href="./index.html">Back to the kitchen</a>
     </div>` : ''}

@@ -1,5 +1,6 @@
 import { backupDoorMatches, openBackupKitchenDoor, BACKUP_DOOR_FILE } from './backup-door.js';
 import { appVersionLabel } from './changelog.js';
+import { buildWaffleSystemPrompt, stripModelScaffolding } from './waffle-persona.js';
 import { waffleMascotSVG } from './icons-25d.js';
 import { playPop, playBoing, playSquish, playSparkle } from './sfx.js';
 import { copyToClipboard } from './ui-kit.js';
@@ -407,7 +408,10 @@ async function streamServerChat({ modelId, messages: msgList, systemPrompt, maxT
       if (evName === 'status') onStatus?.(payload);
       else if (evName === 'token' && typeof payload.text === 'string') {
         finalText += payload.text;
-        onToken?.(payload.text, finalText);
+        // The server streams raw chunks, so the cleaning happens here: the second
+        // argument is what gets rendered, and it is the accumulated text with the
+        // scaffolding taken off, exactly like the in-browser engines hand over.
+        onToken?.(payload.text, stripModelScaffolding(finalText, { streaming: true }));
       } else if (evName === 'done' && typeof payload.text === 'string') {
         finalText = payload.text || finalText;
       } else if (evName === 'error') {
@@ -415,7 +419,7 @@ async function streamServerChat({ modelId, messages: msgList, systemPrompt, maxT
       }
     }
   }
-  return finalText.trim();
+  return stripModelScaffolding(finalText).trim();
 }
 
 /**
@@ -1368,10 +1372,17 @@ async function sendMessage(rawText) {
     .filter(m => !m.isWelcome)
     .map(m => ({ role: m.role, content: m.content }));
 
+  // One builder, shared with the server, so both kitchens introduce themselves
+  // the same way. The attached-file rule travels only with a message that really
+  // carries a file: it used to sit in every prompt whether or not anything was
+  // attached, which is what taught Falcon 3 1B to wrap "hello" in file markers.
+  // `undefined` still means "let the server use its own persona", which is the
+  // same text built by the same function.
+  const usesBrowserEngine = tCfg.kind === 'browser' || !modelState.serverReachable || !modelState.preCached;
   const effectiveSystemPrompt = imageUrls.length
-    ? 'You are a helpful, accurate vision assistant. Describe and answer strictly based on what is actually visible in the attached image(s). Do not guess or invent objects that are not clearly shown.'
-    : (tCfg.kind === 'browser' || !modelState.serverReachable || !modelState.preCached
-      ? 'You are a helpful, accurate assistant. Answer clearly in Markdown. If a file is included between --- BEGIN FILE --- and --- END FILE ---, read and use its exact contents directly.'
+    ? buildWaffleSystemPrompt({ vision: true, hasFile: Boolean(fileContext) })
+    : (usesBrowserEngine
+      ? buildWaffleSystemPrompt({ hasFile: Boolean(fileContext) })
       : undefined);
 
   try {

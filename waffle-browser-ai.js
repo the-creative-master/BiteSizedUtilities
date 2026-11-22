@@ -1,4 +1,5 @@
 import { isBackupBuild } from './build-mode.js';
+import { stripModelScaffolding } from './waffle-persona.js';
 
 // Rough GGUF size per model at the quant that entry asks for first, in MB.
 // Used only to warn / budget *before* a download starts — the real byte size
@@ -2462,7 +2463,7 @@ export async function streamBrowserChat({
       markInferenceToken();
       if (signal?.aborted) return;
       acc += text;
-      const cleaned = acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*$/, '');
+      const cleaned = stripModelScaffolding(acc, { streaming: true });
       onToken?.(text, cleaned);
     }
   });
@@ -2491,7 +2492,7 @@ export async function streamBrowserChat({
       acc = decoded;
       onToken?.(decoded, acc);
     }
-    return acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
+    return stripModelScaffolding(acc).trim();
   }
 
   if (loaded.kind === 'qwen3_5') {
@@ -2514,7 +2515,7 @@ export async function streamBrowserChat({
       acc = decoded;
       onToken?.(decoded, acc);
     }
-    return acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
+    return stripModelScaffolding(acc).trim();
   }
 
   const out = await loaded.gen(chat, {
@@ -2528,9 +2529,9 @@ export async function streamBrowserChat({
     const last = out[0].generated_text;
     const text = Array.isArray(last) ? (last[last.length - 1]?.content || '') : String(last);
     acc = text;
-    onToken?.(text, acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*$/, ''));
+    onToken?.(text, stripModelScaffolding(acc, { streaming: true }));
   }
-  return acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*$/, '').trim();
+  return stripModelScaffolding(acc, { dropUnclosedThink: true }).trim();
 }
 
 /* ------------------------------------------------------------------ *
@@ -3353,7 +3354,7 @@ export async function streamWllamaChat({
       const piece = chunk?.choices?.[0]?.delta?.content || '';
       if (piece) {
         acc += piece;
-        const cleaned = acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*$/, '');
+        const cleaned = stripModelScaffolding(acc, { streaming: true });
         onToken?.(piece, cleaned);
       }
     }
@@ -3367,7 +3368,7 @@ export async function streamWllamaChat({
     pushNativeLog('warn', [`generation interrupted: ${err?.message || err}`]);
   }
   wllamaDirty = false;
-  return acc.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*$/, '').trim();
+  return stripModelScaffolding(acc, { dropUnclosedThink: true }).trim();
 }
 
 export function getWllamaRuntimeHints() {

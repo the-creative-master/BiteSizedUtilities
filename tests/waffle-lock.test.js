@@ -208,10 +208,10 @@ test('the paused dialog is still dismissible, and counts nothing', () => {
   assert.ok(!css.includes('waffle-ai-locked-tap-hint'), 'the hint styling went with the hint');
 });
 
-test('the changelog puts 1.2.1 above 1.2 above 1.1.1 above 1.1 above 1.0.1 above the original 1.0 release', () => {
-  assert.equal(APP_VERSION, '1.2.1');
-  assert.equal(CHANGELOG.length, 6, 'every release is documented');
-  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.2.1', '1.2', '1.1.1', '1.1', '1.0.1', '1.0'], 'newest release is listed first');
+test('the changelog puts 1.2.5 above 1.2.1 above 1.2 above 1.1.1 above 1.1 above 1.0.1 above the original 1.0 release', () => {
+  assert.equal(APP_VERSION, '1.2.5');
+  assert.equal(CHANGELOG.length, 7, 'every release is documented');
+  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.2.5', '1.2.1', '1.2', '1.1.1', '1.1', '1.0.1', '1.0'], 'newest release is listed first');
 
   for (const entry of CHANGELOG) {
     assert.match(entry.version, /^\d+\.\d+(\.\d+)?$/);

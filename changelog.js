@@ -22,7 +22,7 @@ import { isBackupBuild } from './build-mode.js';
 export const APP_VERSION = '1.2.6';
 
 /** Test versions built after 1.2 shipped. Reset to 0 on every public release. */
-export const TVAR = 2;
+export const TVAR = 3;
 
 /**
  * The release cycle the open test build belongs to.
@@ -35,7 +35,7 @@ export const TVAR = 2;
  */
 export const TVAR_CYCLE = '1.2';
 
-/** `1.2 TVAR 2` — the extended label, used only while a test version is open. */
+/** `1.2 TVAR 3` — the extended label, used only while a test version is open. */
 export const APP_VERSION_EXTENDED = `${TVAR_CYCLE} TVAR ${TVAR}`;
 
 /** What the footer of the changelog should call this build. */
@@ -50,6 +50,53 @@ export function appVersionLabel() {
  * what is known to be rough — that is the whole point of writing them down.
  */
 export const TVAR_LOG = [
+  {
+    version: '1.2 TVAR 3',
+    date: 'November 23, 2026',
+    title: 'OFFLINE-ZIP: the entire site as one download, and the single file retired',
+    tvar: true,
+    groups: [
+      {
+        label: '\u{1F9C7} What this build is for',
+        items: [
+          'The single HTML file from the last test build is gone \u2014 the config that made it, the stub that kept the AI engines out of it, the flag that folded it, the button that downloaded it and the tests that pinned it. In its place there is one download and one button: the entire site as a zip.',
+          'A zip is the honest shape for this site. The single file could only ever hold what a browser will run from a folder, which is the tools and nothing else; the zip holds every game, runtime and model weight, and the price is that it has to be served rather than double-clicked.'
+        ]
+      },
+      {
+        label: '\u{1F4E6} What is in the archive',
+        items: [
+          'Every file the site serves, unpacked at the archive root so extracting gives a folder you can use rather than one you have to rearrange: the built app, all 51 games, the CodeHub runtimes and their WASM, both ONNX runtimes, the GGUF engine, the fonts, the icons, the service worker, and the model weights Waffle AI runs on.',
+          'Measured rather than estimated. Without the weights it is 209 files, 338 MB extracted, 139 MB to download \u2014 41 percent, because WASM compresses to about a quarter of itself and the games only to about two thirds, being single-file pages with their assets already encoded inside them. With the weights a deploy ships roughly 224 MB.',
+          'Packed in 29 seconds by npm run zip:offline, which is scripts/make-offline-zip.mjs reading dist/ after the build has copied the weights into it. That ordering is the whole trick: the weights are in dist/ because the build put them there, which is what makes this an offline archive rather than a copy of the source.'
+        ]
+      },
+      {
+        label: '\u{1F5A5} Why it needs a computer, said plainly',
+        items: [
+          'A browser refuses three things from a file: page \u2014 an ES module, a worker, and one page opening another. Between them those are the kitchen, the code runtimes and every game. Nothing written into the archive can change that, so the archive explains it instead: START-HERE.html opens from a folder, says which of the two situations you are in, and gives the one command that ends it.',
+          'start-server.bat, start-server.command and start-server.sh each need Python 3, serve the folder to 127.0.0.1 only, on port 8123, and stop when their window closes. The executable bits are stored in git, so a double-click still works after extracting.',
+          'Two caveats are written into the archive rather than left to be discovered. Threaded WASM runs one thread deep, because shared-memory threads need cross-origin isolation headers that python http.server cannot send, and the site detects that and drops a thread instead of failing. And a phone or tablet cannot do the serving at all without a third-party app, so this download is for a computer.'
+        ]
+      },
+      {
+        label: '\u{1F527} How it is published, and why not on the site',
+        items: [
+          'The archive is a GitHub release asset under the offline-zip tag, rebuilt and replaced on every deploy to main. At 224 MB, shipping it inside the site would have taken Pages from 437 MB to 661 MB against a 1 GB soft limit, re-uploaded it on every deploy, and served every download out of the site\u2019s own 100 GB a month \u2014 roughly 440 downloads. A release asset costs the site nothing and allows 2 GB.',
+          'The button works out the URL from the Pages origin instead of hardcoding it, so a fork points at its own archive rather than handing out somebody else\u2019s. The size on the button is fetched from offline-zip.json, which the packer writes into dist/ after closing the archive, because no build step can know the number before the file exists.',
+          'The archive is listed back and checked once it is built: sixteen required entries, plus the weights when the build has any. zip reports success on a directory missing half its contents, and that failure would only surface on somebody\u2019s machine weeks later.'
+        ]
+      },
+      {
+        label: '\u{1F9EA} What was checked, and what it caught',
+        items: [
+          'The archive was extracted into a scratch folder and start-server.sh was run on it, exactly as the instructions say. Then every cross-reference in the folder was resolved over http: all 28 service-worker precache entries, all 51 game entrypoints, and the runtimes including the Luau and Bash vendor binaries. All of them answer 200.',
+          'START-HERE.html was booted in jsdom twice, at a file: URL and at an http one, because it shows a different page in each and both halves have to be right. index.html was booted from the extracted folder too, and its explanation now points at START-HERE.html instead of a file that no longer exists.',
+          'It caught one bug of its own making: the packer writes offline-zip.json into dist/, so a second run packed the previous run\u2019s metadata into the next archive, stale and quoting the wrong size. The file is now deleted before packing and rewritten after. A first check that grepped the archive for the words import.meta also had to go \u2014 the release notes describe that trap, so the words are legitimately in there.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.2 TVAR 2',
     date: 'November 23, 2026',

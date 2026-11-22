@@ -22,7 +22,7 @@ import { isBackupBuild } from './build-mode.js';
 export const APP_VERSION = '1.2.6';
 
 /** Test versions built after 1.2 shipped. Reset to 0 on every public release. */
-export const TVAR = 4;
+export const TVAR = 5;
 
 /**
  * The release cycle the open test build belongs to.
@@ -35,7 +35,7 @@ export const TVAR = 4;
  */
 export const TVAR_CYCLE = '1.2';
 
-/** `1.2 TVAR 4` — the extended label, used only while a test version is open. */
+/** `1.2 TVAR 5` — the extended label, used only while a test version is open. */
 export const APP_VERSION_EXTENDED = `${TVAR_CYCLE} TVAR ${TVAR}`;
 
 /** What the footer of the changelog should call this build. */
@@ -50,6 +50,54 @@ export function appVersionLabel() {
  * what is known to be rough — that is the whole point of writing them down.
  */
 export const TVAR_LOG = [
+  {
+    version: '1.2 TVAR 5',
+    date: 'November 23, 2026',
+    title: 'NO-SERVER: the folder opens on a tablet, and stops shouting in the console',
+    tvar: true,
+    groups: [
+      {
+        label: '\u{1F9C7} What this build fixes',
+        items: [
+          'The last test build\u2019s archive still showed a hiccup on the device it was made for. Its front page chose between two scripts by testing whether the protocol was file:, and a tablet file manager does not hand the browser a file: address \u2014 it hands it content:. That fell into the served branch, which loads an ES module, which a content: page refuses exactly as firmly as a file: page does.',
+          'The card it produced said to check that the assets folder was still next to index.html. The folder was intact. The real answer was the protocol, and nothing on the page said so \u2014 which is the worst kind of error message, because it sends somebody looking at the one thing that is fine.',
+          'Served now means http or https and nothing else, so every other scheme gets the folder build, which is the only kind of script that has a chance. A page with no folder behind it at all \u2014 blob: or data:, which is what an in-app preview uses \u2014 gets its own card saying to extract the zip first, because no relative path can resolve from an address like that.'
+        ]
+      },
+      {
+        label: '\u{1F507} A quiet console',
+        items: [
+          'Opening the folder printed errors before this build, and every one of them was the page asking a disk for something a disk cannot give: the manifest, the font stylesheet, an app stylesheet marked crossorigin, a service worker registration, and three separate fetches of ./api/ endpoints that do not exist off a server.',
+          'The first three are gone from the markup and owned by the picker instead, which puts them back only in the served branch \u2014 so serving the extracted folder still gets the site exactly as Pages sends it, manifest and faces and all. Each removal is asserted at pack time, so a change in how Vite writes them fails the build rather than shipping dead links.',
+          'The service worker, the warm-up, the status probe and the idle pre-cache are gated on the folder build. There is no scope for a worker on a disk page and nothing to pre-cache without a server, and app.js asks for all of them within a second of every boot \u2014 which is why a folder open used to start with a red console before anything was tapped.'
+        ]
+      },
+      {
+        label: '\u{1F524} The faces come along now',
+        items: [
+          'Fonts are CORS-restricted, and a page off the disk has an opaque origin to satisfy them with, so all five woff2 files came back blocked. That is five errors for a kitchen that otherwise worked, and it is why the front page no longer links the site\u2019s stylesheet at all.',
+          'They are inside the folder build\u2019s own sheet instead: 80 KB of woff2 as about 109 KB of base64, in a stylesheet that ships inside a 228 MB archive. The folder kitchen keeps the site\u2019s own type rather than falling back to whatever the device has, and the build fails if any url() in that sheet points at a file instead of carrying it.'
+        ]
+      },
+      {
+        label: '\u{1F9EE} One source of truth for what works',
+        items: [
+          'The list of what a folder can and cannot run was written out by hand in five places, and five copies of one fact drifted inside a single working session \u2014 one of them claimed all 115 utilities work off the disk, when the whole English & Languages cupboard asks an AI to do the work.',
+          'offline-facts.js now holds the counts and the rule, and the packer measures both cupboards from the source it just built. Every game is classified by whether it fetches, uses a worker, loads a module or pulls in WASM; every utility by which branch of its cupboard\u2019s mount chain reaches an AI, a worker or an API. The result is stamped into every document \u2014 51 games, 26 playable from a folder, 25 needing a server \u2014 measured in under a second rather than remembered.',
+          'The first census of the utilities moved the count in both directions at once. English & Languages is blocked as a whole, because all fifteen of its tools are mounted with one shared runner built above the dispatch, and not one of their own branches mentions a model. The coding cupboard is not blocked as a whole: ten of its fifteen do their work in the page, and only the five that run your code in a worker do not. These documents said 85 utilities work off the disk, which quietly wrote those ten off, and the packer now refuses to build with a count the source disagrees with.',
+          'The folder build\u2019s own refusal message is generated from the same facts, so what a person reads in the kitchen and what they read in START-HERE.html cannot disagree. It also stopped pointing at a terminal: the alternative it offers is the site\u2019s own offline copy, which needs no server and no install either.'
+        ]
+      },
+      {
+        label: '\u{1F9EA} How it is tested',
+        items: [
+          'The shipped archive is booted at four protocols \u2014 file:, content:, http: and blob: \u2014 and each one is asserted on separately, because only one of the four is the case the previous test covered and that is exactly how the tablet bug shipped.',
+          'The test that passed on the last build proved the kitchen rendered; it did not prove the console was clean, because jsdom does not enforce the rules a browser does about fonts, manifests and workers on a disk page. Those refusals are pinned at the source instead: no link tag in the markup, and each boot-time call gated.',
+          'A document that hardcodes a count offline-facts.js owns now fails the suite, so the numbers cannot go stale the way they did. And the packer refuses to stamp a cabinet it measured as empty, which is what a missing catalog looks like from here.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.2 TVAR 4',
     date: 'November 23, 2026',

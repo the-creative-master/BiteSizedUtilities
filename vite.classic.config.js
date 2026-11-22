@@ -40,7 +40,44 @@ import vm from 'node:vm';
 
 export const CLASSIC_OUT = 'dist-classic';
 export const CLASSIC_ENTRY = 'kitchen.js';
+export const CLASSIC_CSS = 'kitchen.css';
 const STUB = path.resolve('folder-stubs/ai-vendor.js');
+const FONTS_CSS = path.resolve('public/fonts/fonts.css');
+
+/**
+ * The site's five faces, with the woff2 inside them.
+ *
+ * `public/fonts/fonts.css` is copied rather than processed, so it reaches the
+ * browser as `url(./nunito-latin-800-normal.woff2)`. A font is one of the things a
+ * page off the disk cannot have: fonts are CORS-restricted, and a `file:` or
+ * `content:` page has an opaque origin to satisfy them with, so all five come back
+ * blocked. That is five red errors in the console for a kitchen that otherwise
+ * works, and it is why the front page no longer links this sheet at all.
+ *
+ * 80 KB of woff2 becomes about 109 KB of base64 inside a stylesheet that ships in a
+ * 228 MB archive, so the folder build keeps the site's own type instead of falling
+ * back to whatever the device has. Missing files are a build failure, not a
+ * silent `url()` that would 404 for somebody else later.
+ */
+export function inlineFonts(css) {
+  const source = fs.readFileSync(FONTS_CSS, 'utf8');
+  const missing = [];
+  const inlined = source.replace(/url\(([^)]+)\)/g, (whole, ref) => {
+    const name = String(ref).trim().replace(/^['"]|['"]$/g, '').replace(/^\.\//, '');
+    const at = path.resolve(path.dirname(FONTS_CSS), name);
+    if (!fs.existsSync(at)) {
+      missing.push(name);
+      return whole;
+    }
+    return `url(data:font/woff2;base64,${fs.readFileSync(at).toString('base64')})`;
+  });
+  if (missing.length) {
+    throw new Error(`public/fonts/fonts.css points at files that are not in public/fonts: ${missing.join(', ')}`);
+  }
+  const faces = (inlined.match(/@font-face/g) || []).length;
+  if (!faces) throw new Error('public/fonts/fonts.css has no @font-face in it, so there is nothing to inline');
+  return { css: `${css}\n${inlined}\n`, faces, bytes: Buffer.byteLength(inlined) };
+}
 
 export default defineConfig({
   base: './',
@@ -111,10 +148,20 @@ export default defineConfig({
         }
 
         const css = Object.values(bundle).filter(f => f.type === 'asset' && f.fileName.endsWith('.css'));
-        fs.writeFileSync(path.resolve(CLASSIC_OUT, 'kitchen.css'),
-          css.map(f => (typeof f.source === 'string' ? f.source : Buffer.from(f.source).toString('utf8'))).join('\n'));
+        if (!css.length) throw new Error('the folder build produced no stylesheet');
+        const styles = css.map(f => (typeof f.source === 'string' ? f.source : Buffer.from(f.source).toString('utf8'))).join('\n');
+        const typed = inlineFonts(styles);
+        fs.writeFileSync(path.resolve(CLASSIC_OUT, CLASSIC_CSS), typed.css);
+        // Every url() must carry its bytes. Matched whole and then filtered rather
+        // than written as `url\((?!data:)`: the quote is optional in CSS, so a
+        // pattern that lets it be skipped lets the engine retry without consuming
+        // it, and nine of the app's own inlined SVG backgrounds read as files.
+        const external = (typed.css.match(/url\([^)]*\)/g) || []).filter(u => !/^url\(\s*['"]?data:/i.test(u));
+        if (external.length) {
+          fatal.push(`the stylesheet still points at ${external.length} file(s) instead of carrying them: ${external.slice(0, 3).join(', ')}`);
+        }
 
-        console.log(`[classic] folder kitchen → ${CLASSIC_OUT}/${CLASSIC_ENTRY} (${kb(js.code.length)} script, ${css.length} style asset(s))`);
+        console.log(`[classic] folder kitchen → ${CLASSIC_OUT}/${CLASSIC_ENTRY} (${kb(js.code.length)} script, ${kb(typed.css.length)} style with ${typed.faces} faces inlined)`);
         console.log(`[classic] ${fatal.length ? 'BROKEN: ' + fatal.join('; ') : 'parses as a classic script, no WASM, AI engines stubbed out'}`);
         if (fatal.length) throw new Error(`kitchen.js is not usable from a folder: ${fatal.join('; ')}`);
       }

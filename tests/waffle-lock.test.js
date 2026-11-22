@@ -311,8 +311,10 @@ test('Sir Waffle stops advertising Waffle AI while the feature is paused', () =>
   assert.ok(!/aria-label="Waffle AI Button"/.test(corner), 'no hardcoded Waffle AI label survives');
 
   // The wall quip is an AI feature, so it must stay behind the same gate while
-  // the endpoint string the existing suite asserts on is still present.
-  assert.match(appSrc, /if \(aiLocked\) \{[\s\S]{0,240}?return;\s*\}\s*\n\s*if \(wallQuipAbort\)/);
+  // the endpoint string the existing suite asserts on is still present. The folder
+  // build shares the gate: there is no server to ask, and a fetch of ./api/... off
+  // the disk is refused and printed before it fails.
+  assert.match(appSrc, /if \(aiLocked \|\| isFolderBuild\(\)\) \{[\s\S]{0,320}?return;\s*\}\s*\n\s*if \(wallQuipAbort\)/);
   assert.ok(appSrc.includes('/api/waffle-ai/wall-quip'), 'the backup build still calls the quip endpoint');
   assert.ok(appSrc.includes('openWaffleAI'), 'Sir Waffle still opens the AI surface');
   assert.ok(!appSrc.includes('waffle-hud-btn'), 'still exactly one Waffle button');

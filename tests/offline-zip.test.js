@@ -35,8 +35,10 @@ import {
   ZIP_NAME, RELEASE_TAG, META_NAME, EXTRAS, REQUIRED_ENTRIES, CONTENT_LABELS,
   measure, biggestSubdirs, stamp, weightsIn, contentsTable, factsFor, verifyZip,
   buildZip, resolveRepo, bootPage, BOOT_MARK, STAGED_BESIDES_SITE,
-  CLASSIC_DIR, CLASSIC_JS, CLASSIC_CSS
+  CLASSIC_DIR, CLASSIC_JS, CLASSIC_CSS, measureCabinet, measureTools, factsAgree
 } from '../scripts/make-offline-zip.mjs';
+import { FOLDER_FACTS, folderRefusal } from '../offline-facts.js';
+import { classifyGameSource, toolModuleMap, moduleSet } from '../scripts/folder-census.mjs';
 
 const read = rel => fs.readFileSync(path.resolve(rel), 'utf8');
 const exists = rel => fs.existsSync(path.resolve(rel));
@@ -189,7 +191,7 @@ test('the packer measures, stamps and refuses, without touching an archive', () 
   // Importing the packer must not start a 400 MB archive, which is why the call is
   // behind an argv check; this test file imports it.
   const src = read('scripts/make-offline-zip.mjs');
-  assert.match(src, /if \(process\.argv\[1\] && path\.resolve\(process\.argv\[1\]\) === fileURLToPath\(import\.meta\.url\)\) main\(\);/);
+  assert.match(src, /if \(process\.argv\[1\] && path\.resolve\(process\.argv\[1\]\) === fileURLToPath\(import\.meta\.url\)\) void main\(\);/);
   assert.match(src, /^import \{[\s\S]*?\} from '\.\.\/offline-download\.js';/m,
     'the filename and tag live in the browser module, and the packer imports them');
   assert.throws(() => buildZip({ distDir: 'no-such-dist' }), /Run `npm run build` first/,
@@ -264,19 +266,20 @@ test('START-HERE.html works from a folder and fetches nothing', () => {
   assert.match(src, /index\.html is the kitchen/i, 'it points at the kitchen instead of standing in for it');
   assert.match(src, /href="index\.html"/, 'with a link a person can tap rather than a filename to type');
   assert.match(src, /nothing to install/, 'and it says so in the words somebody looking for a catch would look for');
-  for (const claim of ['all 115 utilities', 'all 51 games', '26 of those games']) {
-    assert.ok(src.includes(claim), `it counts ${claim} rather than gesturing at them`);
-  }
   // Counting what works is not enough: the page has to name what does not, or
   // somebody who opens the English cupboard thinks their download is broken.
-  for (const asleep of ['English &amp; Languages', 'CodeHub, JavaScript and Web', 'Waffle AI']) {
+  for (const asleep of ['English &amp; Languages', '{{CODE_BLOCKED}}', 'Waffle AI']) {
     assert.ok(src.includes(asleep), `it names ${asleep} as one of the things a folder will not run`);
   }
-  // The 85 is a measurement, not a vibe. Those six cupboards are served by five
-  // modules containing no fetch, no XMLHttpRequest, no worker and no WASM.
-  assert.ok(src.includes('85 of them'), 'and it puts a number on what does work');
-  assert.ok(!/all 115 utilities<\/td><td><span class="yes">/.test(src),
-    'without claiming all 115 of them run off the disk, because 15 of them ask an AI');
+  // Every count is a placeholder. These documents once held the same list written
+  // out by hand in five places, and one of them claimed all 115 utilities work off
+  // the disk while another said the English cupboard does not.
+  for (const ph of ['{{UTILITIES_TOTAL}}', '{{UTILITIES_OFFLINE}}', '{{GAMES_PLAYABLE}}', '{{GAMES_BLOCKED}}', '{{ENGLISH_TOOLS}}', '{{CODE_BLOCKED}}', '{{CODE_OFFLINE}}']) {
+    assert.ok(src.includes(ph), `${ph} is stamped from the measurement, not typed in`);
+  }
+  for (const stale of ['all 115 utilities', '85 of them', 'all 51 games', '26 of those games', 'The other 25 games']) {
+    assert.ok(!src.includes(stale), `a literal ${stale} would go stale the day the cabinet changes`);
+  }
   assert.match(src, /optional/i, 'the server is offered, never demanded');
   for (const ph of ['{{FILES}}', '{{EXTRACTED}}', '{{BUILT}}', '{{SOURCE}}', '{{WEIGHTS}}']) {
     assert.ok(src.includes(ph), `${ph} is stamped rather than hardcoded, so the page cannot drift from the folder`);
@@ -420,11 +423,28 @@ test('bootPage swaps the module tag for a picker that survives both protocols', 
   // literal `<script type="module">` to look for: the served branch builds the
   // element and sets `.type`, which is the only way to add a module to a document
   // that has already finished parsing.
-  assert.ok(front.includes(`s.src = './${CLASSIC_JS}'`), 'off the disk it loads the folder build');
-  assert.ok(front.includes(`css.href = './${CLASSIC_CSS}'`), 'with its own stylesheet, which is not the minified one the site ships');
+  assert.ok(front.includes("var served = proto === 'http:' || proto === 'https:'"),
+    'served means http and nothing else — a tablet hands the browser content:, which refuses a module just as firmly');
+  assert.ok(front.includes(`tried = './${CLASSIC_JS}'`), 'off the disk it loads the folder build');
+  assert.ok(front.includes(`addCss('./${CLASSIC_CSS}', false)`), 'with its own stylesheet, which carries the faces inline');
   assert.ok(front.includes("s.type = 'module'"), 'served, it loads a module');
-  assert.match(front, /s\.src = '\.\/assets\/app-[^']+\.js'/, 'and the same hashed bundle Vite just built');
+  assert.match(front, /tried = '\.\/assets\/app-[^']+\.js'/, 'and the same hashed bundle Vite just built');
+
+  // Three links a page off the disk cannot use, moved out of the markup and into
+  // the picker. Left in the head they are not cosmetic: a manifest fetch, five
+  // CORS-blocked woff2 files and a crossorigin stylesheet an opaque origin cannot
+  // satisfy are all printed as errors before anybody taps anything.
+  assert.ok(!/<link[^>]*rel="manifest"/.test(front), 'no manifest tag in the markup');
+  assert.ok(!/<link[^>]*fonts\.css/.test(front), 'no font stylesheet tag either');
+  assert.ok(!/<link[^>]*rel="stylesheet"[^>]*crossorigin/.test(front), 'and no crossorigin stylesheet');
+  assert.ok(front.includes("manifest.rel = 'manifest'"), 'the served branch puts the manifest back');
+  assert.ok(front.includes(`addCss('./fonts/fonts.css', false)`), 'and the faces, which a served page can fetch');
+
   assert.match(front, /Waffle Kitchen hiccup/, 'if neither loads it says so, instead of leaving a blank page');
+  assert.ok(front.includes("at <code>' + proto + '</code>"),
+    'and names the protocol it was handed, which is the thing that was actually wrong');
+  assert.match(front, /This page was handed to the browser/,
+    'while a blob: or data: page, which has no folder behind it, is told to extract the zip');
 
   // The module tag it replaced is the one from the build being packed, so a rename
   // in dist/ cannot leave the picker pointing at a file that is not there.
@@ -482,8 +502,21 @@ test('a double-click on the archive’s index.html opens the kitchen', { skip: !
   // them — as a file: URL, with the browser doing the loading, not us.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bsu-front-'));
   try {
-    const out = spawnSync('unzip', ['-o', '-q', ZIP_PATH, 'index.html', CLASSIC_JS, CLASSIC_CSS, '-d', dir], { encoding: 'utf8' });
-    assert.equal(out.status, 0, `three files came out of the archive${out.stderr ? `: ${out.stderr}` : ''}`);
+    const out = spawnSync('unzip', ['-o', '-q', ZIP_PATH, 'index.html', CLASSIC_JS, CLASSIC_CSS, 'START-HERE.html', '-d', dir], { encoding: 'utf8' });
+    assert.equal(out.status, 0, `four files came out of the archive${out.stderr ? `: ${out.stderr}` : ''}`);
+
+    // The page that explains the folder has to describe the folder that shipped.
+    // Both come out of the same archive, so this is the check that they agree —
+    // which is the contradiction that was reported, and the one worth pinning.
+    if (exists('dist/games/catalog.json')) {
+      const games = measureCabinet('dist');
+      const here = fs.readFileSync(path.join(dir, 'START-HERE.html'), 'utf8');
+      assert.ok(!/\{\{[A-Z_]+\}\}/.test(here), 'no placeholder survived into the archive');
+      assert.ok(here.includes(`${games.playable} of those games`), `it quotes the ${games.playable} games this cabinet can actually play`);
+      assert.ok(here.includes(`all ${games.total} games`), `and all ${games.total} of them in the cupboard`);
+      assert.ok(here.includes(`The other ${games.blocked} games`), `and the ${games.blocked} that need the folder served`);
+      assert.ok(here.includes(`${FOLDER_FACTS.utilitiesOffline} of them`), 'and the count of utilities that never touch a network');
+    }
 
     const { JSDOM, VirtualConsole } = await import('jsdom');
     const noise = [];
@@ -531,4 +564,190 @@ test('a double-click on the archive’s index.html opens the kitchen', { skip: !
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('the front page picks the folder build for every protocol that is not a server', { skip: !exists(ZIP_PATH) || !have('unzip') }, async () => {
+  // The bug this exists for. The picker used to test `location.protocol === 'file:'`,
+  // which is the desktop double-click and nothing else. A tablet file manager hands
+  // the browser a content: address, that fell into the served branch, and the served
+  // branch loads an ES module — refused by a content: page exactly as firmly as by a
+  // file: page. The archive showed a hiccup blaming a missing assets folder that was
+  // sitting right there. One protocol was tested, so one protocol worked.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bsu-proto-'));
+  try {
+    const out = spawnSync('unzip', ['-o', '-q', ZIP_PATH, 'index.html', CLASSIC_JS, CLASSIC_CSS, '-d', dir], { encoding: 'utf8' });
+    assert.equal(out.status, 0, 'the front page and the folder build came out of the archive');
+    const html = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
+    const { JSDOM, VirtualConsole } = await import('jsdom');
+
+    const boot = async (url, wait) => {
+      const vc = new VirtualConsole();          // a script jsdom cannot load is noise here, not a finding
+      vc.on('jsdomError', () => {});
+      const dom = new JSDOM(html, { runScripts: 'dangerously', resources: 'usable', pretendToBeVisual: true, virtualConsole: vc, url });
+      await new Promise(r => setTimeout(r, wait));
+      return dom;
+    };
+    const scriptOf = dom => dom.window.document.querySelector('script[src]');
+    const moduleOf = dom => dom.window.document.querySelector('script[type="module"]');
+
+    // file: — the desktop double-click. This is the one that really loads.
+    const file = await boot(`file://${dir}/index.html`, 3500);
+    assert.match(scriptOf(file)?.getAttribute('src') || '', /kitchen\.js$/, 'a page on the disk gets the folder build');
+    assert.equal(moduleOf(file), null, 'and no module, which a page on the disk would refuse');
+    assert.match(file.window.document.getElementById('app').textContent, /WELCOME TO THE TINY UTILITY KITCHEN/, 'which is enough to render the kitchen');
+    file.window.close();
+
+    // content: — what a tablet hands the browser. jsdom cannot load a script from a
+    // content: base, so this asserts the choice rather than the render: the module
+    // is what a real browser refuses outright, and the classic script is what it at
+    // least tries. That difference is the whole fix.
+    const content = await boot('content://com.android.filemanager/bsu/index.html', 400);
+    assert.equal(moduleOf(content), null, 'no module: a content: page refuses it as firmly as a file: page does');
+    assert.match(scriptOf(content)?.getAttribute('src') || '', /kitchen\.js$/, 'so the folder build is the one it reached for');
+    content.window.close();
+
+    // http: — the served branch, with everything the folder branch drops put back.
+    const served = await boot('http://localhost:8123/index.html', 400);
+    assert.match(moduleOf(served)?.getAttribute('src') || '', /assets\/app-[^/]+\.js$/, 'served, it is the real module app');
+    assert.equal(served.window.document.querySelectorAll('link[rel="stylesheet"]').length, 2, 'its own CSS and the faces come back');
+    assert.ok(served.window.document.querySelector('link[rel="manifest"]'), 'and so does the manifest');
+    served.window.close();
+
+    // blob: — no folder behind it, so nothing is attempted and nothing is blamed.
+    const blob = await boot('blob:null/8f14e45f-ceea-467a-9d65-1e3d17a4a4c0', 300);
+    assert.equal(scriptOf(blob), null, 'no script: a blob: address has no directory to resolve one against');
+    assert.match(blob.window.document.getElementById('app').textContent, /handed to the browser/,
+      'and the card says to extract the zip, instead of reporting a kitchen that could never load');
+    blob.window.close();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('what a folder can run is measured once, and every document quotes it', { skip: !exists('dist/games/catalog.json') }, async () => {
+  // The rule, on sources small enough to read here.
+  assert.deepEqual(classifyGameSource('<script>var a = 1;</script>'), [], 'a whole game in one page is folder-safe');
+  assert.deepEqual(classifyGameSource('<script>fetch("parts.json")</script>'), ['fetch'], 'one that reads a file beside it is not');
+  assert.deepEqual(classifyGameSource('<script>new XMLHttpRequest()</script>'), ['xhr']);
+  assert.deepEqual(classifyGameSource('<script>load("core.wasm")</script>'), ['wasm']);
+  assert.deepEqual(classifyGameSource('<script type="module" src="m.js"></script>'), ['module']);
+  assert.deepEqual(classifyGameSource('<script>new Worker("w.js")</script>'), ['worker']);
+
+  // Then the cabinet that was actually built.
+  const games = measureCabinet('dist');
+  assert.equal(games.total, games.playable + games.blocked, 'every game in the cabinet is one or the other');
+  assert.ok(games.total > 40, `${games.total} games were classified`);
+  assert.ok(games.playable > 0, `${games.playable} of them play from a folder`);
+  assert.ok(games.blockedIds.every(id => games.reasons[id]), 'and every game that needs a server says which rule it trips');
+  assert.equal(measureCabinet('no-such-dir').total, 0, 'a directory with no cabinet measures as empty rather than throwing');
+
+  // The counts every document is stamped with, and the census they come from. This
+  // is the check that the literals offline-facts.js ships inside the folder build's
+  // refusal agree with the source the archive was packed from: that bundle is
+  // compiled before any measuring happens, so it cannot read a census at runtime.
+  const tools = await measureTools('.');
+  assert.equal(tools.total, FOLDER_FACTS.utilitiesTotal, `${tools.total} utilities on the shelves`);
+  assert.equal(tools.offline, FOLDER_FACTS.utilitiesOffline, `${tools.offline} of them work from a folder`);
+  assert.equal(tools.total, tools.offline + tools.blocked, 'and every one of them is one or the other');
+  assert.deepEqual(tools.unresolved, [], 'no tool sits in a cupboard with a blocker and nowhere in its own dispatch');
+  assert.deepEqual(factsAgree(tools), [], 'nothing in offline-facts.js disagrees with the census');
+  assert.deepEqual(tools.cleanCupboards.slice().sort(), FOLDER_FACTS.offlineCupboards.slice().sort(),
+    'the cupboards that work in full are the six the documents name');
+
+  // The cupboard to module map is read out of app.js rather than written down, so a
+  // cupboard that moves to a new module is measured where it actually lives.
+  const map = toolModuleMap(read('app.js'), ['math', 'code', 'english', 'text', 'art', 'music', 'video']);
+  assert.equal(map.code, 'tools-code.js');
+  assert.equal(map.english, 'tools-english.js');
+  assert.equal(map.text, 'tools-text-art.js', 'text and art are the dispatch ternary fallback, and both land there');
+  assert.equal(map.art, 'tools-text-art.js');
+  const readOrNull = n => { try { return read(n); } catch { return null; } };
+  assert.ok(moduleSet(map.text, readOrNull).includes('art-studio-layers.js'),
+    'and a cupboard pulls in its own helpers, which are scanned with it');
+  assert.ok(moduleSet(map.music, readOrNull).includes('file-tools-client.js'),
+    'so a fetch sitting in a shared helper is not missed by the cupboard that uses it');
+
+  // Why the coding cupboard is counted per tool rather than as a whole: five of its
+  // fifteen run your code in a worker and the other ten do their work in the page.
+  // The figure the documents carried before this was 85, which wrote those ten off.
+  const code = tools.byCupboard.code;
+  assert.equal(code.total, 15, 'fifteen coding tools');
+  assert.equal(code.offline, 10, 'ten of which a folder can run');
+  assert.deepEqual(code.blockedIds.slice().sort(), ['codehub', 'css-minifier', 'js-formatter', 'regex-tester', 'sql-formatter'],
+    'and the five that reach workerJob are the five that cannot');
+  assert.deepEqual(tools.blockedIds.filter(t => t.cupboard === code.name).map(t => t.title).sort(),
+    FOLDER_FACTS.codeBlocked.slice().sort(), 'named in the documents by the title on the shelf');
+
+  // Why the English cupboard is counted as a whole. Not one of its branches mentions
+  // an AI: all fifteen are mounted with a single runner built above the dispatch, so
+  // a per-branch scan calls eleven of them safe and the folder shows a spinner where
+  // a notice belongs.
+  const english = tools.byCupboard.english;
+  assert.equal(english.offline, 0, 'no English tool works from a folder');
+  assert.deepEqual(english.sharedEngine, ['run'], 'they are blocked by the shared runner, not one by one');
+  assert.equal(english.blockedIds.length, FOLDER_FACTS.englishTools, 'all fifteen of them');
+
+  // The six cupboards that work in full do so because their modules are clean, which
+  // is a fact about the source and not about the census: no network, no worker, no
+  // WASM, and no AI imported.
+  for (const mod of ['tools-math-numbers.js', 'tools-math-science.js', 'tools-music.js',
+    'tools-text-art.js', 'tools-video.js', 'file-tools-client.js', 'art-studio-layers.js']) {
+    for (const bad of ['fetch(', 'XMLHttpRequest', 'new Worker', '.wasm', 'waffle-ai.js']) {
+      assert.ok(!read(mod).includes(bad), `${mod} has no ${bad} in it, which is what makes its cupboards folder-safe`);
+    }
+  }
+
+  // Two tools ask for a digest. That is not a blocker, because a page on the disk is
+  // a secure context and can give them one, but an opaque content: address cannot,
+  // and a cupboard gaining a third is worth noticing.
+  assert.deepEqual(tools.secureIds.slice().sort(), ['hash-generator', 'hash-playground'],
+    'the two hash tools are the only ones that need a secure context');
+
+  const facts = factsFor('dist', 'owner/repo', 'abcdef1234567', { tools }).facts;
+  assert.equal(facts.UTILITIES_TOTAL, tools.total);
+  assert.equal(facts.UTILITIES_OFFLINE, tools.offline);
+  assert.equal(facts.UTILITIES_BLOCKED, tools.blocked);
+  assert.equal(facts.ENGLISH_TOOLS, english.blockedIds.length);
+  assert.equal(facts.CODE_TOTAL, code.total);
+  assert.equal(facts.CODE_OFFLINE, code.offline);
+  assert.equal(facts.CODE_BLOCKED, 'CodeHub, Regex Tester, CSS Minifier, JavaScript Formatter and SQL Formatter',
+    'the blocked coding tools as a sentence, since that is where they are quoted');
+  assert.equal(facts.GAMES_TOTAL, games.total);
+  assert.equal(facts.GAMES_PLAYABLE, games.playable);
+  assert.equal(facts.GAMES_BLOCKED, games.blocked);
+
+  // The refusal a person reads inside the kitchen, from the same facts.
+  const said = folderRefusal(games);
+  assert.match(said, new RegExp(`${FOLDER_FACTS.utilitiesOffline} utilities`), 'it quotes the count of what still works');
+  assert.match(said, new RegExp(`${games.playable} of the ${games.total} games`), 'and the cabinet it was handed');
+  assert.match(said, /no server and no install/, 'pointing at the route that needs neither');
+  assert.ok(!/python|terminal|command line/i.test(said), 'and not at a terminal, which is what it used to do');
+});
+
+test('nothing at boot reaches for a server the folder does not have', { skip: !exists(path.join(CLASSIC_DIR, CLASSIC_CSS)) }, () => {
+  // jsdom does not enforce what a browser enforces about manifests, fonts, workers
+  // and fetches from a page on the disk, so a clean console cannot be observed in a
+  // test — which is exactly how the last build shipped with five errors in it. What
+  // can be pinned is that every call which would dirty one is gated at the source.
+  const app = read('app.js');
+  assert.match(app, /if \(!isFolderBuild\(\) && 'serviceWorker' in navigator/,
+    'the service worker is not registered from a folder, which has no scope to register into');
+
+  const ai = read('waffle-ai.js');
+  assert.match(ai, /export async function warmupWaffleAI\(\) \{[\s\S]{0,420}?if \(isFolderBuild\(\)\) return;/,
+    'nor is the AI server warmed, which app.js asks for 800 ms after every boot');
+  assert.match(ai, /async function fetchStatus\(\) \{[\s\S]{0,700}?if \(isFolderBuild\(\)\) return;/,
+    'nor probed for a status the folder cannot answer');
+
+  const browser = read('waffle-browser-ai.js');
+  assert.match(browser, /export async function autoPrecacheServedModels[\s\S]{0,900}?if \(FOLDER_BUILD_FLAG\) return \{ run: false/,
+    'and the idle pre-cache stays idle: there are no served models to fetch and no OPFS to put them in');
+
+  // The faces come along inside the folder build's own sheet, which is what makes
+  // dropping the link to fonts.css free rather than a downgrade.
+  const css = read(path.join(CLASSIC_DIR, CLASSIC_CSS));
+  assert.equal((css.match(/@font-face/g) || []).length, 5, 'five faces');
+  assert.equal((css.match(/data:font\/woff2;base64/g) || []).length, 5, 'all five carried inline');
+  const external = (css.match(/url\([^)]*\)/g) || []).filter(u => !/^url\(\s*['"]?data:/i.test(u));
+  assert.deepEqual(external, [], 'and nothing in the sheet points at a file, which a page off the disk could not load');
 });

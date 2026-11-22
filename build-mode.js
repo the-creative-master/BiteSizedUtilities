@@ -11,6 +11,8 @@
  * It is page-scoped on purpose and never stored: the public kitchen cannot
  * inherit the extra build from a stale localStorage value.
  */
+import { folderRefusal } from './offline-facts.js';
+
 export function isBackupBuild(doc = (typeof document === 'undefined' ? undefined : document)) {
   return doc?.documentElement?.dataset?.backup === '1';
 }
@@ -58,6 +60,5 @@ export function isFolderBuild() {
  * one tool is refusing, so it says what still works and what to do about the rest
  * before it says anything about the mechanism.
  */
-export const FOLDER_BUILD_REASON =
-  'You opened this folder straight off the disk, and a browser will not let a page like that download a model: it cannot fetch a file, start a worker, or run the WASM the AI engines need. The rest of the kitchen still works \u2014 every utility that runs in the page, and 26 of the 51 games. This one needs Waffle AI, so open the site online instead, or serve this folder over http; START-HERE.html explains how, and the kitchen itself needed nothing installed.';
+export const FOLDER_BUILD_REASON = folderRefusal();
 

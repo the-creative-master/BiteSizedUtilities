@@ -1,43 +1,22 @@
-{
- "name": "as deployed",
- "origin": "http://127.0.0.1:44655",
- "firstTitle": "controlled",
- "crossOriginIsolated": true,
- "controller": true,
- "worker": "onerror",
- "message": "(empty)",
- "filename": null,
- "consoleErrors": []
-}
-{
- "name": "A: skips worker-script requests",
- "origin": "http://127.0.0.1:33141",
- "firstTitle": "controlled",
- "crossOriginIsolated": true,
- "controller": true,
- "worker": "onerror",
- "message": "(empty)",
- "filename": null,
- "consoleErrors": []
-}
-{
- "name": "B: no COOP/COEP on the document",
- "origin": "http://127.0.0.1:44681",
- "firstTitle": "controlled",
- "crossOriginIsolated": false,
- "controller": true,
- "worker": "ran",
- "value": "ran:json",
- "consoleErrors": []
-}
-{
- "name": "C: no cache put()",
- "origin": "http://127.0.0.1:43793",
- "firstTitle": "controlled",
- "crossOriginIsolated": true,
- "controller": true,
- "worker": "onerror",
- "message": "(empty)",
- "filename": null,
- "consoleErrors": []
-}
+TAP version 13
+# Subtest: a page carrying the isolation headers cannot start a runtime
+ok 1 - a page carrying the isolation headers cannot start a runtime
+  ---
+  duration_ms: 426.426277
+  type: 'test'
+  ...
+# Subtest: the same page behind the shipped service worker runs its runtimes
+ok 2 - the same page behind the shipped service worker runs its runtimes
+  ---
+  duration_ms: 139.092654
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 994.335955

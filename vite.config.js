@@ -460,22 +460,25 @@ const MAX_CACHE_BYTES = 8 * 1024 * 1024;
 // GitHub Pages cannot send COOP/COEP, so a deployed kitchen has no
 // SharedArrayBuffer and every runtime runs one thread: wllama asks for
 // n_threads = 1 and ONNX Runtime is pinned to numThreads = 1, both because
-// crossOriginIsolated is false. A service worker *can* send them. Re-serving the
-// document with the headers attached means the next navigation boots isolated,
-// which is the only switch those two runtimes are waiting on.
+// crossOriginIsolated is false. A service worker *can* send them, and this one
+// did: it re-served the document with COOP same-origin and COEP credentialless
+// so the next navigation would boot isolated and the two AI runtimes could use
+// every core.
 //
-// credentialless rather than require-corp, on purpose: Chromium isolates and
-// still lets cross-origin subresources load without credentials, so the two
-// vendored games that fetch a display font from Google keep working. A browser
-// that does not understand the value ignores it and stays single-threaded, which
-// is exactly what it does today.
-function isolated(res) {
-  if (!res) return res;
-  const headers = new Headers(res.headers);
-  headers.set('Cross-Origin-Opener-Policy', 'same-origin');
-  headers.set('Cross-Origin-Embedder-Policy', 'credentialless');
-  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
-}
+// That is measured, not argued, and it cost far more than it bought. Chromium
+// refuses to construct a dedicated worker from a page in that state — with an
+// empty error message and nothing in the console, so it looks exactly like a
+// missing file. Every language in CodeHub runs in a worker, and so do the Regex
+// Tester and the three formatters, so all of them were dead on the deployed site
+// while working on any server that had no service worker registered. Serving the
+// same document without those two headers is the only variable that brings them
+// back: leaving the worker to intercept nothing changes nothing, and dropping
+// only the cache put() changes nothing.
+//
+// So the headers are gone and the AI runtimes stay on one thread, which is what
+// they already do in every browser that does not understand credentialless.
+// Multi-core inference is a speed-up. A cupboard that cannot start a runtime at
+// all is not.
 
 function staticHostAnswer() {
   return new Response(
@@ -533,12 +536,12 @@ self.addEventListener('fetch', e => {
           caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
         }
       }
-      // Cache the plain copy, serve the isolated one: a document answered from
-      // cache offline still needs the headers to boot multithreaded.
-      return isDocument && r.ok ? isolated(r) : r;
+      // A document is passed through exactly as the host sent it. Rewriting its
+      // headers is what stopped every worker on the site from starting.
+      return r;
     }).catch(() => caches.match(req).then(hit => hit || (
       isDocument ? caches.match(SCOPE + 'index.html') : Response.error()
-    )).then(fallback => (isDocument ? isolated(fallback) : fallback)))
+    )))
   );
 });
 `;

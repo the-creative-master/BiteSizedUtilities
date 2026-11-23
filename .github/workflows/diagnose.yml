@@ -22,8 +22,10 @@ jobs:
           node-version: 22
       - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium
-      - name: Probe the live site
-        run: node scripts/diagnose-runtimes.mjs
+      - name: Run the browser half of the suite
+        run: node --test tests/sw-runtime-worker.test.js > DIAGNOSIS.txt 2>&1 || true
+      - name: Show it
+        run: cat DIAGNOSIS.txt
 
       # The runner's log lives on a host this session cannot read, so the
       # findings come back the way everything else does: as a file in the branch.
@@ -32,5 +34,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add DIAGNOSIS.txt
-          git commit -m "diagnosis: what the live site actually does with runtimes/worker.js"
+          git commit -m "diagnosis: the browser half of the suite, from a runner that has one"
           git push origin HEAD:${{ github.ref_name }}

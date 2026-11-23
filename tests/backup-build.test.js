@@ -88,11 +88,9 @@ test('the backup kitchen reports the test build it is, not the release beside it
   // same breath as the feature, because a chat that says "saved" and then
   // disappears when somebody clears site data has oversold itself.
   assert.match(TVBR_LOG[0].title, /memory|sidebar/i, '1.3 TVBR 1 says what it is about in the title');
-  assert.match(chat, /Test Version BEfore Release/, 'the entry says what the renamed label stands for');
-  assert.match(chat, /still read 1\.2 TVAR 1 to 3 and 1\.1 TVAR 1 to 3/,
-    'and names the builds that kept the old spelling, instead of claiming a sweep');
-  assert.ok(!/renamed along with it|141 occurrences|every file|repo-wide/i.test(chat),
-    'it does not claim a rename that reached further than it did');
+  assert.match(chat, /Test Version BEfore Release/, 'the entry says what its own label stands for');
+  assert.match(chat, /Test Version BEfore Release/, 'and what the open build\u2019s own label means');
+  assert.match(chat, /1\.3 does not exist yet|does not exist yet/, 'which is why it is a before-release build at all');
   assert.match(chat, /Clear cookies and site data/, 'the limit is stated in the words the button uses');
   assert.match(chat, /no server/, 'including why there is nowhere else to put a conversation');
   assert.match(chat, /only copy that outlives a wipe/, 'so the export is presented as the answer, not a footnote');
@@ -171,7 +169,7 @@ test('TVBR entries reset with each release and are rendered only in the backup b
     'the extended label is derived, so bumping TVBR is a one-character change');
   assert.match(src, /export const TVBR_CYCLE = '1\.3';/,
     'from the cycle it belongs to, which is a literal: APP_VERSION has moved on to 1.2.8 and deriving from it would announce a build that has never existed');
-  assert.match(src, /Reset to 0 on every public release/, 'the reset rule is written down where the counter lives');
+  assert.match(src, /Reset to 0 when that/, 'the reset rule is written down where the counter lives');
   assert.match(src, /const releases = isBackupBuild\(\) \? \[\.\.\.TVBR_LOG, \.\.\.CHANGELOG\] : CHANGELOG;/,
     'the renderer only prepends TVBR entries in the backup build');
   assert.match(src, /\$\{esc\(appVersionLabel\(\)\)\}/, 'and the footer prints the label for this build');
@@ -190,25 +188,36 @@ test('TVBR entries reset with each release and are rendered only in the backup b
   }
 });
 
-test('the label changed going forward and left the builds that shipped under the old one alone', () => {
-  // TVBR is what a test build is called from the 1.3 cycle on. TVAR is what the
-  // 1.1 and 1.2 ones were called, and they still say so: a spelling does not
-  // reach back and rename a build whose number somebody already read.
-  assert.equal(TVBR_LOG[0].version, '1.3 TVBR 1', 'the open build reads TVBR');
+test('TVAR and TVBR say where a build sits relative to its release', () => {
+  // Not two spellings of one label. TVAR is a test version built AFTER its
+  // release shipped; TVBR is one built BEFORE the release it is testing toward.
+  // The open build is 1.3 TVBR 1 because 1.3 does not exist yet, and the six
+  // below are TVAR because 1.1 and 1.2 did. Nothing has been renamed.
+  assert.equal(TVBR_LOG[0].version, '1.3 TVBR 1', 'the open build comes before its release');
   assert.deepEqual(TVBR_LOG.slice(1).map(e => e.version),
     ['1.2 TVAR 3', '1.2 TVAR 2', '1.2 TVAR 1', '1.1 TVAR 3', '1.1 TVAR 2', '1.1 TVAR 1'],
-    'and every build before it keeps the label it shipped under');
+    'and the ones below came after theirs');
+
+  const src = fs.readFileSync('changelog.js', 'utf8');
+  assert.match(src, /TVAR means "Test Version AFTER Release"/, 'both definitions are written down');
+  assert.match(src, /TVBR means "Test Version BEfore Release"/, 'not just the one in use');
+  assert.match(src, /Each entry keeps the label that says where it sat/,
+    'and so is the rule that an entry is not relabelled to suit the build above it');
+  assert.match(src, /Reset to 0 when that/, 'including when the counter starts over');
 
   const text = e => e.groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
   const history = TVBR_LOG.slice(1).map(text).join(' ');
   assert.match(history, /test version after release/,
-    'the 1.1 explainer still says what TVAR stood for, in its own words, rather than being updated to agree with the new one');
-  assert.ok(!/1\.[12] TVBR /.test(history), 'and no historical entry has been handed the new spelling');
+    'the 1.1 explainer still defines TVAR in its own words, and is still right');
+  assert.ok(!/1\.[12] TVBR /.test(history), 'and no after-release build has been called a before-release one');
 
-  const src = fs.readFileSync('changelog.js', 'utf8');
-  assert.match(src, /TVBR means "Test Version BEfore Release"/, 'what the label stands for is written down where the list lives');
-  assert.match(src, /still read TVAR/, 'and so is the fact that the older entries do not');
-  assert.match(src, /it does not reach back and rename a build that already/, 'including why');
+  const chat = text(TVBR_LOG[0]);
+  assert.match(chat, /Test Version AFTER Release/, 'the open entry explains the other label rather than assuming it');
+  assert.match(chat, /1\.2 TVAR 1 to 3 and 1\.1 TVAR 1 to 3/, 'and names the builds it sits above');
+  assert.match(chat, /not which spelling was current when it was written/,
+    'stating plainly that this is not a rename');
+  assert.ok(!/renamed along with it|141 occurrences|repo-wide|a spelling changes|does not reach back/i.test(chat),
+    'no leftover claim that the old entries were relabelled');
 });
 
 test('backup.html is the only page that switches the extra build on', () => {

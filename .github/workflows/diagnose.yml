@@ -1,0 +1,26 @@
+name: Diagnose the deployed runtimes
+
+# Throwaway. Exists to answer one question — which layer refuses
+# runtimes/worker.js on GitHub Pages — from a browser that can reach the live
+# site. It does not build, deploy or publish anything, and it comes back out of
+# the repository with the fix it was written for.
+on:
+  push:
+    branches: ['arena/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Probe the live site
+        run: node scripts/diagnose-runtimes.mjs

@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   diagnose:
@@ -23,4 +23,14 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium
       - name: Probe the live site
-        run: node scripts/diagnose-runtimes.mjs
+        run: node scripts/diagnose-runtimes.mjs 2>&1 | tee DIAGNOSIS.txt
+
+      # The runner's log lives on a host this session cannot read, so the
+      # findings come back the way everything else does: as a file in the branch.
+      - name: Hand the diagnosis back
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add DIAGNOSIS.txt
+          git commit -m "diagnosis: what the live site actually does with runtimes/worker.js"
+          git push origin HEAD:${{ github.ref_name }}

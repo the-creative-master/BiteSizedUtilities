@@ -39,8 +39,11 @@ function resolvePackage(spec, fromFile) {
  * it, and the two must come from the SAME build. This app pulls ORT in through
  * two different doors:
  *
- *   - waffle-image-gen.js imports `onnxruntime-web/webgpu` directly, so Vite
- *     bundles the top-level onnxruntime-web.
+ *   - waffle-image-gen.js runs FLUX.2 Klein 4B through flux-klein.js, which
+ *     imports `onnxruntime-web/wasm` for its text encoder and VAE decoder (the
+ *     transformer itself is hand-written WGSL). That resolves to the top-level
+ *     onnxruntime-web this repo installs, and `dist/ort/` is where its .wasm
+ *     files are served from.
  *   - waffle-browser-ai.js goes through @huggingface/transformers, which ships
  *     its own pre-bundled ORT JS built against a *pinned* onnxruntime-web
  *     (often a dev pre-release nested inside the transformers package).
@@ -86,21 +89,31 @@ const HASHED_ORT_ASSET = /^(ort-wasm-simd-threaded(?:\.asyncify|\.jsep|\.jspi)?)
 function dedupeOrtAssets(outDirs) {
   const assetsDir = path.resolve('dist/assets');
   if (!fs.existsSync(assetsDir)) return 0;
+  // Every stable copy of a name, not just the first one found. The two ORT
+  // directories are different builds — the image engine's from the top-level
+  // onnxruntime-web, the chat one from the copy nested inside transformers.js —
+  // so a hashed asset can be byte-identical to `dist/ort/x.wasm` while differing
+  // from `dist/ort-chat/x.wasm`. Keeping only the first left 14.8 MB of the
+  // image engine's wasm in dist/assets on every deploy, which is the dead weight
+  // this function exists to remove.
   const stable = new Map();
   for (const rel of outDirs) {
     const dir = path.resolve(rel);
     if (!fs.existsSync(dir)) continue;
     for (const f of fs.readdirSync(dir)) {
-      if (ORT_RUNTIME_FILES.test(f) && !stable.has(f)) stable.set(f, { dir: rel, file: dir + path.sep + f });
+      if (!ORT_RUNTIME_FILES.test(f)) continue;
+      if (!stable.has(f)) stable.set(f, []);
+      stable.get(f).push({ dir: rel, file: dir + path.sep + f });
     }
   }
   let removed = 0;
   for (const f of fs.readdirSync(assetsDir)) {
     const m = HASHED_ORT_ASSET.exec(f);
     if (!m) continue;
-    const twin = stable.get(`${m[1]}.${m[2]}`);
     const assetPath = path.join(assetsDir, f);
-    if (!twin || fs.statSync(assetPath).size !== fs.statSync(twin.file).size) continue;
+    const size = fs.statSync(assetPath).size;
+    const twin = (stable.get(`${m[1]}.${m[2]}`) || []).find(c => fs.statSync(c.file).size === size);
+    if (!twin) continue;
     const target = `../${path.basename(twin.dir)}/${m[1]}.${m[2]}`;
     for (const chunk of fs.readdirSync(assetsDir)) {
       if (!chunk.endsWith('.js')) continue;
@@ -145,7 +158,7 @@ const MIME = {
 };
 
 function attachLocalModelRoutes(middlewares) {
-  const sdRoot = path.resolve('.cache/waffle-ai/sd-models');
+  const kleinTokenizerRoot = path.resolve('node_modules/flux-klein.js/tokenizer');
   const ggufRoot = path.resolve('.cache/waffle-ai');
   const ortRuntimes = resolveOrtRuntimes();
   const ortRoot = ortRuntimes.image?.dist || path.resolve('node_modules/onnxruntime-web/dist');
@@ -155,7 +168,16 @@ function attachLocalModelRoutes(middlewares) {
   const wllamaRoot = path.resolve('node_modules/@wllama/wllama/esm/wasm');
   const wllamaCompatRoot = path.resolve('node_modules/@wllama/wllama-compat/wasm');
   const mounts = [
-    ['/api/waffle-ai/sd-models/', sdRoot, 'public, max-age=86400'],
+    // The image engine's tokenizer files (tokenizer.json, tokenizer_config.json,
+    // chat_template.jinja — ~5 MB of Qwen3 vocab). flux-klein.js finds them with
+    // `new URL('../tokenizer/', import.meta.url)` marked `@vite-ignore`, and a
+    // bundler cannot emit a directory, so both dev and the build serve a copy at
+    // this path and waffle-image-gen.js hands it over as `tokenizerUrl`.
+    //
+    // The image *weights* are deliberately not mounted anywhere: they stream from
+    // the model's Hugging Face repo into the browser's own origin-private storage
+    // on first use. See the header of waffle-image-gen.js.
+    ['/flux-klein-tokenizer/', kleinTokenizerRoot, 'public, max-age=86400'],
     ['/api/waffle-ai/gguf/', ggufRoot, 'public, max-age=86400'],
     ['/ort-chat/', ortChatRoot, 'public, max-age=86400', ortChatVersion],
     ['/ort/', ortRoot, 'public, max-age=86400', ortVersion],
@@ -238,6 +260,25 @@ export default defineConfig({
   define: {
     'import.meta.env.WAFFLE_WEBNN': JSON.stringify(process.env.WAFFLE_WEBNN || '')
   },
+  // The image engine (flux-klein.js) spawns `new Worker(new URL('./ort-worker.js',
+  // import.meta.url), { type: 'module' })` for its ONNX jobs and finds its
+  // tokenizer with `new URL('../tokenizer/', import.meta.url)`. Vite's dep
+  // pre-bundler flattens a package into one file where neither resolves, so the
+  // package and the onnxruntime-web it imports are left as real files in dev — the
+  // package's own README asks for exactly this. The build handles the tokenizer
+  // directory separately, in closeBundle.
+  optimizeDeps: {
+    exclude: ['flux-klein.js', 'onnxruntime-web']
+  },
+  // The image engine's ONNX jobs run in `new Worker(new URL('./ort-worker.js',
+  // import.meta.url), { type: 'module' })`, and that worker imports the engine's
+  // cache module — so it is a code-splitting build, which Rollup cannot emit as
+  // iife (Vite's default for workers). It is created as a module worker, so 'es'
+  // is what it was always meant to be. Every browser that can run the image model
+  // at all — WebGPU means Chrome/Edge 121+ or Safari 18+ — supports module
+  // workers, and the runtimes the rest of the kitchen uses are copied as plain
+  // files rather than bundled here, so nothing else changes shape.
+  worker: { format: 'es' },
   resolve: {
     alias: {
       'onnxruntime-node': path.resolve('waffle-ort-empty.js')
@@ -392,6 +433,20 @@ export default defineConfig({
         copyOrtRuntime(ortRuntimes.chat.dist, 'dist/ort-chat', ortRuntimes.chat.version);
       }
       dedupeOrtAssets(['dist/ort-chat', 'dist/ort']);
+      // The image engine's tokenizer, as plain files. flux-klein.js resolves it
+      // with `new URL('../tokenizer/', import.meta.url)` and marks the call
+      // `@vite-ignore`, so Rollup emits no directory for it; the package ships the
+      // files and the browser needs them served (~5 MB, once). waffle-image-gen.js
+      // probes this path and passes it to the engine as `tokenizerUrl`.
+      const kleinTokSrc = path.resolve('node_modules/flux-klein.js/tokenizer');
+      if (fs.existsSync(kleinTokSrc)) {
+        const kleinTokOut = path.resolve('dist/flux-klein-tokenizer');
+        fs.mkdirSync(kleinTokOut, { recursive: true });
+        for (const f of ['tokenizer.json', 'tokenizer_config.json', 'chat_template.jinja']) {
+          const src = path.join(kleinTokSrc, f);
+          if (fs.existsSync(src)) fs.copyFileSync(src, path.join(kleinTokOut, f));
+        }
+      }
       const wllamaDist = path.resolve('node_modules/@wllama/wllama/esm/wasm');
       if (fs.existsSync(wllamaDist)) {
         fs.mkdirSync('dist/wllama', { recursive: true });
@@ -441,7 +496,7 @@ export default defineConfig({
         }
       }
       walk('dist');
-      const shell = files.filter(p => !p.startsWith('./games/') && !p.startsWith('./runtimes/') && !p.startsWith('./ort/') && !p.startsWith('./ort-chat/') && !p.startsWith('./wllama/') && !p.startsWith('./wllama-compat/') && !p.endsWith('.wasm') && p !== './sw.js');
+      const shell = files.filter(p => !p.startsWith('./games/') && !p.startsWith('./runtimes/') && !p.startsWith('./ort/') && !p.startsWith('./ort-chat/') && !p.startsWith('./wllama/') && !p.startsWith('./wllama-compat/') && !p.startsWith('./flux-klein-tokenizer/') && !p.endsWith('.wasm') && p !== './sw.js');
       const version = 'bite-' + Date.now();
       // The worker only exists on static hosts (GitHub Pages), where there is no
       // llama.cpp server and no COOP/COEP. It has to:
@@ -512,11 +567,18 @@ self.addEventListener('fetch', e => {
 
   // The chat API only exists on the dev/preview server; on a static host answer
   // at once so Waffle AI switches to the browser runtimes without a 404 round
-  // trip. Two paths under it are *not* that API: the build can ship real model
+  // trip. One path under it is *not* that API: the build can ship real GGUF model
   // files there. Answering those with a 501 would make a site that carries the
   // weights look like it carries nothing, and every load would go back to
   // Hugging Face \u2014 the exact thing self-hosting is for.
-  const SERVED_STATIC = ['api/waffle-ai/gguf/', 'api/waffle-ai/sd-models/'];
+  //
+  // The image model's weights are not on this list: FLUX.2 Klein streams them from
+  // huggingface.co, a different origin, and the cross-origin check above has
+  // already let those requests through untouched. A path that used to be here,
+  // api/waffle-ai/sd-models/, pointed at two Stable Diffusion checkpoints that no
+  // build ever produced \u2014 every /imagine 404'd on it. That engine is gone; see
+  // the header of waffle-image-gen.js.
+  const SERVED_STATIC = ['api/waffle-ai/gguf/'];
   const isServedStatic = SERVED_STATIC.some(prefix => u.href.startsWith(SCOPE + prefix));
   if (!isServedStatic && u.href.startsWith(SCOPE + 'api/')) {
     e.respondWith(staticHostAnswer());

@@ -411,12 +411,22 @@ export function setSelectedTextModel(id) {
   if (offeredTextModels().some(m => m.id === id)) writePref(KEY_TEXT, id);
 }
 
+/**
+ * The chosen image model, stored as-is.
+ *
+ * Both of these used to clamp the id to a fixed pair — anything that was not
+ * `sd-turbo` was written down and read back as `sdxs-512`. That pair was the
+ * whole menu at the time, but it is what made a new menu impossible to select:
+ * a tap on any other model stored a retired one. The menu lives in
+ * waffle-image-gen.js, and `resolveImageModel()` there is what turns a stored id
+ * into a model, including the retired and the unrecognised. This file does not
+ * import it, so opening the chat does not pull in the image engine.
+ */
 export function getSelectedImageModel() {
-  const saved = readPref(KEY_IMAGE, 'sdxs-512');
-  return saved === 'sd-turbo' ? 'sd-turbo' : 'sdxs-512';
+  return readPref(KEY_IMAGE, 'klein-auto');
 }
 export function setSelectedImageModel(id) {
-  writePref(KEY_IMAGE, id === 'sd-turbo' ? 'sd-turbo' : 'sdxs-512');
+  if (id) writePref(KEY_IMAGE, String(id));
 }
 
 export function getSelectedExecutionMode() {
@@ -460,6 +470,25 @@ export function setTempUnlocked(v) {
 
 export const AI_DISCLAIMER_TEXT =
   'DISCLAIMER: You might not be able to enjoy local/browser AI smoothly in BiteSizedUtilities if you are on an iPhone below iOS 26, a Huawei or HarmonyOS tablet, an older phone/tablet, or a device that does not support WebGPU. Roughly 1 in 4 mobile devices lack WebGPU, which can cause browser AI models to crash, fail to load, or run slowly unless you have a capable device. Automatic fallbacks (WebGPU, WLlama, WASM CPU, and local server) are built in — you can adjust models and fallback mode in Settings. Huawei and HarmonyOS browsers are profiled rather than assumed: the kitchen reads ArkWeb and Huawei Browser and their Chromium baseline, checks for WebNN (the only web API that can reach an NPU, and one those browsers do not have), and orders the runtimes by what the device can really do — so a WebGPU adapter that Chromium on Android cannot honour is tried last instead of first.';
+
+/**
+ * The always-on warning, and the reason there are two.
+ *
+ * `AI_DISCLAIMER_TEXT` is 887 characters. It used to be printed in full in four
+ * places at once — the Waffle AI header, the welcome bubble, Settings and the
+ * English-cupboard popup — so opening the AI panel put roughly 1,774 characters of
+ * disclaimer on screen before anybody had asked a question, and most of it was
+ * about hardware the reader does not have.
+ *
+ * So the short line below is what stays visible: one sentence that says what local
+ * AI means here (on this device, hardware-dependent, nothing uploaded, not
+ * universal). The long text has not been cut — it moved behind the device pill,
+ * where the device diagnostics already live, and it is the same wording word for
+ * word. People who want the detail get all of it in one tap; people who do not are
+ * not made to read past it every session.
+ */
+export const AI_WARNING_SHORT =
+  'Waffle AI runs entirely on this device, so speed and quality depend on your hardware. Nothing you type is uploaded, and some devices cannot run it at all.';
 
 /* ------------------------------------------------------------------ *
  * Platform profile — which browser this really is, and what that means

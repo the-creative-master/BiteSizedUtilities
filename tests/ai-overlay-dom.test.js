@@ -29,6 +29,7 @@ const { getDeclaredOS, OS_CHOICES } = await import('../waffle-browser-ai.js');
 
 const $ = sel => window.document.querySelector(sel);
 const modal = () => $('#waffle-ai-os-ask');
+const deviceModal = () => $('#waffle-ai-device-modal');
 const buttons = () => [...window.document.querySelectorAll('#waffle-ai-os-choices [data-os]')];
 const marked = () => buttons().filter(b => b.classList.contains('is-current'));
 const stamp = () => window.localStorage.getItem('waffle-ai-os-asked');
@@ -97,10 +98,23 @@ test('the pill in the header is the way back, and looks like one', () => {
   assert.match(pill.className, /is-door/, 'styled as the door it is');
   assert.match(pill.title, /Tap to say which device this is/, 'with the tooltip saying so');
 
+  // The pill opens the device popup now: the short warning in the header points
+  // here, and the long one lives in it. The device question is one tap further in
+  // rather than gone, and the popup steps aside for it instead of stacking.
   click(pill);
-  assert.equal(modal().hidden, false, 'it reopens the window');
+  assert.equal(deviceModal().hidden, false, 'it opens the device popup');
+  assert.equal(modal().hidden, true, 'and leaves the device question closed until it is asked for');
+  assert.match(deviceModal().textContent, /DISCLAIMER/, 'which is where the long warning went');
+  assert.ok($('#waffle-ai-device-note'), 'with the recognised profile in it');
+  assert.ok($('#waffle-ai-device-facts'), 'and the hardware facts beside it');
+
+  click($('#waffle-ai-device-os-ask'));
+  assert.equal(modal().hidden, false, 'the question reopens from there');
+  assert.equal(deviceModal().hidden, true, 'and the popup gets out of the way');
   assert.equal(buttons().length, OS_CHOICES.length, 'full of choices');
   assert.equal(marked().length, 0, 'none of them marked, because the answer was cleared');
+  // Left open on purpose: the next test is about a reopened window surviving the
+  // status update that follows it, which is only a real test if it is still open.
 });
 
 test('the public kitchen keeps the single pane it has always had', async () => {

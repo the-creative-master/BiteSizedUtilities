@@ -25,6 +25,7 @@ import {
   setDeclaredOS,
   clearDeclaredOS,
   AI_DISCLAIMER_TEXT,
+  AI_WARNING_SHORT,
   classifyAiFailure,
   summarizeAiFailures,
   fetchModelSourceFacts,
@@ -36,7 +37,15 @@ import {
   markInferenceBeat,
   markInferenceToken
 } from './waffle-browser-ai.js';
-import { IMAGE_MODELS, detectImageCapabilities, generateWaffleImage } from './waffle-image-gen.js';
+import {
+  IMAGE_MODELS,
+  resolveImageModel,
+  isRetiredImageModel,
+  detectImageCapabilities,
+  generateWaffleImage,
+  imageCacheInfo,
+  clearImageModelCache
+} from './waffle-image-gen.js';
 
 const STARTER_PROMPTS = [
   '/imagine a cozy golden waffle bakery at sunrise',
@@ -48,14 +57,15 @@ const STARTER_PROMPTS = [
 const WELCOME_MSG = {
   role: 'assistant',
   isWelcome: true,
+  // Slimmed in 1.3 TVBR 2. This bubble used to open the conversation with a
+  // nine-model menu, a list of attachable file types and the whole 887-character
+  // device disclaimer — several screens to scroll past before the first question,
+  // and the model names went stale with every release. The menu lives in Settings,
+  // the disclaimer lives behind the device pill, and this is a greeting again.
   content: [
     'Hey there, kitchen friend! I’m **Sir Waffle**, your **Waffle AI** assistant.',
     '',
-    '- **AI Models & Fallbacks (in ⚙ Settings)**: Choose **Qwen 2.5 1.5B**, **Qwen 2.5 Coder 1.5B**, **Qwen 3 0.6B**, **SmolLM2 135M (Chromium Safe)**, **SmolLM2 360M**, **Qwen 2.5 0.5B**, **Qwen 3.5 0.8B**, **Llama 3.2 1B**, or **DeepSeek R1 1.5B** (default **Compact Q3_K_L / q4** quantization for lighter Chromium memory)',
-    '- **Image Generation**: Tap **🎨 Image** (or type `/imagine ...`) with **SDXS-512 (1-Step)** or **SD-Turbo (WebGPU)**',
-    '- **Files & Images**: Attach `.docx`, `.pdf`, `.xlsx`, `.pptx`, `.txt`, code files, or images for **Qwen 3.5 0.8B Vision**!',
-    '',
-    `> ⚠ **${AI_DISCLAIMER_TEXT}**`
+    'Ask me anything, attach a file, `/search` the web, or `/imagine` a picture. Models and fallbacks are in ⚙ **Settings**, and the device pill in the header says what this hardware can run.'
   ].join('\n')
 };
 
@@ -99,7 +109,7 @@ const SERVER_FALLBACK_ID = 'qwen2.5-1.5b';
 let codeArtifacts = [];
 let imageMode = false;
 let webSearchMode = false;
-let imageCaps = { hasWebGPU: false, hasF16: false };
+let imageCaps = { hasWebGPU: false, hasF16: false, mode: '', threads: 1, quotaOK: null };
 let deviceDiag = { hasWebGPU: false, isOldIOS: false, hasRisk: true, summaryLabel: 'Checking device…' };
 
 /**
@@ -740,8 +750,26 @@ function activeTextCfg() {
 }
 
 function activeImageCfg() {
-  const id = getSelectedImageModel();
-  return IMAGE_MODELS.find(m => m.id === id) || IMAGE_MODELS[0];
+  // resolveImageModel, not a bare find: a saved selection can still name one of
+  // the two Stable Diffusion checkpoints this kitchen shipped before 1.3 TVBR 2,
+  // and that engine no longer exists. They land on the recommended model instead
+  // of on `undefined` and a crash at generation time.
+  return resolveImageModel(getSelectedImageModel());
+}
+
+/**
+ * What a generated picture is captioned with.
+ *
+ * A thread saved before 1.3 TVBR 2 can still hold a picture from the old engine,
+ * whose model id is retired. Naming it after the model that ships now would be a
+ * lie about how it was made, so a retired id keeps the name it was generated
+ * under and everything else is looked up.
+ */
+function imageModelLabel(r) {
+  if (r?.modelName) return r.modelName;
+  const id = r?.model || '';
+  if (isRetiredImageModel(id)) return id === 'sd-turbo' ? 'SD-Turbo (retired engine)' : 'SDXS-512 (retired engine)';
+  return resolveImageModel(id).name;
 }
 
 /**
@@ -824,6 +852,63 @@ function renderOsAsk() {
 }
 
 /**
+ * The device popup: what the pill opens.
+ *
+ * The header used to print the whole 887-character disclaimer inline on every
+ * visit. It is unchanged and in here instead, next to the two things that make it
+ * concrete — the profile this device was recognised as, and the hardware facts the
+ * runtime choices are made from. A short warning stays on screen; the detail is one
+ * tap away and is not repeated in four places at once.
+ */
+function openDeviceModal() {
+  if (!overlayEl) return;
+  const box = overlayEl.querySelector('#waffle-ai-device-modal');
+  if (!box) return;
+  box.hidden = false;
+  if (!box.dataset.wired) {
+    box.dataset.wired = '1';
+    const close = () => { playPop?.(420); box.hidden = true; };
+    box.querySelector('#waffle-device-modal-close')?.addEventListener('click', close);
+    box.addEventListener('click', e => { if (e.target === box) close(); });
+    // The device question is reachable from here, and the two are both overlays —
+    // so this one steps aside instead of stacking on top of the other.
+    box.querySelector('#waffle-ai-device-os-ask')?.addEventListener('click', () => {
+      box.hidden = true;
+      reopenOsAsk();
+    });
+  }
+  renderDeviceFacts();
+  box.querySelector('#waffle-device-modal-close')?.focus();
+}
+
+/**
+ * The hardware the runtimes are chosen from, in the same words Settings uses. A
+ * skipped model or a refused image generation should be explainable from here
+ * rather than looking like a random failure.
+ */
+function renderDeviceFacts() {
+  if (!overlayEl) return;
+  const factsEl = overlayEl.querySelector('#waffle-ai-device-facts');
+  if (!factsEl) return;
+  const d = deviceDiag || {};
+  const gb = n => `${(n / 1024 ** 3).toFixed(1)} GB`;
+  const bits = [
+    `${d.cores || '?'} cores`,
+    d.deviceMemoryGB ? `${d.deviceMemoryGB} GB RAM` : 'RAM unknown',
+    `wasm budget ${gb(d.wasmBudgetBytes || 0)}`,
+    d.hasOPFS ? 'OPFS ok' : 'no OPFS (pre-cache unavailable)',
+    d.storageQuotaMB ? `storage ${Math.round((d.storageUsageMB || 0) / 1024)} / ${Math.round(d.storageQuotaMB / 1024)} GB used` : null,
+    d.wllamaGpuSafe ? 'llama.cpp WebGPU safe' : 'llama.cpp WebGPU blocked (no FP16) → CPU',
+    d.canThread ? 'multi-thread ok' : 'single-thread (no COOP/COEP on static hosts)',
+    imageCaps.hasWebGPU
+      ? `image model: WebGPU ok${imageCaps.hasF16 ? ' · fp16' : ''} · ${imageCaps.mode} build`
+      : 'image model: no WebGPU here, so /imagine cannot run'
+  ].filter(Boolean);
+  factsEl.textContent = bits.join(' · ');
+  factsEl.hidden = false;
+}
+
+/**
  * The door back to the question: the device pill in the header. Reopening shows
  * the current answer marked, so "HarmonyOS" can be corrected rather than only
  * cleared.
@@ -867,16 +952,18 @@ function updateStatusBadge(customNote) {
   if (diagEl) {
     diagEl.textContent = deviceDiag.summaryLabel;
     diagEl.className = `waffle-device-pill is-door ${deviceDiag.hasRisk ? 'is-risk' : 'is-ok'}`;
-    diagEl.title = `${deviceDiag.deviceNote || deviceDiag.summaryLabel}\n\nTap to say which device this is.`;
+    diagEl.title = `${deviceDiag.deviceNote || deviceDiag.summaryLabel}\n\nTap to say which device this is. The same tap opens the full warning and what was detected here.`;
     // The pill is the way back to the device question once it has been answered
-    // or dismissed, so it has to look and act like something you can press.
+    // or dismissed, so it has to look and act like something you can press. It now
+    // opens the device popup, which holds that question alongside the long
+    // disclaimer the header no longer prints inline.
     if (!diagEl.dataset.osDoor) {
       diagEl.dataset.osDoor = '1';
       diagEl.tabIndex = 0;
       diagEl.setAttribute('role', 'button');
-      diagEl.addEventListener('click', () => { playPop?.(520); reopenOsAsk(); });
+      diagEl.addEventListener('click', () => { playPop?.(520); openDeviceModal(); });
       diagEl.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); playPop?.(520); reopenOsAsk(); }
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); playPop?.(520); openDeviceModal(); }
       });
     }
   }
@@ -891,6 +978,7 @@ function updateStatusBadge(customNote) {
     noteEl.textContent = note;
     noteEl.hidden = !note;
   }
+  renderDeviceFacts();
   if (!badge) return;
   if (customNote) {
     badge.textContent = customNote;
@@ -898,9 +986,14 @@ function updateStatusBadge(customNote) {
     return;
   }
   if (imageMode) {
-    const gpuLabel = imageCaps.hasWebGPU ? 'WebGPU Ready' : 'WASM CPU Fallback';
+    // There is no "WASM CPU Fallback" for the image model any more. FLUX.2 Klein's
+    // transformer is hand-written WGSL, so a browser without WebGPU has no slower
+    // path to fall back to — it has no path. The old label promised one.
+    const gpuLabel = imageCaps.hasWebGPU
+      ? `WebGPU · ${imageCaps.mode || 'desktop'} build`
+      : 'needs WebGPU · not available here';
     badge.textContent = `${iCfg.name} · ${gpuLabel}`;
-    badge.className = 'waffle-ai-badge is-ready';
+    badge.className = imageCaps.hasWebGPU ? 'waffle-ai-badge is-ready' : 'waffle-ai-badge is-busy';
     return;
   }
   if (tCfg.kind === 'browser') {
@@ -976,7 +1069,7 @@ function renderMessages() {
         <div class="waffle-gen-img-card">
           <img class="waffle-gen-img" src="${r.dataUrl}" alt="${esc(m.imagePrompt || 'Generated image')}">
           <div class="waffle-gen-meta">
-            <span>${esc(r.model === 'sd-turbo' ? 'SD-Turbo' : 'SDXS-512')} · ${esc(r.backend.toUpperCase())} · ${r.steps} step${r.steps > 1 ? 's' : ''} · ${(r.timeMs / 1000).toFixed(1)}s · seed ${r.seed}</span>
+            <span>${esc(imageModelLabel(r))} · ${esc(r.backend || '')} · ${r.steps} step${r.steps > 1 ? 's' : ''} · ${(r.timeMs / 1000).toFixed(1)}s · seed ${r.seed}</span>
           </div>
           ${m.enhancedPrompt ? `<p class="waffle-gen-prompt">Prompt: <em>${esc(m.enhancedPrompt)}</em></p>` : ''}
           <div class="waffle-msg-actions">
@@ -995,7 +1088,7 @@ function renderMessages() {
             <b>${p.percent || 0}%</b>
           </div>
           <div class="waffle-img-prog-bar"><span style="width:${Math.max(4, p.percent || 0)}%"></span></div>
-          ${p.detail ? `<small class="waffle-img-prog-detail">${esc(p.detail)}</small>` : ''}
+          ${p.detail ? `<small class="waffle-img-prog-detail" title="${esc(p.detail)}">${esc(p.detail)}</small>` : ''}
         </div>
       `;
     } else {
@@ -1205,9 +1298,13 @@ async function runImageGeneration(promptText, displayPrompt = promptText, allowE
       messages[assistantIdx].imageProgress = { stage: 'Polishing prompt…', percent: 4, detail: promptText };
       renderMessages();
       try {
+        // Worded for FLUX.2 Klein, not for a 2023 Stable Diffusion: Klein's text
+        // encoder is a distilled Qwen3 run through a chat template, so a plain
+        // descriptive sentence describes a picture better than a comma-separated
+        // pile of tags does.
         const polished = await streamWaffleChat({
-          messages: [{ role: 'user', content: `Turn this short idea into a concise, vivid 1-sentence Stable Diffusion image prompt (max 35 words, comma-separated visual details only, no preamble): "${promptText}"` }],
-          systemPrompt: 'Output ONLY a concise comma-separated visual image prompt. No quotes, no intro.',
+          messages: [{ role: 'user', content: `Rewrite this short idea as one vivid sentence describing a picture (max 35 words: subject, then light, setting and style; no preamble): "${promptText}"` }],
+          systemPrompt: 'Output ONLY that one descriptive sentence. No quotes, no intro, no comma-separated tag lists.',
           maxTokens: 70,
           temperature: 0.6,
           signal: activeAbort.signal
@@ -1222,6 +1319,7 @@ async function runImageGeneration(promptText, displayPrompt = promptText, allowE
       model: getSelectedImageModel(),
       prompt: finalPrompt,
       steps: imgCfg.defaultSteps,
+      size: imgCfg.defaultSize,
       signal: activeAbort.signal,
       onProgress(p) {
         messages[assistantIdx].imageProgress = p;
@@ -1233,12 +1331,16 @@ async function runImageGeneration(promptText, displayPrompt = promptText, allowE
     delete messages[assistantIdx].imageProgress;
     messages[assistantIdx].imageResult = res;
     messages[assistantIdx].enhancedPrompt = finalPrompt !== displayPrompt ? finalPrompt : '';
-    messages[assistantIdx].content = `Generated image for "${displayPrompt}" (${res.model}, ${res.backend}, seed ${res.seed}).`;
+    messages[assistantIdx].content = `Generated image for "${displayPrompt}" (${res.modelName || res.model}, ${res.backend}, seed ${res.seed}, ${res.timeMs} ms).`;
     playSparkle();
   } catch (err) {
     delete messages[assistantIdx].imageProgress;
     if (err.name === 'AbortError') {
       messages[assistantIdx].content = '*Stopped image generation.* Ready whenever you are!';
+    } else if (err.code === 'no-webgpu') {
+      // The one failure that is about the device rather than the prompt, so it
+      // points at the place that explains the device.
+      messages[assistantIdx].content = `Image generation cannot run here: ${err.message} The device pill in the header has what this hardware can do.`;
     } else {
       messages[assistantIdx].content = `Image generation hit a bump: ${err.message}`;
     }
@@ -1910,6 +2012,24 @@ function buildOverlay() {
       </div>
     </div>
 
+    <!-- What the device pill opens. The header carries one short warning now; the
+         887-character disclaimer and the detected-device facts moved in here
+         rather than being cut, so the detail is one tap away instead of three
+         screens of scrolling on every visit. -->
+    <div class="waffle-os-modal" id="waffle-ai-device-modal" hidden role="dialog" aria-modal="true" aria-labelledby="waffle-ai-device-modal-title">
+      <div class="waffle-os-card">
+        <button type="button" class="window-close-x" id="waffle-device-modal-close" aria-label="Close">✕</button>
+        <strong id="waffle-ai-device-modal-title">📟 This device, and the full warning</strong>
+        <span class="waffle-os-why">What the kitchen detected here, and everything the short line in the header leaves out.</span>
+        <pre class="waffle-device-note" id="waffle-ai-device-note" hidden></pre>
+        <p class="waffle-device-detail" id="waffle-ai-device-facts" hidden></p>
+        <p class="waffle-disclaimer-copy waffle-disclaimer-full">${esc(AI_DISCLAIMER_TEXT)}</p>
+        <div class="waffle-os-choices">
+          <button type="button" class="gbtn" id="waffle-ai-device-os-ask">Say which device this is</button>
+        </div>
+      </div>
+    </div>
+
     <div class="waffle-ai-dialog${keepsChats ? ' waffle-ai-chat-dialog' : ''}" role="dialog" aria-modal="true" aria-labelledby="waffle-ai-title">
       <div class="waffle-ai-shell" data-rail="closed">${railHtml}
 
@@ -1933,12 +2053,11 @@ function buildOverlay() {
         </div>
         <div class="waffle-disclaimer-box" id="waffle-ai-disclaimer">
           <div class="waffle-disclaimer-head">
-            <strong>⚠ DEVICE &amp; WEBGPU DISCLAIMER</strong>
+            <strong>⚠ Local AI</strong>
             <span class="waffle-device-pill is-risk" id="waffle-ai-device-status">Checking WebGPU…</span>
           </div>
-          <p class="waffle-disclaimer-copy">${esc(AI_DISCLAIMER_TEXT)}</p>
+          <p class="waffle-disclaimer-copy">${esc(AI_WARNING_SHORT)}</p>
           ${saveRowHtml}
-          <pre class="waffle-device-note" id="waffle-ai-device-note" hidden></pre>
         </div>
       </div>
 
@@ -1954,7 +2073,7 @@ function buildOverlay() {
         <input type="file" id="waffle-ai-file-in" multiple accept=".docx,.pptx,.xlsx,.pdf,.txt,.md,.csv,.json,.js,.ts,.jsx,.tsx,.py,.java,.c,.cpp,.rs,.go,.rb,.php,.html,.css,.xml,.yaml,.yml,.sql,.log,.svg,.png,.jpg,.jpeg,.webp" hidden>
         <button type="button" class="gbtn waffle-attach-btn" id="waffle-ai-attach" title="Attach .docx, .pdf, .pptx, .xlsx, .txt, .md, .csv, or code file">📎</button>
         <button type="button" class="gbtn waffle-img-toggle" id="waffle-ai-web-toggle" aria-pressed="false" title="Toggle Web Search mode">🌐 Web</button>
-        <button type="button" class="gbtn waffle-img-toggle" id="waffle-ai-img-toggle" aria-pressed="false" title="Toggle Image Generation mode (SDXS-512 / SD-Turbo)">🎨 Image</button>
+        <button type="button" class="gbtn waffle-img-toggle" id="waffle-ai-img-toggle" aria-pressed="false" title="Toggle Image Generation mode (FLUX.2 Klein 4B — needs WebGPU)">🎨 Image</button>
         <textarea id="waffle-ai-input" class="waffle-ai-input" rows="1" placeholder="Ask Sir Waffle, attach a file, /search <query>, or /imagine <prompt>…" aria-label="Message Waffle AI"></textarea>
         <button type="submit" class="gbtn gbtn-primary waffle-send-btn" id="waffle-ai-send">Send</button>
         <button type="button" class="gbtn waffle-stop-btn" id="waffle-ai-stop" hidden>Stop</button>

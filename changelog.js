@@ -39,7 +39,7 @@ export const APP_VERSION = '1.2.8';
  * cycle's release ships — and once 1.3 has, a build made on top of it is a test
  * version *after* a release, so it reads 1.3 TVAR 1 rather than TVBR.
  */
-export const TVBR = 1;
+export const TVBR = 2;
 
 /**
  * The release the open test build comes *before*.
@@ -73,6 +73,65 @@ export function appVersionLabel() {
  * what is known to be rough — that is the whole point of writing them down.
  */
 export const TVBR_LOG = [
+  {
+    version: '1.3 TVBR 2',
+    date: 'November 24, 2026',
+    title: 'Image generation was never going to work, and the warnings took up the whole room',
+    tvbr: true,
+    groups: [
+      {
+        label: '\u{1F3A8} Image generation: broken on every device, because it was broken on none of them in particular',
+        items: [
+          'It was reported from a 9950X3D2 and then from every other device tried, which is the shape a bug has when the hardware is not the variable. Asking the deployed site for the model files it wanted returned HTTP 404, and nothing in the repository ever produced them: the model fetcher downloads GGUF only, the build copies games, runtimes, GGUF weights and the ORT runtimes, CI pre-caches GGUF only, and git holds zero files under that path. The dev server mounted the route at a cache folder nothing fills, and the three tests that would have caught it were wrapped in a check for whether the folder exists, so they never ran.',
+          'So every /imagine ended the same way, on every browser: Image generation hit a bump: Model file HTTP 404: studio-ai-hq3/t2i09/te09/gq.onnx — after tokenising the prompt, and for a short one after running a whole chat model to polish it first. Two people would have read that as a device problem, which is why it is written down here instead.',
+          'Both models are gone rather than repaired. SDXS-512 and SD-Turbo were 2023 checkpoints at 512\u00D7512, and the chunks they wanted came to about 675 MB and 2.5 GB — over the build\u2019s 400 MB self-host budget between them, so even a working download path would have had to send somebody to Hugging Face anyway.',
+          'What replaced them is FLUX.2 Klein 4B, through flux-klein.js 0.7.0 (MIT): a 4B rectified-flow transformer, Apache-2.0, and the model Bonsai Image 4B is itself a requantisation of. Bonsai was the starting point for the search and is not what ships, for a concrete reason — it runs on MLX for Apple silicon and Gemlite kernels for CUDA, and there is no browser runtime for either. The model underneath it has one.',
+          'The kitchen\u2019s own dependencies already covered it. flux-klein.js asks for @huggingface/transformers ^4.2.0 and onnxruntime-web ^1.27.0 as peers, and this build ships 4.3.2 and 1.31.1, so the engine added code and no new runtime. Its transformer is hand-written WGSL on WebGPU; the tokenizer, the distilled 0.6B text encoder and the VAE decoder are the parts that run through ONNX Runtime.',
+          'The weights are not in the deploy, on purpose. They stream from the model\u2019s Hugging Face repo into the browser\u2019s own origin-private storage on the first run and stay there, so a build ships about 5.1 MB of tokenizer and no gigabytes. The trade is stated where it is met: the first /imagine downloads roughly 3.3 GB on a phone or 5 GB on a desktop, and the progress line says so before it starts rather than after.',
+          'Two builds sit behind one menu, because one size does not fit a phone. The desktop build keeps an int8 transformer resident on the GPU, about 4 GB, and is the fast path; the phone build streams int4 shards from storage through a three-slot ring and keeps roughly 0.6 GB resident, which is what survives an iPhone\u2019s 2 GB tab cap. Recommended lets the engine pick by device, and the other two pills force either. Decoding uses the 2.9M-parameter tiny decoder — about 11 MB instead of 107 MB per output shape and a twentieth of the work, for slightly softer textures — and two steps, the setting its author calls fast and good.',
+          'Failures now say what they are. No WebGPU, no adapter granted, a GPU that ran out of room mid-run, a browser that will not keep the weights, a download that dropped: each has its own sentence, and an unrecognised error passes its own message through rather than being dressed up as one of them. A run that cannot finish is refused before it starts — a quota far below what the weights need gets an answer in words instead of a gigabyte download that the browser then throws away.',
+          'Settings grew a \u{1F9F9} Clear cached image weights button that says how much is cached and gives it back, because several gigabytes of somebody\u2019s storage is not a thing to leave with no way out. And the old \u201CWASM CPU Fallback\u201D badge is gone: a WGSL transformer has no CPU path, so a browser without WebGPU now reads needs WebGPU \u00B7 not available here instead of being promised a slower one.',
+          'One more thing had to go, and it would have survived a perfect engine: the stored choice of image model was clamped on the way in and on the way out, so anything that was not sd-turbo was written down and read back as sdxs-512. A new menu nobody can select from is still a broken feature, so both accessors now keep the id they are given and the menu resolves it — including a retired one, which is captioned as retired on any picture a saved chat still holds rather than being relabelled with the model that ships now.'
+        ]
+      },
+      {
+        label: '\u26A0\uFE0F The warnings: one sentence on screen, and the rest one tap away',
+        items: [
+          'The device disclaimer is 887 characters and 155 words, and it was printed in full in four places: the Waffle AI header, the welcome bubble, Settings, and the English cupboard popup. Opening the AI panel alone put about 1,774 characters of it on screen before anybody had asked a question, and most of it described hardware the reader does not have.',
+          'What stays visible now is 28 words: Waffle AI runs entirely on this device, so speed and quality depend on your hardware. Nothing you type is uploaded, and some devices cannot run it at all. That is the whole of it, in the header, in Settings and in the English popup alike.',
+          'Nothing was cut to get there. The 887 characters moved behind the device pill, word for word, into a popup that also carries the profile this device was recognised as and the hardware facts the runtime choices are made from — cores, RAM, the WASM budget, OPFS, storage used against quota, whether llama.cpp can use the GPU, and whether threading is available. The pill was already pressable; it now opens that instead of only re-asking which device this is, and the question is still one tap further in.',
+          'The welcome bubble is a greeting again. It used to open with a nine-model menu, a list of attachable file types and the full disclaimer — several screens to scroll past, and model names that went stale with every release. The menu is in Settings and always was.',
+          'The English popup kept the one sentence that is actually about English tools — Waffle Translate uses Google Translate, the others use on-device AI with automatic fallbacks — and its separate 260-character iPhone paragraph joined the long text in the popup rather than staying inline.'
+        ]
+      },
+      {
+        label: '\u{1F9F0} What had to change underneath, and what deliberately did not',
+        items: [
+          'waffle-image-gen.js was rewritten rather than patched: 501 lines of chunk tables, a CLIP tokenizer, alphas-cumprod and hand-assembled ONNX feeds became 596 lines that drive an engine somebody else maintains. Same contract in and out, so the chat surface that calls it did not have to change shape.',
+          'The tokenizer is the one asset a bundler cannot hand over. The engine finds it with new URL(\u2018../tokenizer/\u2019, import.meta.url) marked @vite-ignore, and Rollup emits no directory for that, so the build now copies the package\u2019s three files to dist/flux-klein-tokenizer/ and the dev server mounts the same path; the module probes for them and passes the directory over. The probe checks the content type as well as the status, because a static host that answers a missing path with its index.html would make an HTML page look like a 5 MB vocabulary.',
+          'ONNX Runtime\u2019s .wasm files are self-hosted where the build already puts them, at dist/ort/, found by the same probe and falling back to the library\u2019s CDN copy when they are not there. Mixing one build\u2019s ORT JavaScript with another\u2019s wasm is the failure that downloads a model fine and then dies creating the session, so this is looked up rather than assumed.',
+          'The service worker\u2019s list of paths that carry real model files lost api/waffle-ai/sd-models/, which no build ever produced. It kept the GGUF one. The image weights never needed a place on that list: they come from a different origin, and the worker steps aside for those before it looks at any of it — which is also why several gigabytes of them are not copied into the cache a second time.',
+          'No cross-origin isolation headers came back. ONNX Runtime can thread its wasm only under COOP/COEP, and removing those is what made workers start again on GitHub Pages; the engine tolerates their absence and runs single-threaded, a few seconds slower per prompt. The thread count still reads the same flag and lands on one, exactly as the chat pipeline does.',
+          'The prompt-polishing step was reworded, because it was writing for a different model. Klein\u2019s text encoder is a distilled Qwen3 run through a chat template, so it is handed one vivid descriptive sentence instead of a comma-separated pile of Stable Diffusion tags.',
+          'Two build failures turned up on the way, both worth recording. The engine runs its ONNX jobs in a module worker that imports its own cache module, which Rollup cannot emit as iife — Vite\u2019s default for workers — so the build stopped dead until worker.format became es. Every browser that can run the image model at all supports module workers, and the runtimes the rest of the kitchen uses are copied as plain files rather than bundled, so nothing else changed shape.',
+          'The second was older than this build. The step that removes duplicate copies of ONNX Runtime\u2019s wasm kept only the first stable directory it found, so a hashed asset byte-identical to dist/ort/x.wasm survived for differing from dist/ort-chat/x.wasm — 14.8 MB of dead weight on every deploy. It now matches any of them by size. dist/assets is 1.8 MB and holds no wasm at all.',
+          'What the change costs, measured on the build rather than estimated: the main bundle went from 726 kB (252 kB gzipped) to 745 kB (258 kB gzipped) — about 6 kB gzipped for the new wiring, the two popups and this entry itself, which ships in the bundle it describes. Rounded to whole kilobytes on purpose: quoting two decimals here would be a number this very sentence keeps changing. The engine is a separate 77.63 kB chunk (28.35 kB gzipped) that loads only when somebody asks for a picture, with an 8.53 kB worker beside it, and 5.2 MB of tokenizer served as plain files that the service worker does not precache.',
+          'Reading how much of that tokenizer-and-weights storage is in use does not load the engine, which is the reason the Settings readout walks the browser\u2019s own storage directory instead of asking the library: importing the pipeline to print one number off a button would have cost 28 kB gzipped the first time anybody opened Settings.',
+          'The stylesheet gained two blocks and a cap: a small button under a short warning, and a device popup whose card is height-limited and scrolls inside itself so the button that closes it cannot end up below the fold on a phone.'
+        ]
+      },
+      {
+        label: '\u{1F9EA} What is checked, and what cannot be from here',
+        items: [
+          'The dead tests are gone rather than re-aimed. Three assertions about pre-cached SD chunk files were inside a check for a folder that does not exist, so they had never run; the assertion that the model menu exposes SDXS-512 and SD-Turbo was pinning the thing that was broken. Both were replaced by tests of the menu that ships, the storage maths, the size and step clamps, the progress bands and the failure sentences.',
+          'The warning split is tested on both sides: that the short line is what the header, Settings and the English popup render, that it stays inside 20 to 30 words, and that the long text is still present in the popups it moved to, unchanged — so shortening the visible warning cannot quietly become deleting it.',
+          'What no test in this repository can do is run the model. Generating a picture needs a WebGPU device and several gigabytes of download, and the test runner has neither; the browser tests here are Chromium-in-CI only and cannot install a GPU. So the engine is tested up to the boundary — the preflight, the clamps, the progress mapping, the error wording — and the generation itself is verified by the build succeeding and by the paths it asks for existing, which is the check that was missing last time.',
+          'The suite is 375 tests: 349 pass here and 26 fail in this sandbox because they drive a real Chromium that cannot be installed in it — the same 26 that have always been CI-only, and they are green there. The two new files are 16 tests on the engine and 7 on the warning split, and five existing files were re-anchored rather than deleted: the changelog\u2019s own entry indices shifted by one when this build was added above them; the catalogue test that pinned the two dead checkpoints now checks the menu that ships; the service worker\u2019s list of served model paths lost the entry that never served anything; the lock test follows the device probes into the function they were folded into; and the overlay test follows the device pill into the popup it now opens.',
+          'Known rough edges, written down rather than discovered later: the first run is a multi-gigabyte download with no way to shrink it, the desktop build wants about 5 GB of GPU memory and will fail on a small card, output is capped at 1024\u00D71024 and at 512\u00D7512 on an iPhone, and a browser that will not grant persistent storage may re-download the weights on a later visit. The weights come from a third-party Hugging Face repo, so their availability is not this kitchen\u2019s to guarantee.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.3 TVBR 1',
     date: 'November 24, 2026',

@@ -391,8 +391,10 @@ test('the deployed service worker does not answer a served model with a 501', ()
   assert.ok(at > 0, 'the service worker template lives in the build config');
   const sw = vite.slice(at, vite.indexOf('`;', at));
   assert.ok(sw.length > 1500, 'the whole template was captured, not an empty slice');
-  assert.match(sw, /SERVED_STATIC = \['api\/waffle-ai\/gguf\/', 'api\/waffle-ai\/sd-models\/'\]/,
-    'the model paths the build can ship are named');
+  assert.match(sw, /SERVED_STATIC = \['api\/waffle-ai\/gguf\/'\]/,
+    'the model path the build can ship is named — and only the one it can ship');
+  assert.ok(!/SERVED_STATIC = \[[^\]]*sd-models/.test(sw),
+    'the image weights are not on it: they stream from another origin, which the worker steps aside for');
   assert.match(sw, /!isServedStatic && u\.href\.startsWith\(SCOPE \+ 'api\/'\)/,
     'the chat API is still answered at once on a static host');
   assert.match(sw, /BIG_ASSET = .*gguf/, 'and a model file is streamed, never copied into the SW cache');

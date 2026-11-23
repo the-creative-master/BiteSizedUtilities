@@ -2717,7 +2717,7 @@ export function quantRangeOrder(cfg) {
 
 export function quantListFor(cfg) {
   const preset = QUANT_PRESETS.find(q => q.id === getSelectedQuantPreset()) || QUANT_PRESETS[0];
-  // 1.2 TVBR 1 says the 0.6B may be fetched at 4, 5 or 6 bit and no lower, and
+  // 1.2 TVAR 1 says the 0.6B may be fetched at 4, 5 or 6 bit and no lower, and
   // appending the preset's Q3_K_L chain behind that would quietly break the rule
   // the first time a repo turned out not to publish Q4_K_M. A model with no range
   // of its own keeps the old behaviour: its declared quant first, preset behind.

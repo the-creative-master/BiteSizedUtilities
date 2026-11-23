@@ -28,16 +28,21 @@ test('the public kitchen reports a plain release version and knows nothing about
   assert.equal(appVersionLabel(), '1.2.8', 'index.html says 1.2.8 and nothing else');
   assert.equal(isBackupBuild(), false);
   assert.equal(isPublicBuild(), true);
-  assert.ok(!APP_VERSION.includes('TVBR'), 'the release version never carries a TVBR suffix');
-  assert.ok(!JSON.stringify(CHANGELOG).includes('TVBR'), 'and the public release notes never mention one');
+  // Both spellings: the label is TVBR now, but six shipped builds read TVAR, and
+  // the public page is not allowed to mention a test version in either one.
+  for (const label of ['TVBR', 'TVAR']) {
+    assert.ok(!APP_VERSION.includes(label), `the release version never carries a ${label} suffix`);
+    assert.ok(!JSON.stringify(CHANGELOG).includes(label), `and the public release notes never mention ${label}`);
+  }
   // That the backup kitchen exists is public and has been since 1.1.1 — three
   // released entries say so, and one of them says it got harder to get into
   // "on purpose". What may never appear in the public notes is the *mechanism*:
-  // the TVBR label, the disguised filename, the page it decodes to, or the
+  // the test-version label in either spelling, the disguised filename, the page
+  // it decodes to, or the
   // string that opens it. The release notes are the most discoverable page on
   // the site, so they are the last place any of that belongs.
   const publicCopy = JSON.stringify(CHANGELOG).toLowerCase();
-  for (const forbidden of ['tvbr', 'dontaskme', 'backup.html', 'backupkitchen', 'passphrase']) {
+  for (const forbidden of ['tvbr', 'tvar', 'dontaskme', 'backup.html', 'backupkitchen', 'passphrase']) {
     assert.ok(!publicCopy.includes(forbidden), `the public notes never reveal "${forbidden}"`);
   }
 });
@@ -58,8 +63,8 @@ test('the backup kitchen reports the test build it is, not the release beside it
 
   // The earlier test versions stay documented as history; they are not this build.
   assert.equal(TVBR_LOG.length, 7, 'every extended minor version is still documented');
-  assert.deepEqual(TVBR_LOG.map(e => e.version), ['1.3 TVBR 1', '1.2 TVBR 3', '1.2 TVBR 2', '1.2 TVBR 1', '1.1 TVBR 3', '1.1 TVBR 2', '1.1 TVBR 1'],
-    'newest first, and an old entry keeps its own number');
+  assert.deepEqual(TVBR_LOG.map(e => e.version), ['1.3 TVBR 1', '1.2 TVAR 3', '1.2 TVAR 2', '1.2 TVAR 1', '1.1 TVAR 3', '1.1 TVAR 2', '1.1 TVAR 1'],
+    'newest first, and an old entry keeps its own number and its own spelling');
   assert.equal(TVBR_LOG[0].version, APP_VERSION_EXTENDED,
     'the newest entry spells out the label this build reports, so it cannot be renumbered behind its own back');
 
@@ -75,7 +80,7 @@ test('the backup kitchen reports the test build it is, not the release beside it
 
   const textOf = e => e.groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
   const all = TVBR_LOG.map(textOf).join(' ');
-  assert.match(all, /test version after release/, 'the log explains what TVBR stands for');
+  assert.match(all, /test version after release/, 'the 1.1 entry still explains what TVAR stood for when it was written');
   assert.match(all, /Hugging Face/, 'and records the extended AI error report');
 
   const chat = textOf(TVBR_LOG[0]);
@@ -84,7 +89,10 @@ test('the backup kitchen reports the test build it is, not the release beside it
   // disappears when somebody clears site data has oversold itself.
   assert.match(TVBR_LOG[0].title, /memory|sidebar/i, '1.3 TVBR 1 says what it is about in the title');
   assert.match(chat, /Test Version BEfore Release/, 'the entry says what the renamed label stands for');
-  assert.match(chat, /141 occurrences across seven files/, 'and counts the rename instead of waving at it');
+  assert.match(chat, /still read 1\.2 TVAR 1 to 3 and 1\.1 TVAR 1 to 3/,
+    'and names the builds that kept the old spelling, instead of claiming a sweep');
+  assert.ok(!/renamed along with it|141 occurrences|every file|repo-wide/i.test(chat),
+    'it does not claim a rename that reached further than it did');
   assert.match(chat, /Clear cookies and site data/, 'the limit is stated in the words the button uses');
   assert.match(chat, /no server/, 'including why there is nowhere else to put a conversation');
   assert.match(chat, /only copy that outlives a wipe/, 'so the export is presented as the answer, not a footnote');
@@ -102,7 +110,7 @@ test('the backup kitchen reports the test build it is, not the release beside it
   // The build this kitchen reports. It has to say what was wrong with the old
   // message rather than only what replaced it, because the point of the entry is
   // that a diagnostic was inventing its own cause.
-  assert.match(tvbr3, /Runtime could not load over file/, 'TVBR 3 quotes the string it took out');
+  assert.match(tvbr3, /Runtime could not load over file/, '1.2 TVAR 3 quotes the string it took out');
   assert.match(tvbr3, /invented by the code that printed it/, 'and says plainly that the diagnosis was fabricated');
   assert.match(tvbr3, /throwing straight out of its constructor/, 'naming the second way a worker fails, which read differently from the first');
   assert.match(tvbr3, /python-worker\.js/, 'python keeps the worker file of its own it has always had');
@@ -116,7 +124,7 @@ test('the backup kitchen reports the test build it is, not the release beside it
   const scrapped = textOf(TVBR_LOG[2]);
   // The name is in the title, and textOf() reads labels and items — asserting on
   // `scrapped` here would have been asserting on a string the entry never contains.
-  assert.match(TVBR_LOG[2].title, /SCRAPPED/, '1.2 TVBR 2 is the entry that closed the offline package down');
+  assert.match(TVBR_LOG[2].title, /SCRAPPED/, '1.2 TVAR 2 is the entry that closed the offline package down');
   assert.match(scrapped, /whole offline package/i, 'it says what went, in one place, rather than by omission');
   assert.match(scrapped, /release it lived under is deleted/i, 'including the archive somebody could still go and fetch');
   assert.match(scrapped, /public kitchen is untouched/, 'and that the served site never loaded any of it');
@@ -134,13 +142,13 @@ test('the backup kitchen reports the test build it is, not the release beside it
   assert.ok(!scrapped.includes('BACKUPKITCHEN'), 'without printing the string that opens this kitchen');
 
   const tvbr1 = textOf(TVBR_LOG[3]);
-  assert.match(tvbr1, /Falcon 3 1B/, '1.2 TVBR 1 names the model it added');
+  assert.match(tvbr1, /Falcon 3 1B/, '1.2 TVAR 1 names the model it added');
   assert.match(tvbr1, /DONTASKMEWHATTHATIS\.txt/, 'and the file the build now ships as');
   assert.match(tvbr1, /obfuscation and not encryption/, 'without pretending the disguise is a secret');
   assert.ok(!tvbr1.includes('BACKUPKITCHEN'), 'and without printing the string that opens it');
 
   const latest = textOf(TVBR_LOG[4]);
-  assert.match(latest, /Huawei/, 'TVBR 3 records the devices it was built for');
+  assert.match(latest, /Huawei/, '1.1 TVAR 3 records the devices it was built for');
   assert.match(latest, /Kirin NPU cannot be reached from a web page/,
     'and says plainly what the NPU cannot do instead of implying it works');
   assert.match(latest, /WebNN/, 'naming the one web API that could');
@@ -150,7 +158,7 @@ test('the backup kitchen reports the test build it is, not the release beside it
   assert.match(latest, /ArkWeb/, 'and the mapping that dates a Huawei browser');
 
   const tvbr2 = textOf(TVBR_LOG[5]);
-  assert.match(tvbr2, /freez/, 'TVBR 2 records the freeze it was built to fix');
+  assert.match(tvbr2, /freez/, '1.1 TVAR 2 records the freeze it was built to fix');
   assert.match(tvbr2, /Only one inference runs at a time/, 'what replaced it');
   assert.match(tvbr2, /45 seconds/, 'the watchdog window a visitor would actually hit');
   assert.match(tvbr2, /cannot be revived/, 'and it is honest about what a watchdog cannot do');
@@ -175,41 +183,33 @@ test('TVBR entries reset with each release and are rendered only in the backup b
   // test builds, not 1.1.1's, and they say so.
   assert.equal(TVBR, Number(TVBR_LOG[0].version.split(' TVBR ')[1]), 'the counter and the newest entry agree');
   for (const entry of TVBR_LOG) {
-    assert.match(entry.version, /^\d+\.\d+(\.\d+)? TVBR \d+$/, `${entry.version} names its cycle and its counter`);
-    assert.ok(/^1\.[123] TVBR /.test(entry.version),
-      `${entry.version} belongs to a cycle that really shipped, or is the one open now`);
+    assert.match(entry.version, /^\d+\.\d+(\.\d+)? TV(?:AR|BR) \d+$/, `${entry.version} names its cycle and its counter`);
+    assert.ok(/^1\.3 TVBR /.test(entry.version) || /^1\.[12] TVAR /.test(entry.version),
+      `${entry.version} is either the open build, which reads TVBR, or one that shipped as TVAR`);
     assert.equal(entry.tvbr, true, 'and is still marked so the renderer can style it apart');
   }
 });
 
-test('the retired spelling is gone from every file the kitchen owns', () => {
-  // Assembled from pieces so this pin cannot trip over its own needle, which is
-  // how a negative grep of a whole file usually fails.
-  const retired = ['TVA' + 'R', 'tva' + 'r'];
-  const count = text => retired.reduce((n, spelling) => n + text.split(spelling).length - 1, 0);
+test('the label changed going forward and left the builds that shipped under the old one alone', () => {
+  // TVBR is what a test build is called from the 1.3 cycle on. TVAR is what the
+  // 1.1 and 1.2 ones were called, and they still say so: a spelling does not
+  // reach back and rename a build whose number somebody already read.
+  assert.equal(TVBR_LOG[0].version, '1.3 TVBR 1', 'the open build reads TVBR');
+  assert.deepEqual(TVBR_LOG.slice(1).map(e => e.version),
+    ['1.2 TVAR 3', '1.2 TVAR 2', '1.2 TVAR 1', '1.1 TVAR 3', '1.1 TVAR 2', '1.1 TVAR 1'],
+    'and every build before it keeps the label it shipped under');
 
-  // The entry that retires a spelling has to be allowed to say what it retired.
-  // So the changelog gets a counted allowance, and the count is pinned to what
-  // that one entry needs — three — so the old spelling cannot creep back into
-  // anything else wearing that as cover.
-  const renaming = TVBR_LOG[0];
-  const renamingText = renaming.groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
-  const changelogMentions = count(fs.readFileSync('changelog.js', 'utf8'));
-  assert.equal(changelogMentions, 3, 'the changelog names the retired spelling exactly three times');
-  assert.equal(count(renamingText), changelogMentions, 'and every one of those is inside the entry that retires it');
+  const text = e => e.groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
+  const history = TVBR_LOG.slice(1).map(text).join(' ');
+  assert.match(history, /test version after release/,
+    'the 1.1 explainer still says what TVAR stood for, in its own words, rather than being updated to agree with the new one');
+  assert.ok(!/1\.[12] TVBR /.test(history), 'and no historical entry has been handed the new spelling');
 
-  const owned = [
-    ...fs.readdirSync('.').filter(f => /\.(js|css|html)$/.test(f)),
-    ...fs.readdirSync('tests').filter(f => f.endsWith('.js')).map(f => `tests/${f}`)
-  ];
-  // games/ and runtimes/ are third-party bundles with identifiers of their own
-  // that happen to spell the same letters; they were never this label.
-  const hits = owned.filter(f => f !== 'changelog.js' && fs.statSync(f).isFile()
-    && count(fs.readFileSync(f, 'utf8')) > 0);
-  assert.deepEqual(hits, [], `${retired[0]} still appears in files the kitchen owns`);
+  const src = fs.readFileSync('changelog.js', 'utf8');
+  assert.match(src, /TVBR means "Test Version BEfore Release"/, 'what the label stands for is written down where the list lives');
+  assert.match(src, /still read TVAR/, 'and so is the fact that the older entries do not');
+  assert.match(src, /it does not reach back and rename a build that already/, 'including why');
 });
-
-/* ============================== the second build ============================== */
 
 test('backup.html is the only page that switches the extra build on', () => {
   const backup = fs.readFileSync('backup.html', 'utf8');

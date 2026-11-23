@@ -756,7 +756,7 @@ function activeImageCfg() {
  *
  * The stamp is `appVersionLabel()` rather than the release number, so a test
  * build and the release it was built from each ask once: they are different
- * builds asking about different behaviour, and 1.2 TVBR 1 changes what an answer
+ * builds asking about different behaviour, and 1.2 TVAR 1 changes what an answer
  * decides just as much as 1.2 did.
  */
 const KEY_OS_ASKED = 'waffle-ai-os-asked';

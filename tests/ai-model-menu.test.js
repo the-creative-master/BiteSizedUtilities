@@ -79,7 +79,7 @@ test('the table keeps the models the menu stopped offering', () => {
 });
 
 test('both kitchens render the same menu, and the seam between them still works', () => {
-  // 1.2 TVBR 1 was the tighter set: a wider menu got compared for reliability in
+  // 1.2 TVAR 1 was the tighter set: a wider menu got compared for reliability in
   // the second kitchen before the public one was asked to live with it. It has
   // been tested, so 1.2.6 made it the only menu. The switch is the same one the
   // rest of the build uses, so there is no second mechanism — and it stays, so
@@ -258,7 +258,7 @@ test('the two new decisions about size say where their numbers came from', () =>
   const src = fs.readFileSync('waffle-browser-ai.js', 'utf8');
   assert.equal(src.split('Arithmetic, not a measurement').length - 1, 1, 'the F16 135M says so');
   assert.equal(src.split('Arithmetic again').length - 1, 1, 'and so does the 1.7B');
-  // 1.2 TVBR 1 changed five sizes and added a model, and every one of them is a
+  // 1.2 TVAR 1 changed five sizes and added a model, and every one of them is a
   // figure nobody could measure from here. Each says so where it is written.
   assert.ok(src.split('Arithmetic').length - 1 >= 5, 'every size that was computed says it was computed');
   assert.equal(src.split('Measured, not guessed').length - 1, 1, 'and the one that was measured says that instead');
@@ -266,7 +266,7 @@ test('the two new decisions about size say where their numbers came from', () =>
   const tiny = TEXT_MODELS.find(m => m.id === 'smollm2-135m');
   assert.equal(tiny.hfGgufQuant, 'F16', '1.2 asked for the 135M at full 16-bit');
   const big = TEXT_MODELS.find(m => m.id === 'smollm2-1.7b');
-  assert.equal(big.hfGgufQuant, 'Q4_K_M', '1.2 TVBR 1 widened what it may be fetched at, not what it is fetched at');
+  assert.equal(big.hfGgufQuant, 'Q4_K_M', '1.2 TVAR 1 widened what it may be fetched at, not what it is fetched at');
   assert.equal(big.ggufMB, 1050, 'so the size it is budgeted by is still the quant it leads with');
   // ggufMB is the ceiling the real file is checked against, so it has to cover the
   // lead quant. Budgeting a model by the lightest thing its range allows fails

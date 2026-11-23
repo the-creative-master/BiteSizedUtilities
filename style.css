@@ -2697,21 +2697,21 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
 
 /* Test versions after release: the backup build's own entries wear the same
    green as the backup banner, so nobody mistakes them for a release. */
-.changelog-entry.is-tvar {
+.changelog-entry.is-tvbr {
   border-color: #86b877;
   background: #f4fbef;
   box-shadow: inset 0 4px 0 #d9f0d2;
 }
-.changelog-entry.is-tvar.is-latest {
+.changelog-entry.is-tvbr.is-latest {
   border-color: #6f9a63;
   background: #eef8e6;
   box-shadow: inset 0 4px 0 #d9f0d2, 0 6px 0 #8fbf80;
 }
-.changelog-entry.is-tvar .changelog-version,
-.changelog-entry.is-tvar .changelog-entry-title {
+.changelog-entry.is-tvbr .changelog-version,
+.changelog-entry.is-tvbr .changelog-entry-title {
   color: #24401d;
 }
-.changelog-tag.is-tvar {
+.changelog-tag.is-tvbr {
   background: #8fd47c;
   color: #24401d;
 }
@@ -3387,3 +3387,279 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   justify-content: center;
   margin-top: 14px;
 }
+
+/* --- Waffle AI: saved chats, and the two-pane shell they live in -----------
+ * The kitchen's chat grew a sidebar, so the dialog grew with it. Everything
+ * here keeps the house style — hard 4px ink borders, a wooden drop shadow,
+ * chunky radii — because a chat that looks like every other chat app but is
+ * drawn in this kitchen's hands is the whole point.
+ */
+.waffle-ai-chat-dialog {
+  max-width: min(1040px, 96vw);
+}
+
+.waffle-ai-shell {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+.waffle-ai-shell[data-rail="closed"] .waffle-ai-rail { display: none; }
+
+.waffle-ai-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The rail ---------------------------------------------------------------- */
+.waffle-ai-rail {
+  flex: 0 0 264px;
+  width: 264px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 12px 12px 14px;
+  background: linear-gradient(180deg, #f8dcae 0%, #eec58d 100%);
+  border-right: 4px solid var(--ink);
+  box-shadow: inset -14px 0 20px -16px rgba(79, 47, 35, 0.55);
+}
+.waffle-ai-rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.waffle-ai-rail-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.waffle-ai-rail-icon {
+  font-size: 22px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 0 rgba(79, 47, 35, 0.32));
+}
+.waffle-ai-rail-title strong {
+  display: block;
+  font-size: 15px;
+  color: var(--ink);
+}
+.waffle-ai-rail-count {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+}
+.waffle-ai-rail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.waffle-ai-rail-empty {
+  margin: 0;
+  padding: 10px 11px;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  background: rgba(255, 255, 255, 0.5);
+  border: 2px dashed rgba(79, 47, 35, 0.42);
+  border-radius: 12px;
+}
+.waffle-ai-thread-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.waffle-ai-thread-row { position: relative; }
+.waffle-ai-thread {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 56px 8px 11px;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  background: var(--cream);
+  border: 2.5px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: 0 3px 0 var(--wood-dark);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+.waffle-ai-thread:hover {
+  transform: translateY(-1px);
+  background: #fff6dd;
+  box-shadow: 0 5px 0 var(--wood-dark);
+}
+.waffle-ai-thread:active { transform: translateY(1px); box-shadow: 0 1px 0 var(--wood-dark); }
+.waffle-ai-thread-row.is-current .waffle-ai-thread {
+  background: var(--butter);
+  box-shadow: 0 3px 0 var(--wood-dark), inset 0 0 0 2px rgba(79, 47, 35, 0.18);
+}
+.waffle-ai-thread-title {
+  font-size: 13.5px;
+  font-weight: 750;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.waffle-ai-thread-when {
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+}
+.waffle-ai-thread-rename,
+.waffle-ai-thread-del {
+  position: absolute;
+  top: 50%;
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ink);
+  background: var(--cream);
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+.waffle-ai-thread-rename { right: 33px; }
+.waffle-ai-thread-del { right: 5px; }
+.waffle-ai-thread-row:hover .waffle-ai-thread-rename,
+.waffle-ai-thread-row:hover .waffle-ai-thread-del,
+.waffle-ai-thread-rename:focus-visible,
+.waffle-ai-thread-del:focus-visible { opacity: 1; }
+.waffle-ai-thread-rename:hover { background: var(--butter); }
+.waffle-ai-thread-del:hover { background: #ffc9c9; }
+
+/* Finger-sized screens have no hover, so the row controls simply stay put. */
+@media (hover: none), (max-width: 899px) {
+  .waffle-ai-thread-rename, .waffle-ai-thread-del { opacity: 0.78; }
+}
+
+.waffle-ai-new-chat {
+  width: 100%;
+  justify-content: center;
+  font-weight: 800;
+}
+.waffle-ai-rail-foot {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 2.5px dashed rgba(79, 47, 35, 0.38);
+}
+.waffle-ai-rail-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.waffle-ai-rail-btns .gbtn {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: center;
+  padding: 6px 8px;
+  font-size: 11.5px;
+  font-weight: 750;
+}
+.waffle-ai-danger:hover { background: #ffd2d2; }
+.waffle-ai-save-note {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+/* Narrow screens: the rail slides over the conversation instead of beside it. */
+@media (max-width: 899px) {
+  .waffle-ai-rail {
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 4;
+    flex: 0 0 auto;
+    width: min(84vw, 320px);
+    box-shadow: 10px 0 0 rgba(79, 47, 35, 0.24), 0 0 42px rgba(45, 22, 10, 0.34);
+    animation: railSlideIn 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+}
+@media (min-width: 900px) {
+  /* A sidebar is collapsed from the header, so it needs no close button. */
+  .waffle-ai-rail-x { display: none; }
+}
+@media (max-width: 479px) {
+  .waffle-ai-rail-toggle-label { display: none; }
+}
+@keyframes railSlideIn {
+  from { transform: translateX(-14px); opacity: 0.4; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* A drawer over a conversation needs a way back that does not involve finding
+ * the ✕: the scrim is it. Tapping the shell — which is what a tap on the scrim
+ * lands on, the rail sitting above it — puts the rail away and does nothing
+ * else, so the tap cannot also hit the chat underneath. */
+@media (max-width: 899px) {
+  .waffle-ai-shell[data-rail="open"]::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    background: rgba(79, 47, 35, 0.34);
+    animation: railFadeIn 0.18s ease;
+  }
+}
+@keyframes railFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* The saving pill: the one place the storage story is stated in the open ---- */
+.waffle-ai-rail-toggle { flex: 0 0 auto; font-weight: 800; }
+.waffle-save-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 2px dashed rgba(201, 148, 42, 0.62);
+}
+.waffle-save-pill {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #25501f;
+  background: #dff5d8;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  box-shadow: 0 2px 0 rgba(79, 47, 35, 0.3);
+}
+.waffle-save-pill[data-state="idle"] { color: #7a5410; background: #ffefc7; }
+.waffle-save-pill[data-state="saving"] { color: #7a5410; background: #ffe9b8; animation: savePulse 1.05s ease-in-out infinite; }
+.waffle-save-pill[data-state="trimmed"] { color: #7a4210; background: #ffe0b3; }
+.waffle-save-pill[data-state="failed"],
+.waffle-save-pill[data-state="unsupported"] { color: #8a2020; background: #ffd7d7; }
+.waffle-save-hint {
+  min-width: 0;
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 1.35;
+  color: #7a5410;
+}
+@keyframes savePulse { 50% { opacity: 0.55; } }

@@ -6,6 +6,9 @@ import { playPop, playBoing, playSquish, playSparkle } from './sfx.js';
 import { copyToClipboard } from './ui-kit.js';
 import { createDocxBlob, extractFilePayload, triggerFileDownload } from './file-tools-client.js';
 import {
+  openChatStore, createChatStore, makeThread, titleFrom, UNTITLED, MAX_THREADS, parseExport, importThreads
+} from './waffle-chat-store.js';
+import {
   TEXT_MODELS,
   DEFAULT_TEXT_MODEL_ID,
   streamBrowserChat,
@@ -70,6 +73,21 @@ let attachments = [];
 let isGenerating = false;
 let activeAbort = null;
 let modelState = { preCached: false, loaded: false, loading: false, serverReachable: null, available: [] };
+
+/**
+ * A conversation is no longer just a variable that dies with the tab.
+ * `chatThread` is the one being edited right now, `chatThreads` is the rail's
+ * view of everything kept, `chatStore` is whichever storage the browser
+ * allowed us (IndexedDB, localStorage, or plain memory), and `chatSaving` is
+ * what the header pill reports — because a chat that failed to save must not
+ * look like one that saved.
+ */
+let chatStore = null;
+let chatThread = null;
+let chatThreads = [];
+let chatSaving = 'idle';
+let railOpen = false;
+let persistTimer = 0;
 
 /**
  * The local llama.cpp server only hosts the models in SERVER_MODELS, so when a
@@ -738,7 +756,7 @@ function activeImageCfg() {
  *
  * The stamp is `appVersionLabel()` rather than the release number, so a test
  * build and the release it was built from each ask once: they are different
- * builds asking about different behaviour, and 1.2 TVAR 1 changes what an answer
+ * builds asking about different behaviour, and 1.2 TVBR 1 changes what an answer
  * decides just as much as 1.2 did.
  */
 const KEY_OS_ASKED = 'waffle-ai-os-asked';
@@ -1096,6 +1114,10 @@ function renderMessages() {
     starters.hidden = messages.length > 1 || isGenerating;
   }
   feed.scrollTop = feed.scrollHeight;
+
+  // One hook at the end of every repaint: streaming, image results, web answers
+  // and file reads all land here, so none of them can forget to be saved.
+  persistThread();
 }
 
 function syncComposerState() {
@@ -1256,6 +1278,11 @@ async function runBackupDoor() {
     }
   } finally {
     isGenerating = false;
+    // Every render above happened while generating, which is when saving is
+    // skipped, so a failed attempt would otherwise leave the exchange on screen
+    // and unwritten. On success the document is being replaced under us and the
+    // write costs nothing.
+    persistThread(true);
   }
 }
 
@@ -1459,6 +1486,9 @@ export function closeWaffleAI() {
   const closing = overlayEl || lockedEl;
   if (!closing) return;
   if (activeAbort) activeAbort.abort();
+  // Closing is the moment a save is most likely to be the last one, so it does
+  // not wait for the debounce.
+  persistThread(true);
   if (overlayEl) overlayEl.hidden = true;
   if (lockedEl) lockedEl.hidden = true;
   document.body.classList.remove('waffle-modal-open');
@@ -1537,7 +1567,335 @@ export function openLockedWaffleAI() {
   setTimeout(() => lockedEl?.querySelector('#waffle-ai-locked-done')?.focus(), 40);
 }
 
+/* --- Chats that are kept ---------------------------------------------------
+ * Saving is the part that has to be honest about itself. A static site has no
+ * server, so there is nowhere to put a conversation except the browser it was
+ * had in — which means it survives closing the tab, restarting the browser and
+ * coming back next month, and it does not survive anybody clearing site data.
+ * Chrome and Firefox file IndexedDB, localStorage, OPFS and the cache together
+ * under that one button. So the rail says both things: kept here, and the only
+ * copy that outlives a wipe is the file Export writes.
+ */
+
+/** What the saving pill can say. Every state is reachable and every one is true. */
+const SAVING_LABELS = {
+  idle: 'Not saved yet',
+  saving: 'Saving…',
+  saved: 'Saved',
+  trimmed: 'Saved without its pictures',
+  failed: 'Could not save',
+  unsupported: 'This browser refused storage'
+};
+
+/** Storage is named in the pill because "saved" means different things on different backends. */
+const BACKING_LABELS = {
+  indexedDB: 'IndexedDB on this device',
+  localStorage: 'browser storage on this device',
+  memory: 'this visit only'
+};
+
+const railEsc = value => String(value ?? '').replace(/[&<>"']/g, c => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+}[c]));
+
+/** "3 min ago" beats a timestamp in a rail you scan rather than read. */
+function railWhen(ms) {
+  const diff = Date.now() - (ms || 0);
+  if (!(diff >= 0)) return 'just now';
+  if (diff < 60_000) return 'just now';
+  if (diff < 3_600_000) return `${Math.max(1, Math.round(diff / 60_000))} min ago`;
+  if (diff < 86_400_000) return `${Math.max(1, Math.round(diff / 3_600_000))} h ago`;
+  if (diff < 604_800_000) return `${Math.max(1, Math.round(diff / 86_400_000))} d ago`;
+  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/**
+ * Opens storage once per visit and pulls the rail. Opening is async, so the
+ * overlay paints first and repaints when the answer lands — a chat that took
+ * half a second to appear would feel slower than one that saves.
+ */
+async function ensureChatStore() {
+  // The public kitchen has no rail to put chats in, so it opens no storage and
+  // writes nothing: a conversation there lasts exactly as long as the visit.
+  if (!isBackupBuild()) return null;
+  if (!chatStore) {
+    // openChatStore() answers which backend the browser allowed; the store that
+    // reads and writes through it is a second step, and the two are separate so
+    // the fallback chain can be tried without constructing anything.
+    const opened = await openChatStore();
+    chatStore = createChatStore(opened.backend);
+    chatSaving = opened.kind === 'memory' ? 'unsupported' : 'idle';
+  }
+  // Re-read on every open rather than trusting the list already in memory:
+  // another tab may have imported a file, and a rail that only ever shows what
+  // this tab wrote is a rail that lies by omission.
+  chatThreads = await chatStore.refresh();
+
+  // Reopen the last conversation — that is the entire point of saving it — but
+  // only when nothing has been said on screen. Landing somebody on an older chat
+  // in the middle of one they are typing would be worse than not saving at all.
+  const saidSomething = messages.some(m => m.role === 'user');
+  const newest = chatThreads.find(t => t.messages?.some(m => m.role === 'user'));
+  if (!saidSomething && newest) {
+    chatThread = newest;
+    messages = newest.messages.slice();
+  } else if (!chatThread) {
+    chatThread = makeThread();
+  }
+  updateSavingPill();
+  renderThreadRail();
+  return chatStore;
+}
+
+function updateSavingPill() {
+  const pill = overlayEl?.querySelector('#waffle-ai-saving');
+  if (!pill) return;
+  const backing = BACKING_LABELS[chatStore?.kind] || BACKING_LABELS.memory;
+  pill.dataset.state = chatSaving;
+  pill.textContent = `${SAVING_LABELS[chatSaving] || SAVING_LABELS.idle} · ${backing}`;
+  pill.title = chatSaving === 'trimmed'
+    ? 'The conversation is kept; its generated pictures were too big for this browser\'s storage and were dropped to make room.'
+    : 'Chats are kept in this browser. Clearing site data removes them — Export writes a file that survives that.';
+}
+
+/**
+ * Writes the current conversation down. Called from the end of
+ * renderMessages(), which every path funnels through, rather than from four
+ * separate push sites that could drift apart. Skipped mid-generation so a
+ * half-streamed reply is never what gets remembered, and debounced so a burst
+ * of repaints costs one write.
+ */
+function persistThread(immediate = false) {
+  if (!chatStore || !chatThread || isGenerating) return;
+  if (!messages.some(m => m.role === 'user')) return;   // nothing worth keeping yet
+
+  const write = async () => {
+    chatSaving = 'saving';
+    updateSavingPill();
+    const next = {
+      ...chatThread,
+      messages: messages.slice(),
+      updatedAt: Date.now(),
+      // A thread is named once, from the first thing said, and then left alone:
+      // renaming it later would make the rail shift under your cursor.
+      title: chatThread.renamed ? chatThread.title
+        : (chatThread.title === UNTITLED ? titleFrom(messages) : chatThread.title)
+    };
+    try {
+      const { saved, droppedImages } = await chatStore.save(next, { now: next.updatedAt });
+      chatThread = next;
+      chatSaving = saved ? (droppedImages ? 'trimmed' : 'saved') : 'failed';
+      chatThreads = await chatStore.list();
+    } catch {
+      chatSaving = 'failed';
+    }
+    updateSavingPill();
+    renderThreadRail();
+  };
+
+  if (immediate) { write(); return; }
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(write, 350);
+}
+
+function renderThreadRail() {
+  if (!overlayEl) return;
+  const list = overlayEl.querySelector('#waffle-ai-thread-list');
+  if (!list) return;
+  const empty = overlayEl.querySelector('#waffle-ai-rail-empty');
+  if (empty) empty.hidden = chatThreads.length > 0;
+  const count = overlayEl.querySelector('#waffle-ai-rail-count');
+  if (count) {
+    count.textContent = chatThreads.length
+      ? `${chatThreads.length} of ${MAX_THREADS} kept`
+      : 'Nothing kept yet';
+  }
+
+  list.innerHTML = chatThreads.map(t => `
+    <li class="waffle-ai-thread-row ${t.id === chatThread?.id ? 'is-current' : ''}">
+      <button type="button" class="waffle-ai-thread" data-open-thread="${railEsc(t.id)}">
+        <span class="waffle-ai-thread-title">${railEsc(t.title || UNTITLED)}</span>
+        <span class="waffle-ai-thread-when">${railEsc(t.messages?.length || 0)} msgs · ${railWhen(t.updatedAt)}</span>
+      </button>
+      <button type="button" class="waffle-ai-thread-rename" data-rename-thread="${railEsc(t.id)}" aria-label="Rename this chat" title="Rename">✎</button>
+      <button type="button" class="waffle-ai-thread-del" data-del-thread="${railEsc(t.id)}" aria-label="Delete this chat" title="Delete">✕</button>
+    </li>`).join('');
+
+  list.querySelectorAll('[data-open-thread]').forEach(btn => {
+    btn.addEventListener('click', () => adoptThread(btn.dataset.openThread));
+  });
+  list.querySelectorAll('[data-del-thread]').forEach(btn => {
+    btn.addEventListener('click', () => deleteThread(btn.dataset.delThread));
+  });
+  list.querySelectorAll('[data-rename-thread]').forEach(btn => {
+    btn.addEventListener('click', () => renameThread(btn.dataset.renameThread));
+  });
+}
+
+function adoptThread(id) {
+  const found = chatThreads.find(t => t.id === id);
+  if (!found) return;
+  if (activeAbort) activeAbort.abort();
+  isGenerating = false;
+  chatThread = found;
+  messages = found.messages?.length ? found.messages.slice() : [WELCOME_MSG];
+  attachments = [];
+  playPop(660);
+  renderAttachments();
+  renderMessages();
+  syncComposerState();
+  updateSavingPill();
+  renderThreadRail();
+  setRailOpen(false);
+  overlayEl?.querySelector('#waffle-ai-input')?.focus();
+}
+
+async function deleteThread(id) {
+  if (!chatStore) return;
+  const gone = chatThreads.find(t => t.id === id);
+  if (!gone) return;
+  if (!confirm(`Delete “${gone.title || UNTITLED}” from this device?`)) return;
+  await chatStore.remove(id);
+  chatThreads = await chatStore.list();
+  playPop(380);
+  if (chatThread?.id === id) startNewChat({ quiet: true });
+  renderThreadRail();
+}
+
+function renameThread(id) {
+  const found = chatThreads.find(t => t.id === id) || (chatThread?.id === id ? chatThread : null);
+  if (!found) return;
+  const next = prompt('Name this chat:', found.title === UNTITLED ? '' : found.title);
+  if (next === null) return;
+  const typed = next.trim().slice(0, 80);
+  if (typed) {
+    found.title = typed;
+    found.renamed = true;
+  } else {
+    // Cleared rather than named. Hand it back to the title the messages give it
+    // and stop claiming it was chosen, because it was not.
+    found.title = UNTITLED;
+    delete found.renamed;
+  }
+  found.updatedAt = Date.now();
+  if (chatThread?.id === id) chatThread = found;
+  playPop(700);
+  chatStore?.save(found).then(() => chatStore.list()).then(list => {
+    chatThreads = list;
+    renderThreadRail();
+  }).catch(() => {});
+}
+
+/** A fresh chat is a fresh thread — the old one stays in the rail, which is the difference from clearing. */
+function startNewChat({ quiet = false } = {}) {
+  if (activeAbort) activeAbort.abort();
+  isGenerating = false;
+  clearTimeout(persistTimer);
+  chatThread = makeThread();
+  chatSaving = chatStore?.kind === 'memory' ? 'unsupported' : 'idle';
+  messages = [WELCOME_MSG];
+  attachments = [];
+  if (!quiet) playBoing();
+  renderAttachments();
+  renderMessages();
+  syncComposerState();
+  updateSavingPill();
+  renderThreadRail();
+  overlayEl?.querySelector('#waffle-ai-input')?.focus();
+}
+
+async function exportChats() {
+  if (!chatStore) return;
+  try {
+    const json = await chatStore.exportJSON();
+    const when = new Date().toISOString().slice(0, 10);
+    triggerFileDownload(json, `waffle-ai-chats-${when}.json`, 'application/json');
+    playSparkle();
+  } catch (err) {
+    alert(`Could not write the export: ${err.message}`);
+  }
+}
+
+async function importChats(file) {
+  if (!chatStore || !file) return;
+  try {
+    const parsed = parseExport(await file.text());
+    const tally = await importThreads(chatStore, parsed.threads);
+    chatThreads = await chatStore.list();
+    renderThreadRail();
+    playSparkle();
+    alert(`${tally.added} new, ${tally.updated} updated, ${tally.skipped} left alone.`);
+  } catch (err) {
+    alert(`That file could not be imported: ${err.message}`);
+  }
+}
+
+async function clearAllChats() {
+  if (!chatStore) return;
+  if (!confirm('Delete every chat kept on this device? An exported file is the only copy that survives this.')) return;
+  await chatStore.clear();
+  chatThreads = [];
+  startNewChat({ quiet: true });
+  playPop(340);
+}
+
+/** On a phone the rail is a drawer, so opening one chat has to put it away again. */
+function setRailOpen(open) {
+  railOpen = open;
+  const shell = overlayEl?.querySelector('.waffle-ai-shell');
+  if (shell) shell.dataset.rail = open ? 'open' : 'closed';
+  overlayEl?.querySelector('#waffle-ai-rail-toggle')?.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
 function buildOverlay() {
+  /**
+   * The overhauled layout and the chats it keeps are what this test version is
+   * for, so they are the backup kitchen's alone: the public kitchen at 1.2.8
+   * keeps its single pane and its single, unsaved conversation. Markup and
+   * behaviour both read this one flag, so the two cannot disagree about which
+   * build they are in — a rail that renders without a store behind it, or a
+   * store writing chats nobody can open, would each be worse than neither.
+   */
+  const keepsChats = isBackupBuild();
+
+  const railHtml = keepsChats ? `
+      <aside class="waffle-ai-rail" id="waffle-ai-rail" aria-label="Saved chats">
+        <div class="waffle-ai-rail-head">
+          <div class="waffle-ai-rail-title">
+            <span class="waffle-ai-rail-icon" aria-hidden="true">🧇</span>
+            <div>
+              <strong>Your chats</strong>
+              <span class="waffle-ai-rail-count" id="waffle-ai-rail-count">Nothing kept yet</span>
+            </div>
+          </div>
+          <button type="button" class="window-close-x waffle-ai-rail-x" id="waffle-ai-rail-close" aria-label="Hide saved chats">✕</button>
+        </div>
+        <button type="button" class="gbtn waffle-ai-new-chat" id="waffle-ai-new-chat" title="Start a new chat — this one stays in the rail">＋ New chat</button>
+        <div class="waffle-ai-rail-scroll">
+          <p class="waffle-ai-rail-empty" id="waffle-ai-rail-empty">The griddle is cold. Ask something and the chat lands here.</p>
+          <ul class="waffle-ai-thread-list" id="waffle-ai-thread-list"></ul>
+        </div>
+        <div class="waffle-ai-rail-foot">
+          <div class="waffle-ai-rail-btns">
+            <button type="button" class="gbtn" id="waffle-ai-export" title="Download every saved chat as one .json file">⬇ Export</button>
+            <button type="button" class="gbtn" id="waffle-ai-import" title="Put a previously exported .json file back">⬆ Import</button>
+            <button type="button" class="gbtn waffle-ai-danger" id="waffle-ai-clear-all" title="Delete every chat kept on this device">🗑 All</button>
+          </div>
+          <input type="file" id="waffle-ai-import-in" accept=".json,application/json" hidden>
+          <p class="waffle-ai-save-note">Kept in this browser, so a closed tab, a restart or next month finds them here. Clearing site data deletes them — only an exported file survives that.</p>
+        </div>
+      </aside>` : '';
+
+  const railToggleHtml = keepsChats
+    ? `<button type="button" class="gbtn waffle-ai-rail-toggle" id="waffle-ai-rail-toggle" aria-expanded="false" aria-controls="waffle-ai-rail" title="Show saved chats">☰ <span class="waffle-ai-rail-toggle-label">Chats</span></button>`
+    : '';
+
+  const saveRowHtml = keepsChats ? `
+          <div class="waffle-save-row">
+            <span class="waffle-save-pill" id="waffle-ai-saving" data-state="idle">Not saved yet</span>
+            <span class="waffle-save-hint">Chats are kept in this browser. Export writes a file that survives clearing site data.</span>
+          </div>` : '';
+
   const wrap = document.createElement('div');
   wrap.id = 'waffle-ai-overlay';
   wrap.className = 'waffle-ai-overlay';
@@ -1552,10 +1910,14 @@ function buildOverlay() {
       </div>
     </div>
 
-    <div class="waffle-ai-dialog" role="dialog" aria-modal="true" aria-labelledby="waffle-ai-title">
+    <div class="waffle-ai-dialog${keepsChats ? ' waffle-ai-chat-dialog' : ''}" role="dialog" aria-modal="true" aria-labelledby="waffle-ai-title">
+      <div class="waffle-ai-shell" data-rail="closed">${railHtml}
+
+      <div class="waffle-ai-main">
       <div class="waffle-ai-header">
         <div class="window-grab-pill" aria-hidden="true"></div>
         <div class="waffle-ai-head-row">
+          ${railToggleHtml}
           <div class="waffle-ai-title-wrap">
             <span class="waffle-ai-avatar" aria-hidden="true">${waffleMascotSVG('waffle-header-svg')}</span>
             <div>
@@ -1565,7 +1927,7 @@ function buildOverlay() {
           </div>
           <div class="waffle-ai-actions">
             <button type="button" class="gbtn waffle-reset-btn" id="waffle-ai-models-btn" title="Open Settings to switch Chat, Image, or Fallback AI Mode">🤖 AI Models · ⚙</button>
-            <button type="button" class="gbtn waffle-reset-btn" id="waffle-ai-reset" title="Start a fresh chat">New Chat</button>
+            <button type="button" class="gbtn waffle-reset-btn" id="waffle-ai-reset" title="Start a fresh chat — this one stays in the rail">New Chat</button>
             <button type="button" class="window-close-x" id="waffle-ai-close" aria-label="Close Waffle AI">✕</button>
           </div>
         </div>
@@ -1575,6 +1937,7 @@ function buildOverlay() {
             <span class="waffle-device-pill is-risk" id="waffle-ai-device-status">Checking WebGPU…</span>
           </div>
           <p class="waffle-disclaimer-copy">${esc(AI_DISCLAIMER_TEXT)}</p>
+          ${saveRowHtml}
           <pre class="waffle-device-note" id="waffle-ai-device-note" hidden></pre>
         </div>
       </div>
@@ -1596,6 +1959,8 @@ function buildOverlay() {
         <button type="submit" class="gbtn gbtn-primary waffle-send-btn" id="waffle-ai-send">Send</button>
         <button type="button" class="gbtn waffle-stop-btn" id="waffle-ai-stop" hidden>Stop</button>
       </form>
+      </div><!-- /.waffle-ai-main -->
+      </div><!-- /.waffle-ai-shell -->
     </div>
   `;
 
@@ -1638,15 +2003,37 @@ function buildOverlay() {
   });
 
   wrap.querySelector('#waffle-ai-reset').addEventListener('click', () => {
-    if (activeAbort) activeAbort.abort();
-    isGenerating = false;
-    attachments = [];
-    messages = [WELCOME_MSG];
-    playBoing();
-    renderAttachments();
-    renderMessages();
-    syncComposerState();
-    wrap.querySelector('#waffle-ai-input').focus();
+    // Starts a new thread instead of destroying this one: the old conversation
+    // is in the rail now, so "New Chat" no longer means "lose it".
+    startNewChat();
+  });
+
+  // Optional chaining rather than an `if`: these handlers are the whole rail,
+  // and a build without one simply has nothing here to listen.
+  wrap.querySelector('#waffle-ai-rail-toggle')?.addEventListener('click', () => {
+    playPop(railOpen ? 460 : 640);
+    setRailOpen(!railOpen);
+  });
+  wrap.querySelector('#waffle-ai-rail-close')?.addEventListener('click', () => setRailOpen(false));
+  // Where the rail is a drawer it gets a scrim, and the scrim is the shell's own
+  // pseudo-element — so a tap on it arrives here as the shell itself. Only that
+  // tap closes the rail: on a desk the rail is a sidebar with no scrim over
+  // anything, and clicking the conversation must keep doing what it says.
+  wrap.querySelector('.waffle-ai-shell')?.addEventListener('click', e => {
+    if (e.target !== e.currentTarget || !railOpen) return;
+    if (window.innerWidth >= 900) return;
+    playPop(420);
+    setRailOpen(false);
+  });
+  wrap.querySelector('#waffle-ai-new-chat')?.addEventListener('click', () => startNewChat());
+  wrap.querySelector('#waffle-ai-export')?.addEventListener('click', () => exportChats());
+  wrap.querySelector('#waffle-ai-clear-all')?.addEventListener('click', () => clearAllChats());
+
+  const importIn = wrap.querySelector('#waffle-ai-import-in');
+  wrap.querySelector('#waffle-ai-import')?.addEventListener('click', () => importIn?.click());
+  importIn?.addEventListener('change', () => {
+    if (importIn.files?.[0]) importChats(importIn.files[0]);
+    importIn.value = '';
   });
 
   wrap.querySelector('#waffle-ai-stop').addEventListener('click', () => {
@@ -1689,6 +2076,8 @@ function buildOverlay() {
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && overlayEl && !overlayEl.hidden) {
+      // Escape steps back one level at a time: drawer first, kitchen second.
+      if (railOpen) { setRailOpen(false); return; }
       closeWaffleAI();
     }
   });
@@ -1711,6 +2100,16 @@ export function openWaffleAI() {
   renderMessages();
   syncComposerState();
   fetchStatus();
+  // Storage answers after the overlay is already on screen, so the saved
+  // conversation is swapped in and repainted when it arrives.
+  ensureChatStore().then(() => {
+    renderMessages();
+    syncComposerState();
+    updateSavingPill();
+  }).catch(() => {
+    chatSaving = 'failed';
+    updateSavingPill();
+  });
   detectDeviceDiagnostics().then(d => {
     deviceDiag = d;
     updateStatusBadge();
@@ -1719,6 +2118,10 @@ export function openWaffleAI() {
     imageCaps = caps;
     updateStatusBadge();
   }).catch(() => {});
+  // The rail is a sidebar where there is room for one and a drawer where there
+  // is not — starting a phone with a panel over the conversation would hide the
+  // very thing it was opened for.
+  setRailOpen(typeof window !== 'undefined' && window.innerWidth >= 900);
   if (!modelState.loaded && !modelState.loading) warmupWaffleAI();
   setTimeout(() => overlayEl?.querySelector('#waffle-ai-input')?.focus(), 40);
 }

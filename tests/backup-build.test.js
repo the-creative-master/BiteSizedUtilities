@@ -1,8 +1,8 @@
-// The backup build, its TVAR version scheme, and the rule that nothing in the
+// The backup build, its TVBR version scheme, and the rule that nothing in the
 // public kitchen advertises either of them.
 //
 // Two things are pinned here that are easy to break by accident:
-//   1. index.html reports a plain release version and never sees a TVAR entry;
+//   1. index.html reports a plain release version and never sees a TVBR entry;
 //   2. the retired wording for the second build is gone from every source file,
 //      apart from the one legacy constant that keeps old drawings openable.
 import test from 'node:test';
@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  APP_VERSION, TVAR, TVAR_CYCLE, APP_VERSION_EXTENDED, TVAR_LOG, CHANGELOG, appVersionLabel
+  APP_VERSION, TVBR, TVBR_CYCLE, APP_VERSION_EXTENDED, TVBR_LOG, CHANGELOG, appVersionLabel
 } from '../changelog.js';
 import { isBackupBuild, isPublicBuild } from '../build-mode.js';
 import { cupboards, allTools, backupToolAdditions, resolveTools } from '../catalog.js';
@@ -22,79 +22,101 @@ function pageWith(dataset) {
 
 /* ============================== the version scheme ============================== */
 
-test('the public kitchen reports a plain release version and knows nothing about TVAR', () => {
+test('the public kitchen reports a plain release version and knows nothing about TVBR', () => {
   pageWith({});
   assert.equal(APP_VERSION, '1.2.8');
   assert.equal(appVersionLabel(), '1.2.8', 'index.html says 1.2.8 and nothing else');
   assert.equal(isBackupBuild(), false);
   assert.equal(isPublicBuild(), true);
-  assert.ok(!APP_VERSION.includes('TVAR'), 'the release version never carries a TVAR suffix');
-  assert.ok(!JSON.stringify(CHANGELOG).includes('TVAR'), 'and the public release notes never mention one');
+  assert.ok(!APP_VERSION.includes('TVBR'), 'the release version never carries a TVBR suffix');
+  assert.ok(!JSON.stringify(CHANGELOG).includes('TVBR'), 'and the public release notes never mention one');
   // That the backup kitchen exists is public and has been since 1.1.1 — three
   // released entries say so, and one of them says it got harder to get into
   // "on purpose". What may never appear in the public notes is the *mechanism*:
-  // the TVAR label, the disguised filename, the page it decodes to, or the
+  // the TVBR label, the disguised filename, the page it decodes to, or the
   // string that opens it. The release notes are the most discoverable page on
   // the site, so they are the last place any of that belongs.
   const publicCopy = JSON.stringify(CHANGELOG).toLowerCase();
-  for (const forbidden of ['tvar', 'dontaskme', 'backup.html', 'backupkitchen', 'passphrase']) {
+  for (const forbidden of ['tvbr', 'dontaskme', 'backup.html', 'backupkitchen', 'passphrase']) {
     assert.ok(!publicCopy.includes(forbidden), `the public notes never reveal "${forbidden}"`);
   }
 });
 
 test('the backup kitchen reports the test build it is, not the release beside it', () => {
   pageWith({ backup: '1' });
-  // 1.2.8 is what the public kitchen says. This build is a test version on top
-  // of 1.2, so it says so — and the two labels are allowed to disagree, which is
-  // the whole reason the cycle is its own constant instead of APP_VERSION.
-  assert.equal(TVAR, 3, 'the counter sits at the build this kitchen reports');
-  assert.equal(TVAR_CYCLE, '1.2', 'on the 1.2 cycle');
+  // 1.2.8 is what the public kitchen says. This build is the first test version
+  // of the next cycle, so it says so — and the two labels are allowed to
+  // disagree, which is the whole reason the cycle is its own constant instead of
+  // APP_VERSION. A new cycle restarts the counter at 1 rather than counting on
+  // from the last cycle's 3, and the entries below keep the numbers they had.
+  assert.equal(TVBR, 1, 'the counter sits at the build this kitchen reports');
+  assert.equal(TVBR_CYCLE, '1.3', 'on the 1.3 cycle');
   assert.equal(APP_VERSION, '1.2.8', 'while the release has moved on without it');
-  assert.equal(appVersionLabel(), '1.2 TVAR 3', 'backup.html reports the build it is');
+  assert.equal(appVersionLabel(), '1.3 TVBR 1', 'backup.html reports the build it is');
   assert.equal(isBackupBuild(), true);
   assert.equal(isPublicBuild(), false);
 
-  // The 1.1 test versions stay documented as history; they are not this build.
-  assert.equal(TVAR_LOG.length, 6, 'every extended minor version is still documented');
-  assert.deepEqual(TVAR_LOG.map(e => e.version), ['1.2 TVAR 3', '1.2 TVAR 2', '1.2 TVAR 1', '1.1 TVAR 3', '1.1 TVAR 2', '1.1 TVAR 1'],
+  // The earlier test versions stay documented as history; they are not this build.
+  assert.equal(TVBR_LOG.length, 7, 'every extended minor version is still documented');
+  assert.deepEqual(TVBR_LOG.map(e => e.version), ['1.3 TVBR 1', '1.2 TVBR 3', '1.2 TVBR 2', '1.2 TVBR 1', '1.1 TVBR 3', '1.1 TVBR 2', '1.1 TVBR 1'],
     'newest first, and an old entry keeps its own number');
-  assert.equal(TVAR_LOG[0].version, APP_VERSION_EXTENDED,
+  assert.equal(TVBR_LOG[0].version, APP_VERSION_EXTENDED,
     'the newest entry spells out the label this build reports, so it cannot be renumbered behind its own back');
 
-  for (const tvar of TVAR_LOG) {
-    assert.equal(tvar.tvar, true, `${tvar.version} is marked so the renderer can style it apart`);
-    assert.ok(tvar.date && tvar.title, `${tvar.version} has a date and a title`);
-    assert.ok(tvar.groups.length >= 3, `${tvar.version} documents itself in groups`);
-    for (const g of tvar.groups) {
+  for (const tvbr of TVBR_LOG) {
+    assert.equal(tvbr.tvbr, true, `${tvbr.version} is marked so the renderer can style it apart`);
+    assert.ok(tvbr.date && tvbr.title, `${tvbr.version} has a date and a title`);
+    assert.ok(tvbr.groups.length >= 3, `${tvbr.version} documents itself in groups`);
+    for (const g of tvbr.groups) {
       assert.ok(g.label && g.items.length, `${g.label} has entries`);
       for (const item of g.items) assert.ok(item.length > 20, 'entries are real sentences');
     }
   }
 
   const textOf = e => e.groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
-  const all = TVAR_LOG.map(textOf).join(' ');
-  assert.match(all, /test version after release/, 'the log explains what TVAR stands for');
+  const all = TVBR_LOG.map(textOf).join(' ');
+  assert.match(all, /test version after release/, 'the log explains what TVBR stands for');
   assert.match(all, /Hugging Face/, 'and records the extended AI error report');
 
-  const tvar3 = textOf(TVAR_LOG[0]);
+  const chat = textOf(TVBR_LOG[0]);
+  // The build this kitchen reports. It has to state the storage limit in the
+  // same breath as the feature, because a chat that says "saved" and then
+  // disappears when somebody clears site data has oversold itself.
+  assert.match(TVBR_LOG[0].title, /memory|sidebar/i, '1.3 TVBR 1 says what it is about in the title');
+  assert.match(chat, /Test Version BEfore Release/, 'the entry says what the renamed label stands for');
+  assert.match(chat, /141 occurrences across seven files/, 'and counts the rename instead of waving at it');
+  assert.match(chat, /Clear cookies and site data/, 'the limit is stated in the words the button uses');
+  assert.match(chat, /no server/, 'including why there is nowhere else to put a conversation');
+  assert.match(chat, /only copy that outlives a wipe/, 'so the export is presented as the answer, not a footnote');
+  assert.match(chat, /264px rail/, 'the layout numbers are the ones in the stylesheet');
+  assert.match(chat, /680px to as much as 1040px/, 'both the old width and the new one');
+  assert.match(chat, /60 threads/, 'the rail cap is written down');
+  assert.match(chat, /6 MB/, 'so is the budget a thread of pictures has to fit in');
+  assert.match(chat, /newer timestamp wins/, 'and the rule that stops an old file rolling a live chat back');
+  assert.match(chat, /12 tests/, 'pointing at the suite that holds the store');
+  assert.match(chat, /fake wearing the same interface/, 'which admits that node has no real IndexedDB');
+  assert.ok(!/syncs to the cloud|saved to (our|a|the) server|follows you to|on every device|backed up for you/i.test(chat),
+    'it never claims a chat leaves this browser, because there is no server for it to leave to');
+
+  const tvbr3 = textOf(TVBR_LOG[1]);
   // The build this kitchen reports. It has to say what was wrong with the old
   // message rather than only what replaced it, because the point of the entry is
   // that a diagnostic was inventing its own cause.
-  assert.match(tvar3, /Runtime could not load over file/, 'TVAR 3 quotes the string it took out');
-  assert.match(tvar3, /invented by the code that printed it/, 'and says plainly that the diagnosis was fabricated');
-  assert.match(tvar3, /throwing straight out of its constructor/, 'naming the second way a worker fails, which read differently from the first');
-  assert.match(tvar3, /python-worker\.js/, 'python keeps the worker file of its own it has always had');
-  assert.match(tvar3, /returning null on a served page/, 'the notice costs nothing where there is no wall');
-  assert.match(tvar3, /the JSON validator and the hash playground, get none/, 'and it is not pasted onto tools that run in the page');
-  assert.match(tvar3, /tests\/code-runtime-origin\.test\.js/, 'pointing at the suite that holds all of it');
-  assert.match(tvar3, /freezes the tab and takes the kitchen with it/, 'why there is no in-page fallback to offer instead');
-  assert.ok(!/runs from a folder now|works offline now|fixed the folder/.test(tvar3),
+  assert.match(tvbr3, /Runtime could not load over file/, 'TVBR 3 quotes the string it took out');
+  assert.match(tvbr3, /invented by the code that printed it/, 'and says plainly that the diagnosis was fabricated');
+  assert.match(tvbr3, /throwing straight out of its constructor/, 'naming the second way a worker fails, which read differently from the first');
+  assert.match(tvbr3, /python-worker\.js/, 'python keeps the worker file of its own it has always had');
+  assert.match(tvbr3, /returning null on a served page/, 'the notice costs nothing where there is no wall');
+  assert.match(tvbr3, /the JSON validator and the hash playground, get none/, 'and it is not pasted onto tools that run in the page');
+  assert.match(tvbr3, /tests\/code-runtime-origin\.test\.js/, 'pointing at the suite that holds all of it');
+  assert.match(tvbr3, /freezes the tab and takes the kitchen with it/, 'why there is no in-page fallback to offer instead');
+  assert.ok(!/runs from a folder now|works offline now|fixed the folder/.test(tvbr3),
     'it never claims the wall came down, because it did not');
 
-  const scrapped = textOf(TVAR_LOG[1]);
+  const scrapped = textOf(TVBR_LOG[2]);
   // The name is in the title, and textOf() reads labels and items — asserting on
   // `scrapped` here would have been asserting on a string the entry never contains.
-  assert.match(TVAR_LOG[1].title, /SCRAPPED/, '1.2 TVAR 2 is the entry that closed the offline package down');
+  assert.match(TVBR_LOG[2].title, /SCRAPPED/, '1.2 TVBR 2 is the entry that closed the offline package down');
   assert.match(scrapped, /whole offline package/i, 'it says what went, in one place, rather than by omission');
   assert.match(scrapped, /release it lived under is deleted/i, 'including the archive somebody could still go and fetch');
   assert.match(scrapped, /public kitchen is untouched/, 'and that the served site never loaded any of it');
@@ -111,14 +133,14 @@ test('the backup kitchen reports the test build it is, not the release beside it
   }
   assert.ok(!scrapped.includes('BACKUPKITCHEN'), 'without printing the string that opens this kitchen');
 
-  const tvar1 = textOf(TVAR_LOG[2]);
-  assert.match(tvar1, /Falcon 3 1B/, '1.2 TVAR 1 names the model it added');
-  assert.match(tvar1, /DONTASKMEWHATTHATIS\.txt/, 'and the file the build now ships as');
-  assert.match(tvar1, /obfuscation and not encryption/, 'without pretending the disguise is a secret');
-  assert.ok(!tvar1.includes('BACKUPKITCHEN'), 'and without printing the string that opens it');
+  const tvbr1 = textOf(TVBR_LOG[3]);
+  assert.match(tvbr1, /Falcon 3 1B/, '1.2 TVBR 1 names the model it added');
+  assert.match(tvbr1, /DONTASKMEWHATTHATIS\.txt/, 'and the file the build now ships as');
+  assert.match(tvbr1, /obfuscation and not encryption/, 'without pretending the disguise is a secret');
+  assert.ok(!tvbr1.includes('BACKUPKITCHEN'), 'and without printing the string that opens it');
 
-  const latest = textOf(TVAR_LOG[3]);
-  assert.match(latest, /Huawei/, 'TVAR 3 records the devices it was built for');
+  const latest = textOf(TVBR_LOG[4]);
+  assert.match(latest, /Huawei/, 'TVBR 3 records the devices it was built for');
   assert.match(latest, /Kirin NPU cannot be reached from a web page/,
     'and says plainly what the NPU cannot do instead of implying it works');
   assert.match(latest, /WebNN/, 'naming the one web API that could');
@@ -127,37 +149,64 @@ test('the backup kitchen reports the test build it is, not the release beside it
   assert.match(latest, /1\.8 GB/, 'so is the tighter heap budget on a tablet');
   assert.match(latest, /ArkWeb/, 'and the mapping that dates a Huawei browser');
 
-  const tvar2 = textOf(TVAR_LOG[4]);
-  assert.match(tvar2, /freez/, 'TVAR 2 records the freeze it was built to fix');
-  assert.match(tvar2, /Only one inference runs at a time/, 'what replaced it');
-  assert.match(tvar2, /45 seconds/, 'the watchdog window a visitor would actually hit');
-  assert.match(tvar2, /cannot be revived/, 'and it is honest about what a watchdog cannot do');
+  const tvbr2 = textOf(TVBR_LOG[5]);
+  assert.match(tvbr2, /freez/, 'TVBR 2 records the freeze it was built to fix');
+  assert.match(tvbr2, /Only one inference runs at a time/, 'what replaced it');
+  assert.match(tvbr2, /45 seconds/, 'the watchdog window a visitor would actually hit');
+  assert.match(tvbr2, /cannot be revived/, 'and it is honest about what a watchdog cannot do');
 });
 
-test('TVAR entries reset with each release and are rendered only in the backup build', () => {
+test('TVBR entries reset with each release and are rendered only in the backup build', () => {
   pageWith({});
   const src = fs.readFileSync('changelog.js', 'utf8');
-  assert.match(src, /export const APP_VERSION_EXTENDED = `\$\{TVAR_CYCLE\} TVAR \$\{TVAR\}`;/,
-    'the extended label is derived, so bumping TVAR is a one-character change');
-  assert.match(src, /export const TVAR_CYCLE = '1\.2';/,
+  assert.match(src, /export const APP_VERSION_EXTENDED = `\$\{TVBR_CYCLE\} TVBR \$\{TVBR\}`;/,
+    'the extended label is derived, so bumping TVBR is a one-character change');
+  assert.match(src, /export const TVBR_CYCLE = '1\.3';/,
     'from the cycle it belongs to, which is a literal: APP_VERSION has moved on to 1.2.8 and deriving from it would announce a build that has never existed');
   assert.match(src, /Reset to 0 on every public release/, 'the reset rule is written down where the counter lives');
-  assert.match(src, /const releases = isBackupBuild\(\) \? \[\.\.\.TVAR_LOG, \.\.\.CHANGELOG\] : CHANGELOG;/,
-    'the renderer only prepends TVAR entries in the backup build');
+  assert.match(src, /const releases = isBackupBuild\(\) \? \[\.\.\.TVBR_LOG, \.\.\.CHANGELOG\] : CHANGELOG;/,
+    'the renderer only prepends TVBR entries in the backup build');
   assert.match(src, /\$\{esc\(appVersionLabel\(\)\)\}/, 'and the footer prints the label for this build');
-  assert.match(src, /entry\.tvar \? ' is-tvar' : ''/, 'TVAR entries are marked in the markup');
+  assert.match(src, /entry\.tvbr \? ' is-tvbr' : ''/, 'TVBR entries are marked in the markup');
 
-  // A TVAR entry belongs to the release cycle it was built from and sits above
+  // A TVBR entry belongs to the release cycle it was built from and sits above
   // that release in the combined list, which is what makes "newest first" true.
   // The counter resets on release, so what is left is history: these are 1.1's
   // test builds, not 1.1.1's, and they say so.
-  assert.equal(TVAR, Number(TVAR_LOG[0].version.split(' TVAR ')[1]), 'the counter and the newest entry agree');
-  for (const entry of TVAR_LOG) {
-    assert.match(entry.version, /^\d+\.\d+(\.\d+)? TVAR \d+$/, `${entry.version} names its cycle and its counter`);
-    assert.ok(entry.version.startsWith('1.2 TVAR ') || entry.version.startsWith('1.1 TVAR '),
-      `${entry.version} belongs to a cycle that really shipped`);
-    assert.equal(entry.tvar, true, 'and is still marked so the renderer can style it apart');
+  assert.equal(TVBR, Number(TVBR_LOG[0].version.split(' TVBR ')[1]), 'the counter and the newest entry agree');
+  for (const entry of TVBR_LOG) {
+    assert.match(entry.version, /^\d+\.\d+(\.\d+)? TVBR \d+$/, `${entry.version} names its cycle and its counter`);
+    assert.ok(/^1\.[123] TVBR /.test(entry.version),
+      `${entry.version} belongs to a cycle that really shipped, or is the one open now`);
+    assert.equal(entry.tvbr, true, 'and is still marked so the renderer can style it apart');
   }
+});
+
+test('the retired spelling is gone from every file the kitchen owns', () => {
+  // Assembled from pieces so this pin cannot trip over its own needle, which is
+  // how a negative grep of a whole file usually fails.
+  const retired = ['TVA' + 'R', 'tva' + 'r'];
+  const count = text => retired.reduce((n, spelling) => n + text.split(spelling).length - 1, 0);
+
+  // The entry that retires a spelling has to be allowed to say what it retired.
+  // So the changelog gets a counted allowance, and the count is pinned to what
+  // that one entry needs — three — so the old spelling cannot creep back into
+  // anything else wearing that as cover.
+  const renaming = TVBR_LOG[0];
+  const renamingText = renaming.groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
+  const changelogMentions = count(fs.readFileSync('changelog.js', 'utf8'));
+  assert.equal(changelogMentions, 3, 'the changelog names the retired spelling exactly three times');
+  assert.equal(count(renamingText), changelogMentions, 'and every one of those is inside the entry that retires it');
+
+  const owned = [
+    ...fs.readdirSync('.').filter(f => /\.(js|css|html)$/.test(f)),
+    ...fs.readdirSync('tests').filter(f => f.endsWith('.js')).map(f => `tests/${f}`)
+  ];
+  // games/ and runtimes/ are third-party bundles with identifiers of their own
+  // that happen to spell the same letters; they were never this label.
+  const hits = owned.filter(f => f !== 'changelog.js' && fs.statSync(f).isFile()
+    && count(fs.readFileSync(f, 'utf8')) > 0);
+  assert.deepEqual(hits, [], `${retired[0]} still appears in files the kitchen owns`);
 });
 
 /* ============================== the second build ============================== */

@@ -24,6 +24,58 @@ import { getAppLanguage } from './i18n.js';
 const CODE_DIAGNOSTIC_MODEL_ID = 'granite-code-0.5b';
 
 const runtimeBase = () => new URL('runtimes/', document.baseURI);
+
+/**
+ * Where this kitchen is actually served from. Hard-coded rather than read out of
+ * the address bar, because the one person who needs it is looking at a copy that
+ * was unzipped onto a disk: that copy has no origin, no server, and no way to
+ * work out an address to point at.
+ */
+export const SITE_URL = 'https://the-creative-master.github.io/BiteSizedUtilities/';
+
+const pageProtocol = () => (typeof location !== 'undefined' && location.protocol) || 'unknown:';
+
+/**
+ * file: — and blob: or content: alongside it — is an opaque origin, and from one
+ * every browser refuses the same three things: constructing a worker, importing
+ * an ES module, and fetching the file sitting next to the page. No setting flips
+ * it and no amount of packaging gets around it, which is what the offline
+ * archive spent four test builds finding out the hard way.
+ */
+export const opaqueOrigin = () => ['file:', 'blob:', 'content:'].includes(pageProtocol());
+
+/**
+ * What to say when a runtime will not start. This used to blame file:// wherever
+ * the page happened to be served from, which sent anybody debugging a real break
+ * — a missing file, a wrong content type — after the wrong thing, and told
+ * anybody genuinely sitting on a disk to "serve over HTTP": the one thing they
+ * cannot do, because a folder has no server in it.
+ */
+export function runtimeLoadFailure(op, err) {
+  if (opaqueOrigin()) {
+    return Error(
+      `${op} runs in a worker, and a page opened from a folder (${pageProtocol()}) has an origin no browser ` +
+      `will start one from. Open ${SITE_URL} and it runs there.`
+    );
+  }
+  const url = new URL(op === 'python' ? 'python-worker.js' : 'worker.js', runtimeBase()).href;
+  return Error(err?.message || `The ${op} runtime did not load from ${url} (page served over ${pageProtocol()}).`);
+}
+
+/**
+ * The same wall, said once at the top of a tool rather than once per button
+ * press. Returns null on a page with a real origin, so a call site can drop it
+ * straight into an append list without a branch of its own.
+ */
+export function runtimeWallNotice(...lines) {
+  if (!opaqueOrigin()) return null;
+  const link = gEl('a', { href: SITE_URL, target: '_blank', rel: 'noopener' }, SITE_URL.replace(/^https:\/\//, '').replace(/\/$/, ''));
+  return gEl('div', { class: 'pastel-card peach runtime-wall' },
+    gEl('strong', {}, '\u{1F4C1} This copy is a folder, not the site'),
+    ...lines.map(line => gEl('p', {}, line)),
+    gEl('p', {}, 'Open ', link, ' and the workers start, because a served page has an origin a browser trusts.')
+  );
+}
 const mounted = new WeakMap();
 const MAX = 1000000;
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -104,9 +156,9 @@ function workerJob(scope, op, code, options = {}, input = '', timeout = 5000, on
         else if (d.type === 'error') end(Error(d.text));
         else if (d.type === 'done') end(null, d.value);
       };
-      worker.onerror = e => { e.preventDefault(); end(Error(e.message || 'Runtime could not load over file://; serve over HTTP.')); };
+      worker.onerror = e => { e.preventDefault(); end(runtimeLoadFailure(op, e)); };
       worker.postMessage({ op, code, options, input });
-    } catch (e) { end(e); }
+    } catch (e) { end(runtimeLoadFailure(op, e)); }
   });
 }
 
@@ -448,6 +500,10 @@ export function mountCode(id, root) {
     filterIn.addEventListener('input', () => buildMoreChips(filterIn.value), { signal });
 
     panel.append(
+      runtimeWallNotice(
+        `${catalogue.length - 1} of the ${catalogue.length} languages here run inside a worker, and a browser will not start one from a page opened off a disk — so they all fail with the same line, whichever you pick. That is the origin, not the runtime.`,
+        'The HTML / CSS / JS sandbox is the exception: it runs in this page, with no worker and nothing fetched, so it still works here.'
+      ),
       langChips.el,
       gEl('div', { class: 'gtabs' }, runnableToggle.el, aiErrorToggle.el),
       gameField(`Search All ${catalogue.length} Languages (42 Runnable Offline)`, filterIn),
@@ -507,6 +563,7 @@ export function mountCode(id, root) {
     const out = outConsole();
     const getFlags = () => (flG.checked ? 'g' : '') + (flI.checked ? 'i' : '') + (flM.checked ? 'm' : '');
     panel.append(
+      runtimeWallNotice('Matches run in a worker, which is what lets a pattern that backtracks catastrophically be terminated instead of freezing this page. From a folder there is no worker to start, so both buttons fail before they ever read your pattern.'),
       gEl('div', { class: 'two-col' }, gameField('Regex Pattern', pat), gameField('Replacement', rep)),
       gEl('div', { class: 'gtabs' }, flG.el, flI.el, flM.el),
       gameField('Test Text', src),
@@ -630,6 +687,7 @@ export function mountCode(id, root) {
     const tsTog = id === 'js-formatter' ? gameToggle('Parse as TypeScript', false) : null;
     const out = outConsole();
     panel.append(
+      runtimeWallNotice('Formatting runs in a worker, which is what lets a parse that hangs be timed out instead of taking the page with it. From a folder there is no worker to start.'),
       gameField('Source Code', src),
       dialect ? dialect.el : null,
       tsTog ? tsTog.el : null,

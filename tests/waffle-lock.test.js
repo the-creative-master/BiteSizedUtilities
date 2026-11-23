@@ -208,10 +208,10 @@ test('the paused dialog is still dismissible, and counts nothing', () => {
   assert.ok(!css.includes('waffle-ai-locked-tap-hint'), 'the hint styling went with the hint');
 });
 
-test('the changelog puts 1.2.7 above 1.2.6 above 1.2.5 above 1.2.1 above 1.2 above 1.1.1 above 1.1 above 1.0.1 above the original 1.0 release', () => {
-  assert.equal(APP_VERSION, '1.2.7');
-  assert.equal(CHANGELOG.length, 9, 'every release is documented');
-  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.2.7', '1.2.6', '1.2.5', '1.2.1', '1.2', '1.1.1', '1.1', '1.0.1', '1.0'], 'newest release is listed first');
+test('the changelog puts 1.2.8 above 1.2.7 above 1.2.6 above 1.2.5 above 1.2.1 above 1.2 above 1.1.1 above 1.1 above 1.0.1 above the original 1.0 release', () => {
+  assert.equal(APP_VERSION, '1.2.8');
+  assert.equal(CHANGELOG.length, 10, 'every release is documented');
+  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.2.8', '1.2.7', '1.2.6', '1.2.5', '1.2.1', '1.2', '1.1.1', '1.1', '1.0.1', '1.0'], 'newest release is listed first');
 
   for (const entry of CHANGELOG) {
     assert.match(entry.version, /^\d+\.\d+(\.\d+)?$/);
@@ -228,6 +228,30 @@ test('the changelog puts 1.2.7 above 1.2.6 above 1.2.5 above 1.2.1 above 1.2 abo
     assert.ok(entry, `${v} is documented`);
     return entry.groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
   };
+
+  // 1.2.8 changed what CodeHub says when a runtime will not start. The public
+  // notes have to carry the awkward half of that — the wall is still there and a
+  // folder still cannot run a language — or the entry reads as a fix that is not.
+  const diagnosed = textOf('1.2.8');
+  assert.match(diagnosed, /Runtime could not load over file/, 'it quotes the line a visitor actually saw');
+  assert.match(diagnosed, /wherever the page was served from/, 'and says what was wrong with it: it blamed a disk from a served page too');
+  assert.match(diagnosed, /names the file that did not load/, 'what it reports instead, which is something a real break can be debugged from');
+  assert.match(diagnosed, /41 of its 42 languages/, 'the count of what hits the wall, derived from the catalogue rather than typed in');
+  assert.match(diagnosed, /the Regex Tester, the CSS Minifier, the JavaScript Formatter and the SQL Formatter/, 'and the four other tools that share it, named');
+  assert.match(diagnosed, /as a link that can be tapped/, 'the way out is an address, because a folder can follow a link');
+  assert.match(diagnosed, /HTML \/ CSS \/ JS sandbox still runs from a folder/, 'including the one language that does work there');
+  assert.match(diagnosed, /does not make the languages run from a folder, and cannot/, 'the title of the last group is the honest one');
+  assert.match(diagnosed, /freezes the tab and takes the whole kitchen with it/, 'with the reason: the worker is also the timeout guard');
+  assert.match(diagnosed, /will not receive any of this/, 'and the fact that a copy already on a disk cannot be reached');
+  for (const oversold of ['now works offline', 'works from a folder now', 'every language runs offline', 'fixed offline']) {
+    assert.ok(!diagnosed.toLowerCase().includes(oversold), `it never says "${oversold}", which would not be true`);
+  }
+  // The entry quotes the old line, so the quote goes before the check: what must
+  // not survive is the *instruction*, and the notes withdraw it explicitly.
+  const unquoted = diagnosed.split('"Runtime could not load over file://; serve over HTTP."').join('');
+  assert.ok(unquoted !== diagnosed, 'the old line is quoted, so a reader can recognise it');
+  assert.match(diagnosed, /The old advice is gone from it/, 'and told that it was withdrawn');
+  assert.ok(!/serve over HTTP/i.test(unquoted), 'nowhere else does it tell a reader to do the thing a folder cannot');
 
   // 1.2.7 is the release that took the offline download back out, and it has to say
   // so plainly: somebody who read the notes for 1.2.6 and went looking for an archive

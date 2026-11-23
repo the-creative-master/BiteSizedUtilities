@@ -45,9 +45,15 @@ import {
   clearPrecachedModels,
   estimateModelStorage,
   requestPersistentStorage,
-  AI_DISCLAIMER_TEXT
+  AI_DISCLAIMER_TEXT,
+  AI_WARNING_SHORT
 } from './waffle-browser-ai.js';
-import { IMAGE_MODELS, detectImageCapabilities } from './waffle-image-gen.js';
+import {
+  IMAGE_MODELS,
+  detectImageCapabilities,
+  imageCacheInfo,
+  clearImageModelCache
+} from './waffle-image-gen.js';
 
 const $ = s => document.querySelector(s);
 const storage = {
@@ -189,11 +195,11 @@ app.innerHTML = `
           <span class="gfield-label">AI Models &amp; Device Fallbacks</span>
           <div class="waffle-disclaimer-box">
             <div class="waffle-disclaimer-head">
-              <strong>⚠ DEVICE &amp; WEBGPU DISCLAIMER</strong>
+              <strong>⚠ Local AI</strong>
               <span class="waffle-device-pill is-risk" id="settings-device-pill">Checking WebGPU…</span>
             </div>
-            <p class="waffle-disclaimer-copy">${esc(AI_DISCLAIMER_TEXT)}</p>
-            <p class="waffle-device-detail" id="settings-device-detail" hidden></p>
+            <p class="waffle-disclaimer-copy">${esc(AI_WARNING_SHORT)}</p>
+            <button type="button" class="gbtn waffle-disclaimer-more" id="settings-ai-warning-open">📟 Device details &amp; full warning</button>
           </div>
           <div class="settings-sub-label">Chat AI Model</div>
           <div class="waffle-pill-grid" id="settings-ai-text-list"></div>
@@ -219,15 +225,40 @@ app.innerHTML = `
         </div>
         <div class="waffle-disclaimer-box">
           <div class="waffle-disclaimer-head">
-            <strong>⚠ DEVICE &amp; WEBGPU NOTICE</strong>
+            <strong>⚠ Local AI</strong>
             <span class="waffle-device-pill is-risk" id="eng-warn-device-pill">Checking WebGPU…</span>
           </div>
-          <p class="waffle-disclaimer-copy">${esc(AI_DISCLAIMER_TEXT)}</p>
-          <p class="waffle-disclaimer-copy">⚠ iPhone / Mobile Warning: Devices below iOS 26 or without WebGPU (~1 in 4 phones) may crash or run slowly with local AI models. Waffle Translate uses Google Translate; the other 14 tools use AI with automatic WebGPU → WLlama → WASM CPU / Local Server fallbacks.</p>
+          <p class="waffle-disclaimer-copy">${esc(AI_WARNING_SHORT)}</p>
+          <p class="waffle-disclaimer-copy">Waffle Translate uses Google Translate; the other tools use on-device AI with automatic WebGPU → WLlama → WASM CPU / Local Server fallbacks.</p>
+          <button type="button" class="gbtn waffle-disclaimer-more" id="eng-warn-details">📟 Device details &amp; full warning</button>
         </div>
         <div class="warning-popup-actions">
           <button type="button" class="gbtn" id="eng-warn-settings">⚙ Open AI Settings</button>
           <button type="button" class="gbtn gbtn-primary" id="eng-warn-ok">I Understand — Continue</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- The full warning, one tap from every short one. The kitchen used to print
+         the 887-character disclaimer in four places at once; it is unchanged here,
+         with the detected-device facts and the mobile note beside it. -->
+    <div class="settings-overlay" id="ai-warning-overlay" hidden>
+      <div class="settings-card warning-popup-card" role="dialog" aria-modal="true" aria-labelledby="ai-warn-title" data-no-i18n>
+        <div class="settings-head">
+          <strong id="ai-warn-title">📟 This device, and the full warning</strong>
+          <button type="button" class="window-close-x" id="ai-warn-close" aria-label="Close warning">✕</button>
+        </div>
+        <div class="waffle-disclaimer-box">
+          <div class="waffle-disclaimer-head">
+            <strong>⚠ DEVICE &amp; WEBGPU DISCLAIMER</strong>
+            <span class="waffle-device-pill is-risk" id="ai-warn-device-pill">Checking WebGPU…</span>
+          </div>
+          <p class="waffle-device-detail" id="settings-device-detail" hidden></p>
+          <p class="waffle-disclaimer-copy waffle-disclaimer-full">${esc(AI_DISCLAIMER_TEXT)}</p>
+          <p class="waffle-disclaimer-copy">⚠ iPhone / Mobile Warning: Devices below iOS 26 or without WebGPU (~1 in 4 phones) may crash or run slowly with local AI models.</p>
+        </div>
+        <div class="warning-popup-actions">
+          <button type="button" class="gbtn gbtn-primary" id="ai-warn-ok">Got it</button>
         </div>
       </div>
     </div>
@@ -988,6 +1019,10 @@ function renderSettingsModal() {
         <strong>✨ Smart Prompt: ${smartOn ? 'ON' : 'OFF'}</strong>
         <small>Expand short image prompts</small>
       </button>
+      <button type="button" class="gbtn waffle-model-pill" id="settings-img-cache-clear" title="Delete the image weights this browser streamed, and give the storage back">
+        <strong>🧹 Clear cached image weights</strong>
+        <small id="settings-img-cache-note">Checking…</small>
+      </button>
     `;
     imgList.querySelectorAll('[data-set-img]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -1001,6 +1036,26 @@ function renderSettingsModal() {
       playPop(600);
       renderSettingsModal();
     });
+    // The listener gets an event, not the button, so the button is held here —
+    // it is disabled for the length of the delete and the note it owns reports
+    // what came back.
+    const cacheBtn = imgList.querySelector('#settings-img-cache-clear');
+    cacheBtn?.addEventListener('click', async () => {
+      const note = $('#settings-img-cache-note');
+      if (note) note.textContent = 'Clearing…';
+      if (cacheBtn) cacheBtn.disabled = true;
+      const { freed } = await clearImageModelCache();
+      playPop(460);
+      if (cacheBtn) cacheBtn.disabled = false;
+      refreshDeviceFacts(true);
+      const done = $('#settings-img-cache-note');
+      if (done) {
+        done.textContent = freed
+          ? `Freed ${(freed / 1024 ** 3).toFixed(1)} GB — the next /imagine streams them again`
+          : 'Nothing was cached to clear';
+      }
+    });
+    paintImageCacheNote();
   }
 
   const execList = $('#settings-ai-exec-list');
@@ -1086,35 +1141,90 @@ function renderSettingsModal() {
   // them — and the panel they feed is rendered there now.
   if (isWaffleAiLocked()) return;
 
-  detectDeviceDiagnostics().then(d => {
-    const pill = $('#settings-device-pill');
-    if (pill) {
-      pill.textContent = d.summaryLabel;
-      pill.className = `waffle-device-pill ${d.hasRisk ? 'is-risk' : 'is-ok'}`;
-    }
-    // The facts that decide which models this device can actually run. Without
-    // them a skipped model just looks like a random failure.
-    const detail = $('#settings-device-detail');
-    if (detail) {
-      const gb = n => `${(n / 1024 ** 3).toFixed(1)} GB`;
-      const bits = [
-        `${d.cores || '?'} cores`,
-        d.deviceMemoryGB ? `${d.deviceMemoryGB} GB RAM` : 'RAM unknown',
-        `wasm budget ${gb(d.wasmBudgetBytes || 0)}`,
-        d.hasOPFS ? 'OPFS ok' : 'no OPFS (pre-cache unavailable)',
-        d.storageQuotaMB ? `storage ${Math.round((d.storageUsageMB || 0) / 1024)} / ${Math.round(d.storageQuotaMB / 1024)} GB used` : null,
-        d.wllamaGpuSafe ? 'llama.cpp WebGPU safe' : 'llama.cpp WebGPU blocked (no FP16) → CPU',
-        d.canThread ? 'multi-thread ok' : 'single-thread (no COOP/COEP on static hosts)'
-      ].filter(Boolean);
-      detail.textContent = bits.join(' · ');
-      detail.hidden = false;
-    }
-  }).catch(() => {});
+  refreshDeviceFacts(true);
   detectImageCapabilities().then(caps => {
     const changed = caps.hasWebGPU !== settingsImageCaps.hasWebGPU;
     settingsImageCaps = caps;
     if (changed && !$('#settings-overlay').hidden) renderSettingsModal();
+    paintDeviceFacts(deviceFactsCache);
   }).catch(() => {});
+}
+
+/**
+ * The facts that decide which models this device can actually run, painted
+ * wherever they are shown: the Settings pill, the English-cupboard pill, and the
+ * device popup every short warning opens. Without them a skipped model just looks
+ * like a random failure.
+ *
+ * Probing is cached — opening the popup should not re-run the diagnostics every
+ * time — and `refreshDeviceFacts(true)` is what Settings does when it re-renders.
+ */
+let deviceFactsCache = null;
+function refreshDeviceFacts(force = false) {
+  if (deviceFactsCache && !force) {
+    paintDeviceFacts(deviceFactsCache);
+    return Promise.resolve(deviceFactsCache);
+  }
+  return detectDeviceDiagnostics()
+    .then(d => { deviceFactsCache = d; paintDeviceFacts(d); return d; })
+    .catch(() => {});
+}
+
+function paintDeviceFacts(d) {
+  for (const pill of [$('#settings-device-pill'), $('#eng-warn-device-pill'), $('#ai-warn-device-pill')]) {
+    if (!pill || !d) continue;
+    pill.textContent = d.summaryLabel;
+    // classList, not className: these pills also carry `is-door` in the AI panel
+    // and the `dataset.warnDoor` wiring that makes them open the popup.
+    pill.classList.remove('is-risk', 'is-ok');
+    pill.classList.add(d.hasRisk ? 'is-risk' : 'is-ok');
+  }
+  const detail = $('#settings-device-detail');
+  if (detail) {
+    const gb = n => `${(n / 1024 ** 3).toFixed(1)} GB`;
+    const bits = d ? [
+      `${d.cores || '?'} cores`,
+      d.deviceMemoryGB ? `${d.deviceMemoryGB} GB RAM` : 'RAM unknown',
+      `wasm budget ${gb(d.wasmBudgetBytes || 0)}`,
+      d.hasOPFS ? 'OPFS ok' : 'no OPFS (pre-cache unavailable)',
+      d.storageQuotaMB ? `storage ${Math.round((d.storageUsageMB || 0) / 1024)} / ${Math.round(d.storageQuotaMB / 1024)} GB used` : null,
+      d.wllamaGpuSafe ? 'llama.cpp WebGPU safe' : 'llama.cpp WebGPU blocked (no FP16) → CPU',
+      d.canThread ? 'multi-thread ok' : 'single-thread (no COOP/COEP on static hosts)',
+      settingsImageCaps.hasWebGPU
+        ? `image model: WebGPU ok${settingsImageCaps.hasF16 ? ' · fp16' : ''} · ${settingsImageCaps.mode || 'desktop'} build`
+        : 'image model: no WebGPU here, so /imagine cannot run'
+    ].filter(Boolean) : [];
+    detail.textContent = bits.join(' · ');
+    detail.hidden = bits.length === 0;
+  }
+  paintImageCacheNote();
+}
+
+/**
+ * How much of this browser's storage the image model's weights are taking, and the
+ * button that gives it back. They stream from the model's Hugging Face repo on
+ * first use and then stay on disk, which is worth several gigabytes of somebody's
+ * quota — so the kitchen says how much and offers the way out.
+ */
+function paintImageCacheNote() {
+  const note = $('#settings-img-cache-note');
+  if (!note || note.dataset.loading) return;
+  note.dataset.loading = '1';
+  imageCacheInfo().then(info => {
+    const el = $('#settings-img-cache-note');
+    if (el) {
+      delete el.dataset.loading;
+      const gb = n => `${(n / 1024 ** 3).toFixed(1)} GB`;
+      el.textContent = info.bytes
+        ? `${gb(info.bytes)} of image weights cached here${info.persisted ? ' · storage marked persistent' : ''}`
+        : info.available
+          ? `Nothing cached yet · the first /imagine streams about ${info.needGB} GB`
+          : 'This browser will not say how much room it has';
+    }
+  }).catch(() => {
+    const el = $('#settings-img-cache-note');
+    if (el) delete el.dataset.loading;
+  });
 }
 
 function openSettingsModal(scrollToSection = '') {
@@ -1159,6 +1269,42 @@ $('#eng-warn-settings')?.addEventListener('click', () => {
 $('#english-warning-overlay')?.addEventListener('click', e => {
   if (e.target.id === 'english-warning-overlay') $('#english-warning-overlay').hidden = true;
 });
+
+/* The device popup: where the long warning and the detected-device facts live now.
+   Every short warning in the kitchen — the Waffle AI header, Settings and the
+   English cupboard — opens it, and so does tapping a device pill. */
+function openAiWarning() {
+  playPop(560);
+  refreshDeviceFacts();
+  const overlay = $('#ai-warning-overlay');
+  if (overlay) overlay.hidden = false;
+}
+function closeAiWarning() {
+  playPop(460);
+  const overlay = $('#ai-warning-overlay');
+  if (overlay) overlay.hidden = true;
+}
+$('#settings-ai-warning-open')?.addEventListener('click', openAiWarning);
+$('#eng-warn-details')?.addEventListener('click', openAiWarning);
+$('#ai-warn-close')?.addEventListener('click', closeAiWarning);
+$('#ai-warn-ok')?.addEventListener('click', closeAiWarning);
+$('#ai-warning-overlay')?.addEventListener('click', e => {
+  if (e.target.id === 'ai-warning-overlay') closeAiWarning();
+});
+// The pills were already the visible answer to "can this device do it"; making
+// them the way in means nobody has to find a separate button first.
+for (const pillId of ['#settings-device-pill', '#eng-warn-device-pill', '#ai-warn-device-pill']) {
+  const pill = $(pillId);
+  if (!pill || pill.dataset.warnDoor) continue;
+  pill.dataset.warnDoor = '1';
+  pill.tabIndex = 0;
+  pill.setAttribute('role', 'button');
+  pill.title = 'Tap for the full device warning and what was detected here.';
+  pill.addEventListener('click', openAiWarning);
+  pill.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAiWarning(); }
+  });
+}
 
 const closeExpWarn = () => {
   playPop(460);

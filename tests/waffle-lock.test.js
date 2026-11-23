@@ -338,8 +338,18 @@ test('AI is in Settings in both kitchens, and the probes follow the gate', () =>
     'the only build-conditional markup left is the backup banner itself');
 
   assert.match(appSrc, /if \(!\$\('#settings-ai-precache'\)\) return;/, 'pre-cache state is not refreshed when the panel is gone');
-  assert.match(appSrc, /if \(isWaffleAiLocked\(\)\) return;\n\n  detectDeviceDiagnostics/,
+  // The probes were folded into refreshDeviceFacts() in 1.3 TVBR 2, so the device
+  // popup can reuse the answer instead of re-probing; the gate is still what skips
+  // them, and the function it calls is still the one that probes.
+  assert.match(appSrc, /if \(isWaffleAiLocked\(\)\) return;\n\n  refreshDeviceFacts\(true\)/,
     'the device probes skip on the gate, not on the build');
+  assert.match(appSrc, /function refreshDeviceFacts\(force = false\) \{[\s\S]{0,320}?detectDeviceDiagnostics\(\)/,
+    'and they are still the probes that run');
+  assert.ok(appSrc.includes('id="ai-warning-overlay"'), 'the popup the short warnings open is in both kitchens too');
+  const warnPopup = appSrc.slice(appSrc.indexOf('id="ai-warning-overlay"'), appSrc.indexOf('id="exp-warning-overlay"'));
+  assert.ok(warnPopup.length > 400, 'and the whole of it was captured');
+  assert.ok(!warnPopup.includes('${isBackupBuild()'), 'with none of it conditional on the build');
+  assert.ok(warnPopup.includes('AI_DISCLAIMER_TEXT'), 'carrying the long warning the strips no longer print');
 });
 
 test('Sir Waffle stops advertising Waffle AI while the feature is paused', () => {

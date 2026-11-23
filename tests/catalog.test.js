@@ -236,13 +236,22 @@ test('Waffle AI chatbot, streaming code boxes, DOCX creation/parsing, single Waf
   assert.equal(tUI('Settings', 'es'), 'Ajustes');
   assert.equal(tUI('10 UTILITIES', 'fr'), '10 OUTILS');
 
+  // The three assertions that used to sit here checked for pre-cached Stable
+  // Diffusion chunk files inside `if (fs.existsSync(...))`. The folder never
+  // existed, so they never ran, and the image engine they described 404'd on
+  // every device. The replacement is tested without an escape hatch: either the
+  // model menu and its engine are what they claim to be, or this fails.
   const { IMAGE_MODELS } = await import('../waffle-image-gen.js');
-  assert.ok(IMAGE_MODELS.some(m => m.id === 'sdxs-512') && IMAGE_MODELS.some(m => m.id === 'sd-turbo'), 'Waffle AI exposes SDXS-512 and SD-Turbo image generation');
-  if (fs.existsSync('.cache/waffle-ai/sd-models')) {
-    assert.ok(fs.existsSync('.cache/waffle-ai/sd-models/studio-ai/models/tok/vocab.json'), 'CLIP tokenizer for SD models is pre-cached');
-    assert.ok(fs.existsSync('.cache/waffle-ai/sd-models/studio-ai-hq1/unet/m.000'), 'SD-Turbo weights are pre-cached');
-    assert.ok(fs.existsSync('.cache/waffle-ai/sd-models/studio-ai-t2i/t2i09/unet09/q.004'), 'SDXS-512 weights are pre-cached');
+  assert.ok(IMAGE_MODELS.length >= 1, 'Waffle AI still exposes image generation');
+  for (const m of IMAGE_MODELS) {
+    assert.ok(m.id && m.name && m.badge && m.sizeLabel, `${m.id} carries everything the Settings pill renders`);
+    assert.ok(['auto', 'desktop', 'mobile'].includes(m.mode), `${m.id} names an engine build that exists`);
+    assert.equal(m.requiresWebGPU, true, `${m.id} says so, because a WGSL transformer has no CPU path`);
+    assert.ok(m.defaultSteps >= 2, `${m.id} asks for a step count the engine can do without the optional LoRA`);
   }
+  assert.ok(viteSrc.includes('flux-klein-tokenizer'), 'the build serves the tokenizer the engine cannot resolve on its own');
+  assert.ok(!viteSrc.includes('sd-models/\', sdRoot') && !fs.existsSync('.cache/waffle-ai/sd-models'),
+    'and nothing still routes to the model directory no build ever produced');
 
   const uiKitSrc = fs.readFileSync('ui-kit.js', 'utf8');
   assert.ok(uiKitSrc.includes('export async function copyToClipboard') && uiKitSrc.includes("execCommand('copy')"), 'copyToClipboard includes execCommand fallback for iframes');

@@ -1219,15 +1219,21 @@ try {
   if ('serviceWorker' in navigator && navigator.serviceWorker) {
     if (import.meta.env.PROD) {
       navigator.serviceWorker.register('./sw.js').then(() => {
-        // The document that registered the worker was served before the worker
-        // existed, so it has no COOP/COEP and this page is still one thread. Ask
-        // for it again once the worker is in control — and only ever once, or a
-        // browser that refuses the headers would reload forever. Idle, so the
-        // reload does not fight the kitchen booting.
-        const KEY = 'waffle-isolation-reload';
+        // The worker used to re-serve this document with COOP/COEP so the page
+        // would boot cross-origin isolated and the AI runtimes could thread.
+        // Chromium refuses to construct a dedicated worker from a page in that
+        // state, which is how every runtime in CodeHub came to be dead on the
+        // deployed site, so the headers are gone from it. A document that was
+        // served *with* them keeps them for as long as it stays open, so it gets
+        // one reload to pick up a clean one — and only ever one, or a browser
+        // that still hands them back would reload forever. The key is a second
+        // one on purpose: everybody who visited while the headers were being
+        // sent has the old flag set already. Idle, so the reload does not fight
+        // the kitchen booting.
+        const KEY = 'waffle-isolation-reload-2';
         const reloadOnce = () => {
           try {
-            if (globalThis.crossOriginIsolated) return;
+            if (!globalThis.crossOriginIsolated) return;
             if (!navigator.serviceWorker.controller) return;
             if (localStorage.getItem(KEY)) return;
             localStorage.setItem(KEY, '1');

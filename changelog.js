@@ -341,7 +341,7 @@ export const CHANGELOG = [
   {
     version: '1.2.8',
     date: 'November 23, 2026',
-    title: 'CodeHub stopped blaming the wrong thing, and a folder is told once instead of 41 times',
+    title: 'CodeHub stopped blaming the wrong thing, a folder is told once instead of 41 times, and one game now comes with a warning',
     groups: [
       {
         label: '\u{1F50E} An error that guessed, and guessed wrong',
@@ -358,6 +358,16 @@ export const CHANGELOG = [
           'Those five now say it once, at the top, before a single character is typed: what the wall is, that it is the origin and not the runtime, and the address of the kitchen that is served, as a link that can be tapped. A folder can still follow a link even when it cannot start a worker.',
           'The old advice is gone from it. Serving over HTTP is not something a folder can do — there is no server in it, and a tablet needs an app of its own to run one — so the notice hands over an address instead of an instruction.',
           'The HTML / CSS / JS sandbox still runs from a folder, because it executes in the page with no worker and nothing fetched, and the notice says so rather than leaving one working language to look like a broken promise about the other 41.'
+        ]
+      },
+      {
+        label: '\u26A0\uFE0F A warning on the one game that needs it',
+        items: [
+          'BitLife is a life simulation built around grown-up life — relationships and sex, crime and prison, drinking, gambling and money — and it was sitting on the shelf beside 2048 and Google Dino with nothing to say so. BitLife is published commercially as a 17+ game for exactly that content.',
+          'It now carries a red 16+ pill on the shelf, and opening it puts a full warning where the play buttons were: what the game is about, that it is not for a young child, and that if a child is the one holding the device the shelf has plenty else on it. The launcher and the three links in the header stay hidden until somebody says they are old enough, so there is no route into the game that does not pass the warning.',
+          'Nothing is remembered, so the warning comes back every time the game is opened. A child who taps through it once has not bought it for good.',
+          'The rating lives in the cabinet list rather than in the code, and an entry that carries one has to carry the reason with it — a test holds that — so the next game that needs a warning is a line in a file and not a change to the shelf.',
+          'Nothing else in the cabinet is rated. The other 50 are cartoon and abstract action: popping balloons, stacking blocks, voxel obstacle courses, defending space bases. Putting a red wall in front of those would flag the games a six-year-old is exactly the right age for, which is how warnings get tapped past without being read.'
         ]
       },
       {

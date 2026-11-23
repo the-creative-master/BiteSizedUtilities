@@ -165,9 +165,51 @@ export async function mountGames(root) {
     launcher.append(art, meta);
 
     body.append(controlsNote, launcher);
+
+    let gated = false;
+    if (game.age) {
+      // The warning goes where the play buttons are not. Every route into the
+      // game goes dark while it is up — the launcher *and* the three links in the
+      // header, because leaving those live would be a warning with a door around
+      // it. Nothing is remembered either: it comes back every single time, since
+      // a child who taps through it once should not have bought the game for good.
+      gated = true;
+      const gate = make('div', '', 'arcade-age-gate');
+      gate.setAttribute('role', 'alert');
+      const stamp = make('div', game.age, 'arcade-age-stamp');
+      stamp.setAttribute('aria-hidden', 'true');
+      const head = make('h3', `Stop — ${game.title} is rated ${game.age}.`, 'arcade-age-head');
+      const why = make('p', game.ageNote || 'This one is built around grown-up content.', 'arcade-age-why');
+      const who = make('p', 'It is not a game for a young child. If a child is the one holding this device, take me back and pick something else off the shelf — the rest of the cabinet has no rating on it at all.', 'arcade-age-who');
+      const fresh = make('p', 'Nothing here is remembered. This warning comes back every time the game is opened.', 'arcade-age-fresh');
+      const acts = make('div', '', 'arcade-age-actions');
+      const back = make('button', '\u2715 Take me back to the cabinet', 'gbtn gbtn-danger');
+      back.type = 'button';
+      const enter = make('button', `I am ${game.age}. Open it.`, 'gbtn gbtn-primary');
+      enter.type = 'button';
+      acts.append(back, enter);
+      gate.append(stamp, head, why, who, fresh, acts);
+      body.append(gate);
+      actions.hidden = true;
+      controlsNote.hidden = true;
+      launcher.hidden = true;
+      enter.addEventListener('click', () => {
+        playPop(520);
+        gate.remove();
+        gated = false;
+        actions.hidden = false;
+        controlsNote.hidden = false;
+        launcher.hidden = false;
+        primaryPlay.focus();
+      });
+      back.addEventListener('click', stop);
+      enter.setAttribute('aria-describedby', 'arcade-age-note');
+      fresh.id = 'arcade-age-note';
+    }
+
     player.append(header, body);
     player.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-    primaryPlay.focus();
+    if (!gated) primaryPlay.focus();
   }
 
   random.addEventListener('click', () => {
@@ -202,6 +244,14 @@ export async function mountGames(root) {
         const label = make('span', game.title, 'object-label');
         const tag = make('span', genre(game), 'arcade-genre-pill');
         btn.append(tile, label, tag);
+        if (game.age) {
+          // On the shelf, before anything is opened. Somebody browsing the
+          // cabinet should be able to see which game is not for a child without
+          // having to open it first.
+          const age = make('span', `\u26A0 ${game.age}`, 'arcade-age-pill');
+          age.title = `${game.title} is rated ${game.age}`;
+          btn.append(age);
+        }
         btn.addEventListener('click', () => launch(game, btn));
         slot.append(btn);
         grid.append(slot);

@@ -84,6 +84,8 @@
     "website": "https://the-creative-master.github.io/BiteSizedUtilities/",
     "license": "BiteSizedUtilities (the-creative-master)",
     "entrypoint": "games/cabinet/bitlife/index.html",
+    "age": "16+",
+    "ageNote": "A life simulation built around grown-up life: relationships and sex, crime and prison, drinking, gambling and money. BitLife is published commercially as a 17+ game for exactly that content. It is not a game for a young child.",
     "controls": "Keyboard / Mouse / Touch"
   },
   {

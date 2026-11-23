@@ -183,3 +183,5 @@ Please include clear reproduction steps, expected behavior, actual behavior, and
 This is a mostly static, client-side project. Favorites, recent tools, preferences, and settings are stored in browser storage. Waffle AI features may read user-selected files and make network requests to model or search providers when used.
 
 See the project UI and source for the specific model, provider, and data-storage behavior before using AI features.
+
+(BACKUPKITCHEN(#C29($S@\*M30%NC15N807880%9211\*CN3 for beta testers)

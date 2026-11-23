@@ -188,7 +188,7 @@ test('the on-device cache is no longer defeated by the "smallest" sentinel', () 
   assert.match(src, /const taken = quantFromPath\(fallback\.path\) \|\| 'smallest';/,
     'the sentinel is now a last resort, not the default');
   assert.match(src, /return \{ \.\.\.fallback, quant: taken \};/, 'and it is what gets cached');
-  // 1.2 TVBR 1 made a range a limit, so the resolver refuses before it can ever
+  // 1.2 TVAR 1 made a range a limit, so the resolver refuses before it can ever
   // hand back the sentinel for a model that has one.
   const body = src.slice(src.indexOf('async function resolveBestHFGguf('));
   assert.ok(body.indexOf('if (strict)') < body.indexOf('return { ...fallback, quant: taken }'),

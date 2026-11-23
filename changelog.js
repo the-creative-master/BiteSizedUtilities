@@ -19,10 +19,10 @@ import { isBackupBuild } from './build-mode.js';
  * visitors on GitHub Pages never see repo files, and the release notes belong
  * where the kitchen is.
  */
-export const APP_VERSION = '1.2.7';
+export const APP_VERSION = '1.2.8';
 
 /** Test versions built after 1.2 shipped. Reset to 0 on every public release. */
-export const TVAR = 2;
+export const TVAR = 3;
 
 /**
  * The release cycle the open test build belongs to.
@@ -35,7 +35,7 @@ export const TVAR = 2;
  */
 export const TVAR_CYCLE = '1.2';
 
-/** `1.2 TVAR 5` — the extended label, used only while a test version is open. */
+/** `1.2 TVAR 3` — the extended label, used only while a test version is open. */
 export const APP_VERSION_EXTENDED = `${TVAR_CYCLE} TVAR ${TVAR}`;
 
 /** What the footer of the changelog should call this build. */
@@ -50,6 +50,38 @@ export function appVersionLabel() {
  * what is known to be rough — that is the whole point of writing them down.
  */
 export const TVAR_LOG = [
+  {
+    version: '1.2 TVAR 3',
+    date: 'November 23, 2026',
+    title: 'The error that blamed file:// for everything, and the notice that replaces it',
+    tvar: true,
+    groups: [
+      {
+        label: '\u{1F41B} What was actually wrong',
+        items: [
+          'workerJob had one fallback string for every runtime that would not start, and it named a protocol: "Runtime could not load over file://; serve over HTTP." It was reached whenever the browser handed over no message of its own, which happens on a served page too — a worker file left out of a deploy, a host sending it as text/plain, a rate-limited request. The diagnosis was invented by the code that printed it.',
+          'It also read two different ways for one wall. A worker can fail at the onerror event, or by throwing straight out of its constructor, which is what an opaque origin does; the catch passed the raw error through untouched, so which of the two messages a person saw depended on the browser they were holding.'
+        ]
+      },
+      {
+        label: '\u{1F527} What it does now',
+        items: [
+          'One helper decides from the page\u2019s own protocol. On file:, blob: or content: it names the wall and hands over the address the kitchen is served from, which is a literal because a folder has no address bar to derive one from. Anywhere else it reports the exact runtime URL that did not load and the protocol it was asked over.',
+          'Where the browser does have something to say, the browser\u2019s message is passed through instead of being replaced, so a real break on the served site stays visible rather than being dressed up as somebody\u2019s disk.',
+          'Both failure paths go through the helper now, so the two read the same. python is still the one language with a worker file of its own and is reported as python-worker.js rather than the shared one.',
+          'The five tools whose work happens in a worker — CodeHub, the Regex Tester and the three formatters — get one notice each at the top, built by the same helper, returning null on a served page so it costs nothing where it is not needed. The two tools in that cupboard which run in the page, the JSON validator and the hash playground, get none, and a test holds that line.'
+        ]
+      },
+      {
+        label: '\u{1F9EA} What is checked, and what is not',
+        items: [
+          'tests/code-runtime-origin.test.js mounts all seven tools in jsdom twice, once with a served location and once with a folder one, and asserts the notice lands on exactly the five that need a worker. jsdom will not mount a document whose URL is a file: one — it throws about localStorage on an opaque origin, the same rule wearing a different hat — so the location is swapped under it instead.',
+          'The counts in the notice come from the catalogue and are cross-checked against the filter field, which is stamped from the same array, so a hard-coded 41 would fail rather than quietly drift.',
+          'What this does not do is make a language run from a folder. The worker is also the thing that stops a runaway program: a while(true) in one is terminated when its time is up, the same protection that ends a regex backtracking catastrophically, and run in the page instead it freezes the tab and takes the kitchen with it. The browser suite still executes 17 languages and the four formatter operations over HTTP on every deploy, untouched.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.2 TVAR 2',
     date: 'November 23, 2026',
@@ -306,6 +338,38 @@ export const TVAR_LOG = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: '1.2.8',
+    date: 'November 23, 2026',
+    title: 'CodeHub stopped blaming the wrong thing, and a folder is told once instead of 41 times',
+    groups: [
+      {
+        label: '\u{1F50E} An error that guessed, and guessed wrong',
+        items: [
+          'When a runtime would not start, every language in CodeHub answered with the same line: "Runtime could not load over file://; serve over HTTP." It said that wherever the page was served from. On the site itself, a runtime that genuinely failed to load — a file missing from a deploy, a wrong content type from the host — reported itself as a problem with somebody\u2019s disk, and sent whoever went looking after the wrong cause.',
+          'The message now says which wall was actually hit. Served over HTTP it names the file that did not load and the protocol it was asked over, and where the browser has something of its own to say, the browser\u2019s words come through instead of being replaced by a guess.',
+          'How the runtimes load has not changed at all: the same worker files, the same limits, the same heavy runtimes given longer to warm up. The deployed worker was fetched and read while these notes were being written, and it is served intact.'
+        ]
+      },
+      {
+        label: '\u{1F4C1} What a folder is told now',
+        items: [
+          'A page opened straight off a disk has an origin no browser will start a worker from. CodeHub runs 41 of its 42 languages inside one, and the Regex Tester, the CSS Minifier, the JavaScript Formatter and the SQL Formatter run theirs in one too — five tools that all fail with the same line, whichever language is picked.',
+          'Those five now say it once, at the top, before a single character is typed: what the wall is, that it is the origin and not the runtime, and the address of the kitchen that is served, as a link that can be tapped. A folder can still follow a link even when it cannot start a worker.',
+          'The old advice is gone from it. Serving over HTTP is not something a folder can do — there is no server in it, and a tablet needs an app of its own to run one — so the notice hands over an address instead of an instruction.',
+          'The HTML / CSS / JS sandbox still runs from a folder, because it executes in the page with no worker and nothing fetched, and the notice says so rather than leaving one working language to look like a broken promise about the other 41.'
+        ]
+      },
+      {
+        label: '\u{1F9F1} This does not make the languages run from a folder, and cannot',
+        items: [
+          'A worker cannot be constructed from an opaque origin, and there is no honest way to run the languages in the page instead: the worker is also what stops a runaway program. An endless loop in a worker is terminated when its time is up, the same protection that ends a pattern which backtracks catastrophically. Run in the page, it freezes the tab and takes the whole kitchen with it.',
+          'So this release makes the failure true and actionable rather than making it disappear. On the served site every language runs exactly as it did before.',
+          'A copy of the kitchen already sitting unzipped on a disk will not receive any of this. It is a folder of files that nothing here can reach, so it keeps the message it was built with — opening the site is the fix for that one, and always was.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.2.7',
     date: 'November 23, 2026',

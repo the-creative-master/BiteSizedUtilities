@@ -8,16 +8,24 @@ import { isBackupBuild } from './build-mode.js';
  * Two lists live here on purpose:
  *
  *   CHANGELOG  every public release. This is all index.html ever shows.
- *   TVBR_LOG   extended minor versions built around a release, shown only in
- *              the backup kitchen. TVBR means "Test Version BEfore Release", so
- *              1.3 TVBR 1 is the first test build of the 1.3 cycle. The
- *              counter resets with each public release, and nothing about it is
- *              mentioned on the public page — there it is simply 1.2.8.
+ *   TVBR_LOG   test versions, shown only in the backup kitchen. Two labels, and
+ *              the difference between them is where the build sits relative to a
+ *              release — they are not two spellings of one thing:
  *
- *              The entries from the 1.1 and 1.2 cycles still read TVAR, which is
- *              what those builds called themselves. A label changes going
- *              forward; it does not reach back and rename a build that already
- *              shipped under the old one, because somebody read that number.
+ *                TVAR means "Test Version AFTER Release": built on top of a
+ *                     release that has already shipped. 1.1 TVAR 1 came after
+ *                     1.1, and the three 1.2 ones after 1.2.
+ *                TVBR means "Test Version BEfore Release": built toward a
+ *                     release that has not shipped yet. 1.3 TVBR 1 is open while
+ *                     the public kitchen is still on 1.2.8, because 1.3 does not
+ *                     exist yet and this is what it is being tried on.
+ *
+ *              The counter resets when the release it belongs to ships, and
+ *              nothing about it is mentioned on the public page — there it is
+ *              simply 1.2.8. Each entry keeps the label that says where it sat,
+ *              so the six below read TVAR and are not renamed to agree with the
+ *              one above them. The list itself is named for the label the open
+ *              build carries, and it holds both kinds.
  *
  *
  * This lives in the app rather than only in the repo's README on purpose:
@@ -26,21 +34,31 @@ import { isBackupBuild } from './build-mode.js';
  */
 export const APP_VERSION = '1.2.8';
 
-/** Test versions built in the open cycle. Reset to 0 on every public release. */
+/**
+ * How many test builds of the open cycle there have been. Reset to 0 when that
+ * cycle's release ships — and once 1.3 has, a build made on top of it is a test
+ * version *after* a release, so it reads 1.3 TVAR 1 rather than TVBR.
+ */
 export const TVBR = 1;
 
 /**
- * The release cycle the open test build belongs to.
+ * The release the open test build comes *before*.
  *
  * Its own constant rather than APP_VERSION, because the two are not the same
- * string any more: 1.2.8 is what the public kitchen reports, while the backup
- * kitchen tests on top of the next cycle. Deriving the extended label from
- * APP_VERSION would have announced "1.2.8 TVBR 1" — a build that has never
- * existed — and renumbered the entries that document the ones that have.
+ * string and cannot be: 1.2.8 is what the public kitchen reports, while the
+ * backup kitchen is testing toward 1.3, which has not shipped. Deriving the
+ * extended label from APP_VERSION would have announced "1.2.8 TVBR 1" — a build
+ * that has never existed — and renumbered the entries that document the ones
+ * that have.
  */
 export const TVBR_CYCLE = '1.3';
 
-/** `1.3 TVBR 1` — the extended label, used only while a test version is open. */
+/**
+ * `1.3 TVBR 1` — the extended label, used only while a test version is open.
+ * TVBR is in the template rather than derived because the open build is a
+ * before-release one; a test build made after its release ships reads TVAR, and
+ * this line is the single place that would have to say so.
+ */
 export const APP_VERSION_EXTENDED = `${TVBR_CYCLE} TVBR ${TVBR}`;
 
 /** What the footer of the changelog should call this build. */
@@ -58,15 +76,15 @@ export const TVBR_LOG = [
   {
     version: '1.3 TVBR 1',
     date: 'November 24, 2026',
-    title: 'The chat grew a memory and a sidebar, and the test build got the name it always meant',
+    title: 'The chat grew a memory and a sidebar, and this build comes before its release rather than after it',
     tvbr: true,
     groups: [
       {
-        label: '\u{1F3F7}\uFE0F What the label means, and what it does not rewrite',
+        label: '\u{1F3F7}\uFE0F TVBR, and how it differs from the TVAR entries below',
         items: [
-          'A test build is labelled TVBR: Test Version BEfore Release. The machinery that prints the label reads that spelling — the counter, the cycle constant, the list these entries live in, and the marker class the renderer puts on each of them.',
-          'What it does not do is rename the builds that already shipped. The six entries below still read 1.2 TVAR 1 to 3 and 1.1 TVAR 1 to 3, because those are the labels those builds carried, and somebody who read them then reads the same numbers now. A spelling changes going forward; it does not reach back.',
-          'The 1.2 cycle closed at TVAR 3 and this opens the 1.3 one at TVBR 1, so the counter starts again. That is why cycle and count are separate constants, and why nothing below this entry has been renumbered.',
+          'TVBR means Test Version BEfore Release: a build made toward a release that has not shipped yet. This is the first one for 1.3, which is why it reads 1.3 TVBR 1 while the public kitchen still says 1.2.8 — the version it is testing toward does not exist yet, and the overhauled chat below is what 1.3 is being tried on.',
+          'The six entries below read TVAR, Test Version AFTER Release, because that is what they were: builds made on top of a release that had already shipped, three on 1.2 and three on 1.1. They are 1.2 TVAR 1 to 3 and 1.1 TVAR 1 to 3, and none of them has been renamed or renumbered. The two labels say where a build sits relative to its release, not which spelling was current when it was written.',
+          'So the counter opens again here rather than continuing from TVAR 3: when 1.3 ships it goes back to 0 with it, and anything built on top of 1.3 after that is 1.3 TVAR 1. Cycle and count are separate constants so a new cycle can start at 1 without touching the entries already written down.',
           'The public kitchen reports none of it. It is at 1.2.8 and stays there, and everything in the three groups below is the backup kitchen\u2019s alone: one flag, read by both the markup and the behaviour, decides which build is which, so there is no rail without a store behind it and no store writing chats nobody can open.'
         ]
       },

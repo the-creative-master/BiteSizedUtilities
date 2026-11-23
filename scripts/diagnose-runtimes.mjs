@@ -1,118 +1,121 @@
 /**
- * Throwaway diagnostic: what actually happens to runtimes/worker.js on the
- * deployed site. Run from CI, because CI is the only place with both a browser
- * and a route to GitHub Pages.
+ * Throwaway diagnostic, second cut. The first one settled where the wall is:
  *
- * It separates the layers that can refuse a worker script, so the fix can be
- * aimed instead of guessed:
- *   1. does Pages serve the file, and with what content type
- *   2. can the page fetch it
- *   3. does a trivial worker construct at all
- *   4. does the real worker construct, first visit and after the service worker
- *      has taken control (the two states differ: the worker re-serves the
- *      document with COOP/COEP, so the second visit is cross-origin isolated)
- *   5. does it construct with the service worker unregistered and its caches
- *      deleted, which is the difference between "the worker is in the way" and
- *      "the page is isolated"
- *   6. does a blob worker that importScripts the same file work, which is the
- *      fallback if the worker-script load path itself is what is refused
+ *   HOST   200  application/javascript  32008 bytes     (the file is fine)
+ *   page   fetch(worker.js) -> 200 application/javascript (the page can read it)
+ *   page   new Worker(worker.js)  -> onerror, empty message, no filename
+ *   page   service worker unregistered + caches deleted -> the same worker runs
+ *
+ * So the kitchen's own service worker is what stops CodeHub's runtimes from
+ * starting on the deployed site, and it does it silently — an empty error
+ * message and nothing in the console. Two things the worker does could be
+ * responsible, and they need different fixes:
+ *
+ *   A. it intercepts the worker-script request and answers it, and something
+ *      about that answer is refused (the fetch inside it rejects, and the catch
+ *      hands back Response.error(), which is exactly a silent network failure);
+ *   B. it re-serves the document with COOP/COEP, so the page boots cross-origin
+ *      isolated, and Chromium then refuses the worker script for that reason.
+ *
+ * This runs the deployed service worker, fetched from the live site and served
+ * unmodified, against a minimal page on a local origin, and then runs the two
+ * candidate fixes as variants of the same file. Whichever variant lets the
+ * worker start is the one to ship. A third variant drops only the cache put(),
+ * in case teeing the response body is what breaks it.
  */
 import { chromium } from '@playwright/test';
+import http from 'node:http';
+import fs from 'node:fs';
 
 const LIVE = 'https://the-creative-master.github.io/BiteSizedUtilities/';
-const WORKER = LIVE + 'runtimes/worker.js';
-const out = [];
-const say = (...a) => { const line = a.join(' '); out.push(line); console.log(line); };
+const deployed = await (await fetch(LIVE + 'sw.js')).text();
+if (!/function isolated\(/.test(deployed)) throw new Error('the deployed sw.js is not the one this experiment assumes');
 
-const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+const GET_LINE = '  if (req.method !== \'GET\') return;';
+const SET_HEADERS = `  headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+  headers.set('Cross-Origin-Embedder-Policy', 'credentialless');`;
+const PUT_BLOCK = `        if (!len || len <= MAX_CACHE_BYTES) {
+          const copy = r.clone();
+          caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
+        }`;
 
-// ---- layer 1: what the host actually sends, headers and all ----
-{
-  const ctx = await browser.newContext();
-  const r = await ctx.request.get(WORKER);
-  const body = await r.text();
-  say('HOST  status=%s  content-type=%s  bytes=%d', r.status(), r.headers()['content-type'], body.length);
-  say('HOST  headers: %s', JSON.stringify(r.headers()));
-  say('HOST  first line: %s', body.split('\n')[0].slice(0, 100));
-  const swr = await ctx.request.get(LIVE + 'sw.js');
-  const swb = await swr.text();
-  say('HOST  sw.js status=%s bytes=%d isolated()=%s COEP=%s',
-    swr.status(), swb.length, /function isolated\(/.test(swb), /Cross-Origin-Embedder-Policy/.test(swb));
-  const idx = await ctx.request.get(LIVE);
-  const idxb = await idx.text();
-  say('HOST  index status=%s bytes=%d bundle=%s', idx.status(), idxb.length,
-    (idxb.match(/assets\/app-[\w-]+\.js/) || ['(none)'])[0]);
-  await ctx.close();
+function variant(name, fn) {
+  const src = fn(deployed);
+  if (src === deployed && name !== 'as deployed') throw new Error(`variant "${name}" did not change anything — the needle moved`);
+  return [name, src];
 }
 
-// ---- layers 2-6: inside a real page on the real origin ----
-const context = await browser.newContext();
-const page = await context.newPage();
-const consoleLines = [];
-page.on('console', m => consoleLines.push(`${m.type()}: ${m.text()}`));
-page.on('pageerror', e => consoleLines.push(`pageerror: ${e.message}`));
-// Keep the probe quick: the kitchen boots models and games this run does not need.
-await page.route('**/*', route => {
-  const u = route.request().url();
-  if (/\/(ort|ort-chat|wllama|wllama-compat|games)\//.test(u) || /huggingface|\.gguf|\.onnx/.test(u)) return route.abort();
-  return route.continue();
-});
+const variants = Object.fromEntries([
+  variant('as deployed', s => s),
+  variant('A: skips worker-script requests', s => s.replace(GET_LINE,
+    `  if (req.destination === 'worker' || req.destination === 'sharedworker') return;\n${GET_LINE}`)),
+  variant('B: no COOP/COEP on the document', s => s.replace(SET_HEADERS, '  // headers deliberately not set')),
+  variant('C: no cache put()', s => s.replace(PUT_BLOCK, '        // deliberately not cached'))
+]);
 
-const probes = () => page.evaluate(async workerUrl => {
-  const res = {};
-  res.crossOriginIsolated = globalThis.crossOriginIsolated === true;
-  res.swController = navigator.serviceWorker?.controller?.scriptURL || null;
-  res.protocol = location.protocol;
-  try {
-    const r = await fetch(workerUrl, { cache: 'no-store' });
-    res.fetch = { ok: r.ok, status: r.status, type: r.type, contentType: r.headers.get('content-type') };
-    res.fetchHead = (await r.text()).slice(0, 60);
-  } catch (e) { res.fetch = { threw: String(e) }; }
+const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>booting</title></head><body>
+<script>
+navigator.serviceWorker.register('./sw.js').then(() => {
+  const ready = () => { document.title = navigator.serviceWorker.controller ? 'controlled' : 'ready'; };
+  navigator.serviceWorker.addEventListener('controllerchange', ready);
+  navigator.serviceWorker.ready.then(ready);
+  setTimeout(ready, 4000);
+}).catch(e => { document.title = 'register-failed: ' + e.message; });
+</script></body></html>`;
 
-  const attempt = (make, ms = 8000) => new Promise(resolve => {
-    let done = false;
-    const finish = r => { if (!done) { done = true; try { w?.terminate(); } catch {} resolve(r); } };
-    let w;
-    try { w = make(); } catch (e) { return finish({ threw: String(e && e.message || e) }); }
-    const t = setTimeout(() => finish({ timeout: true }), ms);
-    w.onmessage = ({ data }) => { clearTimeout(t); finish({ ok: true, data: JSON.stringify(data).slice(0, 120) }); };
-    w.onerror = e => { clearTimeout(t); finish({ onerror: e.message || '(empty message)', filename: e.filename || null, lineno: e.lineno || null }); };
-    try { w.postMessage({ op: 'json', code: '{"a":1}', options: {}, input: '' }); } catch (e) { clearTimeout(t); finish({ postThrew: String(e) }); }
+const WORKER = `self.onmessage = e => { postMessage({ type: 'done', value: 'ran:' + e.data.op }); };`;
+
+const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+const results = [];
+
+for (const [name, swSource] of Object.entries(variants)) {
+  const server = http.createServer((req, res) => {
+    const p = new URL(req.url, 'http://x').pathname;
+    if (p === '/' || p === '/index.html') return res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(PAGE);
+    if (p === '/sw.js') return res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' }).end(swSource);
+    if (p === '/runtimes/worker.js') return res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' }).end(WORKER);
+    // Everything the deployed worker precaches is absent here on purpose: the
+    // install step is allSettled, so a missing shell file must not sink it.
+    return res.writeHead(404, { 'Content-Type': 'text/plain' }).end('404');
   });
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  const origin = `http://127.0.0.1:${server.address().port}`;
 
-  res.plainBlobWorker = await attempt(() => new Worker(URL.createObjectURL(
-    new Blob(['onmessage=e=>postMessage({pong:e.data})'], { type: 'text/javascript' }))));
-  res.realWorker = await attempt(() => new Worker(workerUrl));
-  res.blobImportScriptsWorker = await attempt(() => new Worker(URL.createObjectURL(
-    new Blob([`importScripts(${JSON.stringify(workerUrl)});`], { type: 'text/javascript' }))));
-  return res;
-}, WORKER);
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const consoleErrors = [];
+  page.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 160)); });
+  page.on('pageerror', e => consoleErrors.push('pageerror: ' + e.message.slice(0, 160)));
 
-await page.goto(LIVE, { waitUntil: 'domcontentloaded', timeout: 90000 });
-await page.waitForTimeout(4000);
-say('VISIT1 %s', JSON.stringify(await probes(), null, 0));
+  await page.goto(origin + '/', { waitUntil: 'load' });
+  await page.waitForFunction(() => document.title !== 'booting', null, { timeout: 15000 }).catch(() => {});
+  const firstTitle = await page.title();
+  // Second navigation: the document now comes back through the worker, which is
+  // the state the live kitchen reloads itself into.
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForTimeout(800);
 
-// The app reloads itself once the worker takes control; give it the chance.
-await page.waitForTimeout(9000);
-say('VISIT1b %s', JSON.stringify(await probes(), null, 0));
+  const probe = await page.evaluate(() => new Promise(resolve => {
+    const out = { crossOriginIsolated: globalThis.crossOriginIsolated === true, controller: !!navigator.serviceWorker?.controller };
+    let w, done = false;
+    const finish = r => { if (!done) { done = true; clearTimeout(t); try { w?.terminate(); } catch {} resolve({ ...out, ...r }); } };
+    const t = setTimeout(() => finish({ worker: 'timeout after 6s' }), 6000);
+    try { w = new Worker(new URL('runtimes/worker.js', document.baseURI)); }
+    catch (e) { return finish({ worker: 'threw: ' + (e.message || e) }); }
+    w.onmessage = ({ data }) => finish({ worker: 'ran', value: data.value });
+    w.onerror = e => finish({ worker: 'onerror', message: e.message || '(empty)', filename: e.filename || null });
+    w.postMessage({ op: 'json' });
+  }));
 
-await page.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
-await page.waitForTimeout(6000);
-say('VISIT2 %s', JSON.stringify(await probes(), null, 0));
-
-// ---- layer 5: same page, service worker gone ----
-const unregistered = await page.evaluate(async () => {
-  const rs = await navigator.serviceWorker.getRegistrations();
-  for (const r of rs) await r.unregister();
-  if (globalThis.caches) for (const k of await caches.keys()) await caches.delete(k);
-  return rs.length;
-});
-say('UNREGISTERED %d registration(s)', unregistered);
-await page.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
-await page.waitForTimeout(4000);
-say('VISIT3-no-sw %s', JSON.stringify(await probes(), null, 0));
-
-say('CONSOLE (%d lines)', consoleLines.length);
-for (const line of consoleLines.slice(0, 40)) say('  | %s', line.slice(0, 220));
+  results.push({ name, origin, firstTitle, ...probe, consoleErrors: consoleErrors.slice(0, 4) });
+  console.log(JSON.stringify(results[results.length - 1]));
+  await context.close();
+  await new Promise(r => server.close(r));
+}
 
 await browser.close();
+fs.writeFileSync('DIAGNOSIS.txt', results.map(r => JSON.stringify(r, null, 1)).join('\n') + '\n');
+console.log('\nVERDICT');
+for (const r of results) {
+  console.log(`  ${r.worker === 'ran' ? 'WORKS ' : 'BLOCKED'}  isolated=${r.crossOriginIsolated ? 'yes' : 'no '}  ${r.name}`);
+}

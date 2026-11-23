@@ -8,9 +8,9 @@ import { isBackupBuild } from './build-mode.js';
  * Two lists live here on purpose:
  *
  *   CHANGELOG  every public release. This is all index.html ever shows.
- *   TVAR_LOG   extended minor versions built *after* a release, shown only in
- *              the backup kitchen. TVAR means "test version after release", so
- *              1.1 TVAR 1 is the first test build made on top of 1.1. The
+ *   TVBR_LOG   extended minor versions built *after* a release, shown only in
+ *              the backup kitchen. TVBR means "test version after release", so
+ *              1.1 TVBR 1 is the first test build made on top of 1.1. The
  *              counter resets with each public release, and nothing about it is
  *              mentioned on the public page — there it is simply 1.1.
  *
@@ -21,27 +21,27 @@ import { isBackupBuild } from './build-mode.js';
  */
 export const APP_VERSION = '1.2.8';
 
-/** Test versions built after 1.2 shipped. Reset to 0 on every public release. */
-export const TVAR = 3;
+/** Test versions built in the open cycle. Reset to 0 on every public release. */
+export const TVBR = 1;
 
 /**
  * The release cycle the open test build belongs to.
  *
  * Its own constant rather than APP_VERSION, because the two are not the same
- * string any more: 1.2.1 is what the public kitchen reports, while the backup
- * kitchen is still testing on top of 1.2. Deriving the extended label from
- * APP_VERSION would have announced "1.2.6 TVAR 1" — a build that has never
- * existed — and renumbered the entry below it that documents the one that has.
+ * string any more: 1.2.8 is what the public kitchen reports, while the backup
+ * kitchen tests on top of the next cycle. Deriving the extended label from
+ * APP_VERSION would have announced "1.2.8 TVBR 1" — a build that has never
+ * existed — and renumbered the entries that document the ones that have.
  */
-export const TVAR_CYCLE = '1.2';
+export const TVBR_CYCLE = '1.3';
 
-/** `1.2 TVAR 3` — the extended label, used only while a test version is open. */
-export const APP_VERSION_EXTENDED = `${TVAR_CYCLE} TVAR ${TVAR}`;
+/** `1.3 TVBR 1` — the extended label, used only while a test version is open. */
+export const APP_VERSION_EXTENDED = `${TVBR_CYCLE} TVBR ${TVBR}`;
 
 /** What the footer of the changelog should call this build. */
 export function appVersionLabel() {
-  // TVAR 0 means "no test version is open", so both builds report the release.
-  return isBackupBuild() && TVAR > 0 ? APP_VERSION_EXTENDED : APP_VERSION;
+  // TVBR 0 means "no test version is open", so both builds report the release.
+  return isBackupBuild() && TVBR > 0 ? APP_VERSION_EXTENDED : APP_VERSION;
 }
 
 /**
@@ -49,12 +49,57 @@ export function appVersionLabel() {
  * real build a person can open, so each one documents what changed in it and
  * what is known to be rough — that is the whole point of writing them down.
  */
-export const TVAR_LOG = [
+export const TVBR_LOG = [
   {
-    version: '1.2 TVAR 3',
+    version: '1.3 TVBR 1',
+    date: 'November 24, 2026',
+    title: 'The chat grew a memory and a sidebar, and the test build got the name it always meant',
+    tvbr: true,
+    groups: [
+      {
+        label: '\u{1F3F7}\uFE0F TVAR is now TVBR',
+        items: [
+          'The label these builds carry read TVAR, which was never a word. It means Test Version BEfore Release, so it now reads TVBR: 141 occurrences across seven files — this changelog, the two AI modules, the stylesheet and four test files — with the constants that build the label (TVBR, TVBR_CYCLE, TVBR_LOG) and the class that marks an entry in the list (is-tvbr) renamed along with it.',
+          'The 1.2 cycle closed at TVBR 3 and this opens the 1.3 one at TVBR 1, so the counter starts again. That is why cycle and count are separate constants, and why the six entries below still read 1.2 and 1.1 instead of being renumbered: their spelling changed with everything else, since TVAR was never what they meant to say, but their versions did not, because those are the builds that exist.',
+          'The public kitchen reports none of it. It is at 1.2.8 and stays there, and everything in the three groups below is the backup kitchen\u2019s alone: one flag, read by both the markup and the behaviour, decides which build is which, so there is no rail without a store behind it and no store writing chats nobody can open.'
+        ]
+      },
+      {
+        label: '\u{1F9C7} The layout: a chat that looks like a chat',
+        items: [
+          'Two panes instead of one column. A 264px rail of every conversation kept on this device sits beside the conversation, and the dialog widened from 680px to as much as 1040px to make room for it. Below 900px the rail slides over the chat as a drawer from a \u2630 Chats button in the header and starts shut, because a phone has no room for both and opening the kitchen to find a panel hiding the conversation defeats the purpose.',
+          'Every entry is named after the first thing said rather than \u201CNew chat\u201D: 44 characters of it with the markdown stripped, an emoji from six rules about what was asked (\u{1F3A8} an image, \u{1F9FE} code, \u{1F9C7} the kitchen, \u{1F522} sums, \u270D\uFE0F writing, \u{1F50E} a lookup, \u{1F4AC} anything else), then how many messages it holds and how long ago. A thread is named once and left alone, so the rail cannot shuffle under the cursor while it is being read; \u270E renames one by hand and a hand-renamed title is never overwritten.',
+          '\u201CNew Chat\u201D stopped destroying anything. It used to reset the conversation to the greeting and the old one was simply gone; now it starts a fresh thread and the previous one stays in the rail, which is the whole difference between a new chat and a deleted one. Deleting is its own act: \u2715 on one thread, or all of them behind a confirmation that says what Export is for.',
+          'Opening the kitchen reopens the last conversation instead of a blank one, and a pill under the disclaimer names where it is being kept — Saved, Saving\u2026, Saved without its pictures, Could not save — rather than leaving a person to guess whether what they just said was written down.',
+          'The rail keeps the house style rather than borrowing one: 2.5px ink borders, the wooden drop shadow, butter yellow on the thread that is open, buttons that lift on hover and stay visible where there is no hover to find them. 31 new blocks in the stylesheet, none of them touching a rule the rest of the kitchen reads.'
+        ]
+      },
+      {
+        label: '\u{1F4BE} Where the chats live, and the wall in front of them',
+        items: [
+          'Chats are saved as they settle: one write at the end of every repaint, debounced 350ms and skipped entirely while a reply is still streaming, so a half-written answer is never the one that gets remembered. One hook at the end of rendering rather than one at each of the four places a message is added, because those drift apart.',
+          'Storage is tried in order — IndexedDB, then localStorage, then plain memory — and the pill names which one the kitchen got, because \u201Csaved\u201D means a different amount on each. A browser that refuses both still gets a conversation that lasts the visit, and says so instead of pretending otherwise.',
+          'The limit, stated plainly because it cannot be engineered around: nothing a browser stores survives Clear cookies and site data. Chrome and Firefox file IndexedDB, localStorage, OPFS and the cache together under that one button, and this kitchen has no server to put a conversation anywhere else — it is a static site. What survives closing the tab, restarting the browser and coming back next month does not survive that.',
+          'Export writes every kept chat into one .json file, which is the only copy that outlives a wipe, and Import reads one back. Importing cannot roll a live conversation backwards: threads are matched by id and the newer timestamp wins, so an old file meeting a chat that has moved on loses, and the tally reports how many were added, updated and left alone. A file that is not a chat export is refused with the reason it was refused.',
+          'Pictures are the part that does not fit. A generated image is a data URL, so a thread is held to 6 MB and anything over it is written down without its pictures, each one flagged so the bubble can say why; if the smaller copy is refused too, the write reports the failure rather than swallowing it. The rail holds 60 threads and drops the oldest past that.',
+          'What never reaches storage: streaming state, progress bars and empty bubbles are stripped on the way in, so a reopened chat cannot show a reply frozen mid-word. The storage itself is one new module, waffle-chat-store.js at 348 lines, which nothing but waffle-ai.js imports.'
+        ]
+      },
+      {
+        label: '\u{1F9EA} What is checked, and what is not',
+        items: [
+          'tests/ai-chat-store.test.js, 12 tests, and IndexedDB is one of the paths rather than being skipped: a store only ever tested against an in-memory Map proves nothing about the one that ships. The tests carry a small fake — open, one object store, the five requests the backend issues — that can also be told to refuse a write, which is how the quota path gets tested at all.',
+          'What they hold down: a round trip through IndexedDB newest-first; titles from every emoji rule plus the markdown, multi-part and over-long cases; pictures dropped over budget with the words kept; a quota refusal answered by a second, smaller write and then reported honestly when that fails too; the 60-thread cap; the three-step fallback and its degraded flag; a localStorage kitchen that finds its chats after a simulated reload; an export/import round trip; the newer-wins rule in both directions; seven files that are not exports, each refused; and the sanitising helpers against null, a bare string and a 200-character title.',
+          'What they do not: no real browser storage runs in node, so IndexedDB here is a fake wearing the same interface, and nothing asserts the layout — the rail, the drawer and the pill are checked by eye in the preview, while tests/ai-overlay-dom.test.js still pins the overlay ids the rest of the kitchen depends on. The browser tests remain CI-only, because that is where there is a Chromium to run them in.'
+        ]
+      }
+    ]
+  },
+  {
+    version: '1.2 TVBR 3',
     date: 'November 23, 2026',
     title: 'The error that blamed file:// for everything, and the notice that replaces it',
-    tvar: true,
+    tvbr: true,
     groups: [
       {
         label: '\u{1F41B} What was actually wrong',
@@ -83,10 +128,10 @@ export const TVAR_LOG = [
     ]
   },
   {
-    version: '1.2 TVAR 2',
+    version: '1.2 TVBR 2',
     date: 'November 23, 2026',
     title: 'SCRAPPED: the offline download, and the wall four builds of it kept finding',
-    tvar: true,
+    tvbr: true,
     groups: [
       {
         label: '\u{1F5D1}\u{FE0F} What is gone',
@@ -130,10 +175,10 @@ export const TVAR_LOG = [
     ]
   },
   {
-    version: '1.2 TVAR 1',
+    version: '1.2 TVBR 1',
     date: 'November 22, 2026',
     title: 'Eight models, tighter quants, and a door that is not a gesture',
-    tvar: true,
+    tvbr: true,
     groups: [
       {
         label: '\u{1F9EA} What this build is for',
@@ -178,10 +223,10 @@ export const TVAR_LOG = [
     // The newest entry always spells the counter out literally, and a test
     // pins it to APP_VERSION_EXTENDED, so history cannot quietly renumber
     // itself when the counter moves.
-    version: '1.1 TVAR 3',  // history: a test build of the 1.1 cycle
+    version: '1.1 TVBR 3',  // history: a test build of the 1.1 cycle
     date: 'November 20, 2026',
     title: 'The one that knows what a Huawei tablet is',
-    tvar: true,
+    tvbr: true,
     groups: [
       {
         label: '\u{1F41B} What was actually wrong',
@@ -223,10 +268,10 @@ export const TVAR_LOG = [
     ]
   },
   {
-    version: '1.1 TVAR 2',  // history: a test build of the 1.1 cycle
+    version: '1.1 TVBR 2',  // history: a test build of the 1.1 cycle
     date: 'November 19, 2026',
     title: 'The one that stops freezing, and stops blaming your network',
-    tvar: true,
+    tvbr: true,
     groups: [
       {
         label: '\u{1F41B} What was actually wrong',
@@ -295,17 +340,17 @@ export const TVAR_LOG = [
     ]
   },
   {
-    version: '1.1 TVAR 1',  // history: a test build of the 1.1 cycle
+    version: '1.1 TVBR 1',  // history: a test build of the 1.1 cycle
     date: 'November 18, 2026',
     title: 'First test build after 1.1',
-    tvar: true,
+    tvbr: true,
     groups: [
       {
-        label: '\u{1F9EA} What a TVAR build is',
+        label: '\u{1F9EA} What a TVBR build is',
         items: [
-          'TVAR stands for test version after release. A TVAR build is the shipped release plus everything being tried on top of it, and this list only exists in the backup kitchen \u2014 the public page keeps saying 1.1 and nothing more.',
-          'The counter resets with every public release, so 1.1 TVAR 1 is the first test build after 1.1, and the first one after 1.2 would be 1.2 TVAR 1.',
-          'Nothing here is promised. A TVAR entry can be rewritten, renumbered or thrown away before it becomes a release, which is exactly why it is written down separately.'
+          'TVBR stands for test version after release. A TVBR build is the shipped release plus everything being tried on top of it, and this list only exists in the backup kitchen \u2014 the public page keeps saying 1.1 and nothing more.',
+          'The counter resets with every public release, so 1.1 TVBR 1 is the first test build after 1.1, and the first one after 1.2 would be 1.2 TVBR 1.',
+          'Nothing here is promised. A TVBR entry can be rewritten, renumbered or thrown away before it becomes a release, which is exactly why it is written down separately.'
         ]
       },
       {
@@ -740,10 +785,10 @@ function buildChangelog() {
   wrap.id = 'changelog-overlay';
   wrap.hidden = true;
 
-  const releases = isBackupBuild() ? [...TVAR_LOG, ...CHANGELOG] : CHANGELOG;
+  const releases = isBackupBuild() ? [...TVBR_LOG, ...CHANGELOG] : CHANGELOG;
 
   const entries = releases.map((entry, idx) => `
-    <article class="changelog-entry ${idx === 0 ? 'is-latest' : ''}${entry.tvar ? ' is-tvar' : ''}">
+    <article class="changelog-entry ${idx === 0 ? 'is-latest' : ''}${entry.tvbr ? ' is-tvbr' : ''}">
       <header class="changelog-entry-head">
         <span class="changelog-version">${esc(entry.version)}</span>
         <span class="changelog-date">${esc(entry.date)}</span>
@@ -774,7 +819,7 @@ function buildChangelog() {
       <p class="changelog-intro">
         Every change to the kitchen, newest first. No newsletter, no &ldquo;what&rsquo;s new&rdquo; modal
         on launch \u2014 come read it when you want to.
-        ${isBackupBuild() ? 'This build also lists its TVAR entries: test versions made after a release, newest first.' : ''}
+        ${isBackupBuild() ? 'This build also lists its TVBR entries: test versions made after a release, newest first.' : ''}
       </p>
       <div class="changelog-list">${entries}</div>
       <footer class="changelog-foot">

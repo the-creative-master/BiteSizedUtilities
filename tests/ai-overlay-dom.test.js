@@ -103,6 +103,50 @@ test('the pill in the header is the way back, and looks like one', () => {
   assert.equal(marked().length, 0, 'none of them marked, because the answer was cleared');
 });
 
+test('the public kitchen keeps the single pane it has always had', async () => {
+  // This file's document carries no data-backup, so everything asserted here is
+  // what a visitor to the site gets. The overhauled layout and the chats it
+  // saves are this test version's subject, which makes them the backup
+  // kitchen's alone — and that is a fact about the markup, not an intention, so
+  // it is checked in the markup. tests/ai-chat-rail.test.js drives the other one.
+  assert.equal(document.documentElement.dataset.backup, undefined, 'and this really is the public page');
+  openWaffleAI();
+  await new Promise(r => setTimeout(r, 25));
+
+  assert.equal($('.waffle-ai-rail'), null, 'no rail of saved chats');
+  assert.equal($('#waffle-ai-thread-list'), null, 'no thread list behind one');
+  assert.equal($('#waffle-ai-saving'), null, 'and no pill claiming a conversation is being kept');
+  assert.equal($('#waffle-ai-rail-toggle'), null, 'nor a button that would open a drawer to nowhere');
+  for (const id of ['#waffle-ai-export', '#waffle-ai-import', '#waffle-ai-import-in', '#waffle-ai-clear-all',
+    '#waffle-ai-new-chat', '#waffle-ai-rail-close', '#waffle-ai-rail-empty', '#waffle-ai-rail-count']) {
+    assert.equal($(id), null, `${id} belongs to the backup kitchen`);
+  }
+  assert.ok(!$('.waffle-ai-dialog').classList.contains('waffle-ai-chat-dialog'),
+    'the dialog keeps the width it has always had, not the widened one');
+
+  // And everything a visitor already had is still there, in the same places,
+  // with the pane wrapper the rail would share sitting inertly around it.
+  for (const id of ['#waffle-ai-feed', '#waffle-ai-starters', '#waffle-ai-form', '#waffle-ai-input',
+    '#waffle-ai-send', '#waffle-ai-stop', '#waffle-ai-attach', '#waffle-ai-file-in', '#waffle-ai-web-toggle',
+    '#waffle-ai-img-toggle', '#waffle-ai-models-btn', '#waffle-ai-reset', '#waffle-ai-close', '#waffle-ai-title',
+    '#waffle-ai-badge', '#waffle-ai-device-status', '#waffle-ai-device-note', '#waffle-ai-os-ask']) {
+    assert.ok($(id), `${id} survived the rebuild`);
+  }
+  assert.ok($('.waffle-ai-dialog .waffle-ai-shell .waffle-ai-main #waffle-ai-feed'),
+    'the feed is still inside the dialog, one wrapper deeper');
+  assert.ok($('.waffle-ai-header #waffle-ai-models-btn'), 'and the header still holds its own buttons');
+});
+
+test('the public kitchen writes no conversation to storage, because it keeps none', async () => {
+  closeWaffleAI();
+  await new Promise(r => setTimeout(r, 25));
+  const keys = [];
+  for (let i = 0; i < window.localStorage.length; i += 1) keys.push(window.localStorage.key(i));
+  assert.ok(keys.includes('waffle-ai-os-asked'), 'the device answer is still stored, exactly as it was');
+  assert.deepEqual(keys.filter(k => /chat|thread|waffle-ai-chats/.test(k)), [],
+    'and not one conversation is written down, so nothing here suggests a chat outlives the tab');
+});
+
 test('a reopened window survives the next status update', () => {
   // renderOsAsk() runs on every badge refresh, and it closes the question when
   // this release has already asked — which is the state a reopened window is in.

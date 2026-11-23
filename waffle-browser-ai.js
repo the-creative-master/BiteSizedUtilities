@@ -287,11 +287,11 @@ export const OFFERED_TEXT_MODEL_IDS = [
  * ever had — deleting entries breaks CI, the source reports, and the stored
  * preference of any visitor who chose one.
  */
-export const TVAR_OFFERED_TEXT_MODEL_IDS = [...OFFERED_TEXT_MODEL_IDS];
+export const TVBR_OFFERED_TEXT_MODEL_IDS = [...OFFERED_TEXT_MODEL_IDS];
 
 /** The menu this page renders: the test build's in the backup kitchen, the release's everywhere else. */
 export function offeredModelIds() {
-  return isBackupBuild() ? TVAR_OFFERED_TEXT_MODEL_IDS : OFFERED_TEXT_MODEL_IDS;
+  return isBackupBuild() ? TVBR_OFFERED_TEXT_MODEL_IDS : OFFERED_TEXT_MODEL_IDS;
 }
 
 /**
@@ -302,7 +302,7 @@ export function offeredModelIds() {
  */
 export const ALL_OFFERED_TEXT_MODEL_IDS = [
   ...OFFERED_TEXT_MODEL_IDS,
-  ...TVAR_OFFERED_TEXT_MODEL_IDS.filter(id => !OFFERED_TEXT_MODEL_IDS.includes(id))
+  ...TVBR_OFFERED_TEXT_MODEL_IDS.filter(id => !OFFERED_TEXT_MODEL_IDS.includes(id))
 ];
 
 /**
@@ -2717,7 +2717,7 @@ export function quantRangeOrder(cfg) {
 
 export function quantListFor(cfg) {
   const preset = QUANT_PRESETS.find(q => q.id === getSelectedQuantPreset()) || QUANT_PRESETS[0];
-  // 1.2 TVAR 1 says the 0.6B may be fetched at 4, 5 or 6 bit and no lower, and
+  // 1.2 TVBR 1 says the 0.6B may be fetched at 4, 5 or 6 bit and no lower, and
   // appending the preset's Q3_K_L chain behind that would quietly break the rule
   // the first time a repo turned out not to publish Q4_K_M. A model with no range
   // of its own keeps the old behaviour: its declared quant first, preset behind.

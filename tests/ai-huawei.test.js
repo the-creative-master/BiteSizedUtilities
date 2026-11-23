@@ -373,7 +373,12 @@ test('the device question is its own window, not a strip inside the chat', () =>
   // different shape on every device that had not answered yet — a window that
   // moves while a model is loading.
   assert.match(src, /<div class="waffle-os-modal" id="waffle-ai-os-ask" hidden role="dialog" aria-modal="true"/);
-  assert.ok(src.indexOf('waffle-os-modal') < src.indexOf('<div class="waffle-ai-dialog" role="dialog"'),
+  // Searched for rather than spelled out, and anchored on the chat window's own
+  // label id: the paused-AI notice reuses the waffle-ai-dialog class, so a
+  // looser search finds that one instead and compares the wrong two positions.
+  const dialogAt = src.search(/<div class="waffle-ai-dialog[^"]*" role="dialog" aria-modal="true" aria-labelledby="waffle-ai-title"/);
+  assert.ok(dialogAt > -1, 'the chat window is still its own dialog in the overlay markup');
+  assert.ok(src.indexOf('waffle-os-modal') < dialogAt,
     'the modal is a sibling of the chat window, not a child of it');
   const at = src.indexOf('waffle-disclaimer-box');
   const disclaimer = src.slice(at, at + 900);

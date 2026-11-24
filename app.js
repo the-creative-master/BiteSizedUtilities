@@ -52,7 +52,8 @@ import {
   IMAGE_MODELS,
   detectImageCapabilities,
   imageCacheInfo,
-  clearImageModelCache
+  clearImageModelCache,
+  screenLockState
 } from './waffle-image-gen.js';
 
 const $ = s => document.querySelector(s);
@@ -459,14 +460,53 @@ function cupboardCard(c) {
 
 function shelfItemCard(t) {
   const isFav = favorites.has(t.id);
+  // A star on somebody else's shelf — Saved Toys, Recently Played, search results
+  // — keeps the shelf layout and just wears the badge. Only its own cupboard gives
+  // it the plinth, because there it is the flagship rather than a guest.
+  const starName = t.star ? `${esc(t.name)} — star of the ${esc(cupboardName(t.cupboard))} cupboard` : '';
   return `
-    <div class="shelf-object-slot">
+    <div class="shelf-object-slot${t.star ? ' is-star' : ''}">
       <button type="button" class="favorite-sticker ${isFav ? 'is-favorite' : ''}" data-fav="${t.id}" aria-label="${isFav ? 'Unsave' : 'Save'} ${esc(t.name)}" aria-pressed="${isFav}">
         ${uiIconSVG('heart')}
       </button>
-      <button type="button" class="shelf-object" data-tool="${t.id}" style="--cup:${t.color}">
+      ${t.star ? `<span class="shelf-star-badge" aria-hidden="true">⭐</span>` : ''}
+      <button type="button" class="shelf-object" data-tool="${t.id}" style="--cup:${t.color}"${starName ? ` aria-label="${starName}"` : ''}>
         <span class="object-tile">${toolPropSVG(t.id)}</span>
         <span class="object-label">${esc(t.name)}</span>
+      </button>
+    </div>
+  `;
+}
+
+/** The cupboard's display name, for sentences that have to say which one. */
+function cupboardName(id) {
+  return ALL_CUPBOARDS.find(c => c.id === id)?.name || 'cupboard';
+}
+
+/**
+ * The star of a cupboard, on a plinth of its own instead of in a row.
+ *
+ * `catalog.js` has named one tool per cupboard as its star since 1.2 and nothing
+ * on screen ever read the flag: CodeHub looked exactly like the fourteenth utility
+ * beside it, and the description that explains what it is had nowhere to go. The
+ * plinth is twice the tile, the sentence the grid never had room for, and a badge
+ * that names the cupboard this one stars in.
+ */
+function starPlinthHTML(t, cupName) {
+  const isFav = favorites.has(t.id);
+  return `
+    <div class="star-plinth" style="--cup:${t.color}">
+      <button type="button" class="favorite-sticker ${isFav ? 'is-favorite' : ''}" data-fav="${t.id}" aria-label="${isFav ? 'Unsave' : 'Save'} ${esc(t.name)}" aria-pressed="${isFav}">
+        ${uiIconSVG('heart')}
+      </button>
+      <span class="star-badge">⭐ Star of ${esc(cupName)}</span>
+      <button type="button" class="star-plinth-open" data-tool="${t.id}" aria-label="Open ${esc(t.name)}, star of the ${esc(cupName)} cupboard">
+        <span class="star-plinth-tile">${toolPropSVG(t.id)}</span>
+        <span class="star-plinth-copy">
+          <span class="star-plinth-name">${esc(t.name)}</span>
+          <span class="star-plinth-desc">${esc(t.description || '')}</span>
+          <span class="star-plinth-cta">Open it →</span>
+        </span>
       </button>
     </div>
   `;
@@ -613,13 +653,21 @@ async function collection(id) {
       ? TOOLS.filter(t => favorites.has(t.id))
       : recent.map(rid => TOOLS.find(t => t.id === rid)).filter(Boolean);
 
+  // The star comes off the shelf and onto its own plinth, so a cupboard opens on
+  // the tool it is known for rather than on whatever sorts first. Real cupboards
+  // only: on Saved Toys and Recently Played the same tool is a guest, and guests
+  // keep the shelf layout with the badge on.
+  const starTool = c ? tools.find(t => t.star) : null;
+  const shelfTools = starTool ? tools.filter(t => t !== starTool) : tools;
+
   // 2 per shelf on mobile & Math (clean 5-shelf wooden cabinet!), 3 per shelf on wider 15-tool cupboards
   const perShelf = (window.innerWidth <= 640 || id === 'math') ? 2 : 3;
-  const shelves = chunkShelves(tools, perShelf);
+  const shelves = chunkShelves(shelfTools, perShelf);
 
   $('#main').innerHTML = `
     <section class="open-cupboard-scene" style="--cup:${theme.color};--trim:${theme.trim}">
       ${woodenSignboardHTML({ kicker: tagline, title, leftDoodle: theme.doodles[0], rightDoodle: theme.doodles[1] })}
+      ${starTool ? starPlinthHTML(starTool, c.name) : ''}
       <div class="cabinet-bookcase ${perShelf === 2 ? 'cabinet-compact' : ''}">
         <div class="cabinet-crown" aria-hidden="true"></div>
         <div class="cabinet-interior">
@@ -628,7 +676,7 @@ async function collection(id) {
               <div class="shelf-objects-grid shelf-cols-${perShelf}">${row.map(shelfItemCard).join('')}</div>
               <div class="wooden-plank" aria-hidden="true"></div>
             </div>
-          `).join('') : `
+          `).join('') : starTool ? '' : `
             <div class="empty-shelf">
               <p>${id === 'favorites' ? 'Tap the heart sticker on any toy to keep it on this shelf!' : 'Open any toy in a cupboard and it will appear here!'}</p>
               <button type="button" class="gbtn gbtn-primary" data-nav="all">Back to Kitchen Wall</button>
@@ -1192,7 +1240,13 @@ function paintDeviceFacts(d) {
       d.canThread ? 'multi-thread ok' : 'single-thread (no COOP/COEP on static hosts)',
       settingsImageCaps.hasWebGPU
         ? `image model: WebGPU ok${settingsImageCaps.hasF16 ? ' · fp16' : ''} · ${settingsImageCaps.mode || 'desktop'} build`
-        : 'image model: no WebGPU here, so /imagine cannot run'
+        : 'image model: no WebGPU here, so /imagine cannot run',
+      // A multi-gigabyte first run is long enough to be interrupted by the system,
+      // and whether this browser can ask for the screen is part of what the user is
+      // deciding when they pick a build. Stated here, not only after a failure.
+      screenLockState().supported
+        ? 'screen lock: held while a picture generates'
+        : 'screen lock: not available in this browser, so a hidden tab can be paused mid-run'
     ].filter(Boolean) : [];
     detail.textContent = bits.join(' · ');
     detail.hidden = bits.length === 0;

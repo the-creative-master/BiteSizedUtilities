@@ -29,6 +29,8 @@ function midiToName(midi) {
 
 function createAudioEngine() {
   let ctx = null;
+  let bus = null;
+  let analyser = null;
   const ensure = () => {
     if (!ctx && typeof window !== 'undefined') {
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -37,9 +39,36 @@ function createAudioEngine() {
     if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
     return ctx;
   };
+  /**
+   * One gain into one analyser into the speakers.
+   *
+   * Every voice the lab makes goes through here instead of straight to
+   * `destination`, which is what lets the experimental bench draw a spectrum of
+   * the music it is actually playing. A visualiser wired to the microphone would
+   * have drawn the room; one wired to an oscillator it invented itself would have
+   * drawn a guess. This one draws the output.
+   */
+  const out = () => {
+    const c = ensure();
+    if (!c) return null;
+    if (!bus || bus.context !== c) {
+      bus = c.createGain();
+      bus.gain.value = 0.92;
+      analyser = c.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.72;
+      bus.connect(analyser);
+      analyser.connect(c.destination);
+    }
+    return bus;
+  };
+  /** The analyser, or null on a page with no AudioContext at all. */
+  const getAnalyser = () => (out() ? analyser : null);
   const playTone = (freq, { type = 'triangle', duration = 0.28, gain = 0.22, when = 0, attack = 0.01, slideTo = null } = {}) => {
     const c = ensure();
     if (!c) return;
+    const dest = out();
+    if (!dest) return;
     const t = c.currentTime + when;
     const osc = c.createOscillator();
     const g = c.createGain();
@@ -50,13 +79,15 @@ function createAudioEngine() {
     g.gain.linearRampToValueAtTime(gain, t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(attack + 0.02, duration));
     osc.connect(g);
-    g.connect(c.destination);
+    g.connect(dest);
     osc.start(t);
     osc.stop(t + duration + 0.03);
   };
   const playDrum = (kind, when = 0, vol = 0.35) => {
     const c = ensure();
     if (!c) return;
+    const dest = out();
+    if (!dest) return;
     const t = c.currentTime + when;
     if (kind === 'kick') {
       const osc = c.createOscillator();
@@ -66,7 +97,7 @@ function createAudioEngine() {
       osc.frequency.exponentialRampToValueAtTime(38, t + 0.14);
       g.gain.setValueAtTime(vol * 1.4, t);
       g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
-      osc.connect(g); g.connect(c.destination);
+      osc.connect(g); g.connect(dest);
       osc.start(t); osc.stop(t + 0.24);
       return;
     }
@@ -86,7 +117,7 @@ function createAudioEngine() {
     const g = c.createGain();
     g.gain.setValueAtTime(vol * (kind === 'hihat' ? 0.45 : 0.8), t);
     g.gain.exponentialRampToValueAtTime(0.001, t + len / c.sampleRate);
-    src.connect(filt); filt.connect(g); g.connect(c.destination);
+    src.connect(filt); filt.connect(g); g.connect(dest);
     src.start(t);
     if (kind === 'snare') {
       playTone(185, { type: 'triangle', duration: 0.09, gain: vol * 0.45, when, slideTo: 90 });
@@ -95,8 +126,10 @@ function createAudioEngine() {
   const close = () => {
     if (ctx && typeof ctx.close === 'function') ctx.close().catch(() => {});
     ctx = null;
+    bus = null;
+    analyser = null;
   };
-  return { ensure, playTone, playDrum, close };
+  return { ensure, playTone, playDrum, close, getAnalyser };
 }
 
 function encodeWavFromSamples(samples, sampleRate = 44100) {
@@ -132,6 +165,16 @@ function mountWaffleMusicLab(root) {
   let timer = null;
   let rafId = null;
   let micStream = null;
+
+  /**
+   * The experimental bench's setup, kept here rather than inside its own render so
+   * that loading somebody else's bench code can rebuild every control around the
+   * values it carried. `pattern: null` means "compose one on the way in".
+   */
+  const bench = {
+    scale: 'Major', inst: 'triangle', bpm: 104, density: 5,
+    swing: 0, humanise: 0, seed: 20260, bass: true, pattern: null
+  };
 
   const panel = gEl('div', { class: 'game-panel' });
   const stage = gEl('div', { style: { marginTop: '12px' } });
@@ -555,18 +598,352 @@ function mountWaffleMusicLab(root) {
     );
   };
 
+  // --- Mode 6: The Bench (experimental, new in 1.3 TVBR 3) ---
+  /**
+   * A bench rather than a finished tool, and labelled that way on screen.
+   *
+   * The Song Maker is a drawing surface where every cell is a decision somebody
+   * made. This is the other idea: a seeded composer that writes a tune through the
+   * scale, and four sliders that change how it is *played* rather than what it
+   * says — swing, humanise, an automatic bass, and a spectrum of the lab's own
+   * output. It does not reuse the Song Maker's grid on purpose; the two are
+   * answering different questions and a merged control panel would be worse at
+   * both.
+   */
+  const renderBench = () => {
+    stopLoops();
+    const steps = 16;
+    const rows = 14;
+    let scaleName = bench.scale;
+    let inst = bench.inst;
+    let bpm = bench.bpm;
+    let density = bench.density;
+    let swing = bench.swing;
+    let humanise = bench.humanise;
+    let seed = bench.seed;
+    let bassOn = bench.bass;
+    let playing = false;
+    let step = 0;
+    let lastRow = Math.floor(rows / 2);
+
+    const getRowMidi = r => {
+      const intervals = SCALES[scaleName] || SCALES.Major;
+      const idx = rows - 1 - r;
+      const oct = Math.floor(idx / intervals.length);
+      const deg = intervals[idx % intervals.length];
+      return 60 + oct * 12 + deg;
+    };
+
+    /**
+     * mulberry32. The composer is seeded on purpose: a bench code hands somebody
+     * the same tune, not a similar one.
+     *
+     * The state has to live in the closure and be *mutated* by each call. Written
+     * the obvious-looking way — re-deriving it from the seed inside the returned
+     * function — every call returns the same number, and a seed whose one number
+     * falls under the rest threshold composes sixteen rests and plays silence.
+     */
+    const makeRng = seed0 => {
+      let s = seed0 >>> 0;
+      return () => {
+        s = (s + 0x6d2b79f5) >>> 0;
+        let t = s;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    };
+
+    /**
+     * A tune, not a grid full of dice.
+     *
+     * The Randomize button on the Song Maker is uniform noise, which is why nobody
+     * plays it twice. This walks the scale instead: mostly steps with a leap now
+     * and then, rests that get more likely as the phrase fills so `density` means
+     * something, a slow arch up in the first half and back down in the second, and
+     * a last note on the tonic — because an ear reads degree zero as a full stop
+     * and a phrase that ends anywhere else sounds like it was cut off.
+     */
+    const compose = () => {
+      const rand = makeRng(seed);
+      const want = Math.max(2, Math.round((density / 10) * steps * 0.85));
+      const out = Array(steps).fill(null);
+      let row = Math.floor(rows / 2);
+      let dir = rand() < 0.5 ? 1 : -1;
+      let placed = 0;
+      for (let c = 0; c < steps; c++) {
+        if (placed >= want || rand() < 0.16 + (placed / want) * 0.22) continue;
+        // Momentum, not a coin per note. A melody runs in one direction for a
+        // couple of steps and then turns; picking the direction afresh every time
+        // is what made the first version of this oscillate between two adjacent
+        // degrees, which is less a tune than two notes arguing.
+        if (rand() < 0.3) dir = -dir;
+        const leap = rand() < 0.18 ? (rand() < 0.6 ? 2 : 3) : 1;
+        const arch = c < steps / 2 ? 1 : -1;
+        const nudge = rand() < 0.25 ? arch : 0;
+        let next = row + dir * leap + nudge;
+        // Turn round at the top and bottom rather than grinding along the edge.
+        if (next < 0 || next > rows - 1) {
+          dir = -dir;
+          next = Math.max(0, Math.min(rows - 1, row + dir * leap));
+        }
+        row = next;
+        out[c] = row;
+        lastRow = row;
+        placed += 1;
+      }
+      if (placed) {
+        // Land on the tonic, but on the *nearest* one: degree zero reads as a full
+        // stop wherever it sits, and a phrase that leaps two octaves down to find
+        // it sounds like it was cut off mid-sentence.
+        const perOctave = (SCALES[scaleName] || SCALES.Major).length;
+        const last = out[steps - 2] === null || out[steps - 2] === undefined ? lastRow : out[steps - 2];
+        const tonics = [rows - 1, rows - 1 - perOctave, rows - 1 - 2 * perOctave].filter(r => r >= 0 && r < rows);
+        out[steps - 1] = tonics.reduce((best, r) => (Math.abs(r - last) < Math.abs(best - last) ? r : best), tonics[0]);
+      }
+      // A bench that composes silence is a bug wearing a seed's clothes. With a
+      // real walk this needs about one seed in ten thousand, and it is cheaper to
+      // guarantee a phrase than to explain an empty strip.
+      if (!placed) {
+        out[0] = rows - 1;
+        out[4] = Math.max(0, rows - 3);
+        out[8] = rows - 1;
+        out[steps - 1] = rows - 1;
+      }
+      return out;
+    };
+
+    let pattern = Array.isArray(bench.pattern) && bench.pattern.length === steps
+      ? bench.pattern.slice()
+      : compose();
+    bench.pattern = pattern;
+
+    const describe = () => {
+      const notes = pattern.filter(r => r !== null).length;
+      return notes + (notes === 1 ? ' note' : ' notes') + ' in ' + scaleName +
+        ', seed ' + seed + ' · swing ' + swing + '% · humanise ' + humanise + '%' +
+        (bassOn ? ' · auto bass on' : '');
+    };
+
+    const readout = gEl('p', { class: 'bench-readout', role: 'status' });
+
+    const strip = gEl('div', {
+      class: 'bench-strip', role: 'group',
+      'aria-label': 'Generated steps. Tap a step to add or remove its note.'
+    });
+    const cells = [];
+    for (let c = 0; c < steps; c++) {
+      const b = gEl('button', {
+        type: 'button', class: 'bench-cell',
+        onClick: () => {
+          if (pattern[c] === null) pattern[c] = lastRow;
+          else { lastRow = pattern[c]; pattern[c] = null; }
+          bench.pattern = pattern;
+          paint();
+        }
+      });
+      cells.push(b);
+      strip.append(b);
+    }
+
+    const paint = () => {
+      for (let c = 0; c < steps; c++) {
+        const cell = cells[c];
+        const row = pattern[c];
+        const name = row === null ? '·' : midiToName(getRowMidi(row));
+        cell.textContent = name;
+        cell.style.background = row === null ? '#fffdf8' : LAB_COLORS[row % LAB_COLORS.length];
+        cell.classList.toggle('is-live', playing && c === step);
+        cell.setAttribute('aria-label', 'Step ' + (c + 1) + (row === null ? ', rest' : ', ' + name));
+      }
+      readout.textContent = describe();
+    };
+
+    // The spectrum of the lab's own output, through the bus in createAudioEngine.
+    const scope = gEl('canvas', { class: 'bench-scope', width: 640, height: 110, 'aria-hidden': 'true' });
+    const drawScope = () => {
+      if (typeof requestAnimationFrame !== 'function') return;
+      rafId = requestAnimationFrame(drawScope);
+      const g = scope.getContext('2d');
+      if (!g) return;
+      g.fillStyle = '#241814';
+      g.fillRect(0, 0, scope.width, scope.height);
+      const an = audio.getAnalyser ? audio.getAnalyser() : null;
+      if (!an || typeof an.getByteFrequencyData !== 'function') {
+        g.fillStyle = '#6b5a4d';
+        g.fillRect(0, scope.height / 2, scope.width, 2);
+        return;
+      }
+      const bins = new Uint8Array(an.frequencyBinCount);
+      an.getByteFrequencyData(bins);
+      const bw = scope.width / bins.length;
+      for (let i = 0; i < bins.length; i++) {
+        const h = Math.max(2, (bins[i] / 255) * (scope.height - 8));
+        g.fillStyle = LAB_COLORS[i % LAB_COLORS.length];
+        g.fillRect(i * bw, scope.height - h, Math.max(1, bw - 1), h);
+      }
+    };
+
+    const tick = () => {
+      const eighth = 60 / bpm / 2;
+      // Swing pushes every other step late by a percentage of one step: the thing
+      // a metronome-locked grid cannot do, and the reason the same notes stop
+      // sounding like a typewriter somewhere around 25%.
+      let when = step % 2 === 1 ? eighth * (swing / 100) : 0;
+      let vel = 1;
+      if (humanise > 0) {
+        // Deliberately unseeded. This is the difference between two performances
+        // of the same tune, so it must not repeat; the seed owns the notes.
+        when = Math.max(0, when + (Math.random() - 0.5) * 2 * (humanise / 100) * eighth * 0.4);
+        vel = 1 + (Math.random() - 0.5) * 2 * (humanise / 100) * 0.5;
+      }
+      const row = pattern[step];
+      if (row !== null) {
+        audio.playTone(midiToFreq(getRowMidi(row)), { type: inst, duration: eighth * 0.95, gain: 0.17 * vel, when });
+      }
+      if (bassOn && (step === 0 || step === 8)) {
+        // Two octaves under the tonic, on the two steps a 16-bar phrase turns on.
+        audio.playTone(midiToFreq(getRowMidi(rows - 1) - 24), { type: 'sine', duration: eighth * 1.7, gain: 0.19, when });
+      }
+      paint();
+      step = (step + 1) % steps;
+    };
+
+    const playBtn = gameBtn('▶ Play Bench', 'primary', () => {
+      playing = !playing;
+      playBtn.textContent = playing ? '⏹ Stop' : '▶ Play Bench';
+      if (playing) {
+        step = 0;
+        audio.ensure();
+        tick();
+        timer = setInterval(tick, (60 / bpm / 2) * 1000);
+        drawScope();
+      } else {
+        stopLoops();
+        paint();
+        const g = scope.getContext('2d');
+        if (g) { g.fillStyle = '#241814'; g.fillRect(0, 0, scope.width, scope.height); }
+      }
+    });
+
+    const composeBtn = gameBtn('🎼 Compose', '', () => {
+      pattern = compose();
+      bench.pattern = pattern;
+      paint();
+    });
+    const newSeedBtn = gameBtn('🎲 New seed', '', () => {
+      seed = Math.floor(Math.random() * 100000);
+      bench.seed = seed;
+      pattern = compose();
+      bench.pattern = pattern;
+      paint();
+    });
+
+    /** The whole bench as one short line, so a tune travels without a file. The
+     *  melody is not in it — the seed is, and the seed regenerates it exactly. */
+    const benchCode = () => ['WL1', scaleName, inst, String(bpm), String(density),
+      String(swing), String(humanise), String(seed), bassOn ? '1' : '0'].join('.');
+    const copyBtn = gameBtn('⧉ Copy bench code', '', async () => {
+      const code = benchCode();
+      try {
+        await copyToClipboard(code);
+        readout.textContent = 'Copied: ' + code;
+      } catch {
+        readout.textContent = 'Copy was blocked — here it is: ' + code;
+      }
+    });
+
+    const clampInt = (v, lo, hi, fall) => {
+      const n = Number.parseInt(v, 10);
+      return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : fall;
+    };
+    const codeInput = gEl('input', {
+      type: 'text', class: 'bench-code-input', placeholder: 'Paste a bench code (WL1.…)',
+      'aria-label': 'Bench code to load', spellcheck: false
+    });
+    const loadBtn = gameBtn('Load code', '', () => {
+      const parts = String(codeInput.value || '').trim().split('.');
+      const bad = () => { readout.textContent = 'That is not a bench code. One looks like ' + benchCode(); };
+      if (parts.length !== 9 || parts[0] !== 'WL1' || !(parts[1] in SCALES)) return bad();
+      bench.scale = parts[1];
+      bench.inst = parts[2];
+      bench.bpm = clampInt(parts[3], 40, 240, bpm);
+      bench.density = clampInt(parts[4], 1, 10, density);
+      bench.swing = clampInt(parts[5], 0, 60, swing);
+      bench.humanise = clampInt(parts[6], 0, 40, humanise);
+      bench.seed = clampInt(parts[7], 0, 2147483647, seed);
+      bench.bass = parts[8] === '1';
+      bench.pattern = null;
+      // Rebuild rather than poke values into live controls: every slider, tab and
+      // toggle would otherwise be showing the previous setup while playing the new
+      // one, which is the same class of lie this release is about.
+      renderBench();
+    });
+
+    const scaleTabs = gameTabs(['Major', 'Pentatonic', 'Minor', 'Blues', 'Chromatic'], scaleName, v => {
+      scaleName = v; bench.scale = v; paint();
+    }, 'Scale');
+    const instTabs = gameTabs([['triangle', 'Marimba'], ['sine', 'Bell'], ['sawtooth', 'Synth'], ['square', '8-Bit']], inst, v => {
+      inst = v; bench.inst = v;
+    }, 'Voice');
+    const bassToggle = gameToggle('Auto bass', bassOn, v => { bassOn = v; bench.bass = v; paint(); });
+
+    const bpmSlider = gameSlider({
+      label: 'Tempo', min: 40, max: 200, step: 2, value: bpm, unit: ' BPM',
+      onChange: v => {
+        bpm = v; bench.bpm = v;
+        if (playing) { clearInterval(timer); timer = setInterval(tick, (60 / bpm / 2) * 1000); }
+      }
+    });
+    const densitySlider = gameSlider({
+      label: 'Density', min: 1, max: 10, step: 1, value: density, unit: '/10',
+      onChange: v => { density = v; bench.density = v; }
+    });
+    const swingSlider = gameSlider({
+      label: 'Swing', min: 0, max: 60, step: 2, value: swing, unit: '%',
+      onChange: v => { swing = v; bench.swing = v; paint(); }
+    });
+    const humaniseSlider = gameSlider({
+      label: 'Humanise', min: 0, max: 40, step: 2, value: humanise, unit: '%',
+      onChange: v => { humanise = v; bench.humanise = v; paint(); }
+    });
+
+    stage.replaceChildren(
+      gEl('div', { class: 'bench-banner' },
+        gEl('span', { class: 'bench-badge', text: '🧪 EXPERIMENTAL' }),
+        gEl('p', {
+          class: 'tool-note',
+          text: 'A bench, not a finished tool: a seeded composer, swing and humanise on the timing, an automatic bass, and a spectrum of what the lab is actually playing. New, and likely to change. Everything runs on this device and nothing is uploaded.'
+        })
+      ),
+      gEl('div', { class: 'tool-row', style: { flexWrap: 'wrap', gap: '8px' } }, playBtn, composeBtn, newSeedBtn, copyBtn),
+      gEl('div', { class: 'tool-row', style: { flexWrap: 'wrap', gap: '10px', marginTop: '8px' } }, scaleTabs.el, instTabs.el, bassToggle.el),
+      bpmSlider.el,
+      densitySlider.el,
+      swingSlider.el,
+      humaniseSlider.el,
+      readout,
+      strip,
+      scope,
+      gEl('div', { class: 'tool-row', style: { flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginTop: '10px' } }, codeInput, loadBtn)
+    );
+    paint();
+  };
+
   const modeTabs = gameTabs([
     ['song', '🎼 Song Maker'],
     ['kandinsky', '🎨 Kandinsky'],
     ['rhythm', '🥁 Rhythm'],
     ['chords', '🎹 Chords'],
-    ['spectro', '🌈 Harmonics']
+    ['spectro', '🌈 Harmonics'],
+    ['bench', '🧪 Experimental']
   ], mode, v => {
     mode = v;
     if (v === 'song') renderSongMaker();
     else if (v === 'kandinsky') renderKandinsky();
     else if (v === 'rhythm') renderRhythm();
     else if (v === 'chords') renderChords();
+    else if (v === 'bench') renderBench();
     else renderSpectro();
   }, 'Waffle Music Lab Mode');
 

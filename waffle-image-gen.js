@@ -323,10 +323,74 @@ async function ensureEngine({ mode }) {
     threads: ortThreads(),
     ...(wasmPaths ? { wasmPaths } : {}),
     ...(tokenizerUrl ? { tokenizerUrl } : {}),
-    onEvent: ev => reportProgress(ev, progressSink)
+    onEvent: ev => {
+      if (isDeviceLostEvent(ev)) {
+        // The device is gone and cannot be brought back from in here. Ending the run
+        // and dropping the engine is what leaves the next attempt able to succeed.
+        settleGpuLost(String(ev?.detail?.text || ev?.detail?.code || 'device lost')
+          .replace(/^GPU device lost \\((.*)\\)$/, '$1'));
+        releaseImageEngine();
+      }
+      reportProgress(ev, progressSink);
+    }
   });
   engineMode = mode;
   return engine;
+}
+
+// --- the GPU going away -----------------------------------------------------------------------
+
+/**
+ * What a lost device costs, and why it has to be handled rather than waited out.
+ *
+ * `device.lost` resolves when the GPU process is restarted — which is what an OEM
+ * power manager does to a tab it has decided is too expensive, and what an
+ * out-of-memory kill does to the renderer around it. The library reports it as a
+ * `warning` event and carries on, so a run whose device is gone can simply never
+ * finish: the bar holds its last number, the seconds count up, and nothing is
+ * coming. Worse, the engine object survives, so every later attempt in the same
+ * tab is handed the same dead device and fails the same quiet way until the page
+ * is reloaded.
+ *
+ * So a loss ends that run and that engine: the waiters are rejected with something
+ * `explainFailure` can put into words, and the engine is released so the next run
+ * asks for a device that works. That is the difference between "battery
+ * optimisation killed my image generation" and "it failed, it told me why, and the
+ * button worked again".
+ */
+let gpuLostReason = '';
+let gpuLostWaiters = [];
+
+/** The reason the last device went away, or '' — exported so the UI can say it. */
+export function gpuLostState() { return gpuLostReason; }
+
+/** Forget it. A fresh run has earned a fresh start. */
+export function clearGpuLost() { gpuLostReason = ''; }
+
+function isDeviceLostEvent(ev) {
+  return ev?.stage === 'warning' && ev?.detail?.code === 'device-lost';
+}
+
+function gpuLossError(reason) {
+  const e = new Error(`GPU device lost (${reason}). The weights already downloaded are kept, so trying again resumes rather than re-downloading.`);
+  e.code = 'gpu-lost';
+  return e;
+}
+
+/** A promise that rejects the moment the GPU reports itself gone. */
+function raceGpuLoss() {
+  return new Promise((_res, reject) => {
+    if (gpuLostReason) reject(gpuLossError(gpuLostReason));
+    else gpuLostWaiters.push(reject);
+  });
+}
+
+function settleGpuLoss(reason) {
+  gpuLostReason = reason;
+  const waiters = gpuLostWaiters;
+  gpuLostWaiters = [];
+  const err = gpuLossError(reason);
+  for (const reject of waiters) { try { reject(err); } catch {} }
 }
 
 /** Let go of the GPU weights without touching the cached download. A phone that
@@ -427,56 +491,228 @@ export async function clearImageModelCache() {
 // --- progress ---------------------------------------------------------------------------------
 
 /**
- * Engine events → the kitchen's `{ stage, percent, detail }`. The bands are the
- * honest shape of a run: most of a first run is the download, most of a warm run
- * is the denoise, so each stage owns a slice and the library's own 0…1 fraction
- * fills it in. `detail` is `formatProgress` verbatim — the sentence the engine
- * would have logged — so nothing here has to invent wording.
+ * Engine events → the kitchen's `{ stage, percent, detail, … }`.
+ *
+ * The bands are the honest *shape* of a run: most of a first run is the download,
+ * most of a warm run is the denoise. A band on its own is not enough, though, and
+ * the version that shipped first proved it — it reported 4% and then held that
+ * number for minutes while gigabytes arrived, because two things were thrown away:
+ *
+ *   • a stage that reported no fraction fell back to the bottom of its band, and
+ *     the monotonic clamp then held that number for as long as the stage lasted.
+ *     A frozen number reads as a stuck download even when nothing is stuck;
+ *   • weights arrive in shards, and every shard restarts its own `loaded/total` at
+ *     zero, so shard two pulled the bar back down and the clamp froze it at shard
+ *     one's high-water mark for the rest of the download.
+ *
+ * So a report now carries what is actually known, and says out loud when that is
+ * not enough:
+ *
+ *   `indeterminate` — no fraction arrived for this stage. The number on the bar is
+ *       a band edge, not a measurement, so the surface stripes the bar and counts
+ *       seconds instead of presenting a guess as a reading.
+ *   `loadedMB` / `totalMB` / `shard` / `shards` — the engine's own bytes. During a
+ *       multi-gigabyte first run these are the numbers worth reading.
+ *   `etaMs` — only ever present once a real byte rate has been measured, because an
+ *       estimate with no measurement behind it is the same lie with extra steps.
+ *   `elapsedMs` — how long this run has taken so far.
+ *
+ * `percent` stays monotonic within a run: a stage that reports less than the bar
+ * has already shown must not drag it backwards. `detail` is the engine's own
+ * sentence, so a held number is never the only signal on screen.
  */
 const PHASES = {
-  cache:            { label: 'Checking cached weights', from: 1,  to: 3 },
-  warning:          { label: 'Warning',                 from: 1,  to: 3 },
-  tokenizer:        { label: '1/4 · Loading tokenizer',  from: 3,  to: 6 },
-  'text-encoder':   { label: '1/4 · Text encoder',       from: 6,  to: 30 },
-  embeddings:       { label: '1/4 · Token embeddings',   from: 30, to: 36 },
-  weights:          { label: '2/4 · Streaming weights',  from: 36, to: 66 },
-  'weights-upload': { label: '2/4 · Uploading to GPU',   from: 66, to: 72 },
-  'weights-ready':  { label: '2/4 · Weights ready',      from: 72, to: 73 },
-  lora:             { label: '2/4 · LoRA',               from: 72, to: 74 },
-  'lora-ready':     { label: '2/4 · LoRA ready',         from: 74, to: 75 },
-  release:          { label: 'Freeing GPU memory',       from: 75, to: 76 },
-  'encode-prompt':  { label: '3/4 · Encoding prompt',    from: 76, to: 80 },
-  'build-engine':   { label: '3/4 · Building engine',    from: 80, to: 82 },
-  denoise:          { label: '3/4 · Denoising',          from: 82, to: 95 },
-  decode:           { label: '4/4 · Decoding pixels',    from: 95, to: 99 },
-  cooldown:         { label: 'Waiting on GPU memory',    from: 95, to: 97 },
-  worker:           { label: 'Working',                  from: 6,  to: 72 },
-  'worker-fallback':{ label: 'Retrying a stage',         from: 6,  to: 72 },
-  'idle-release':   { label: 'GPU memory released',      from: 99, to: 99 }
+  cache:             { label: 'Checking cached weights',   from: 1,  to: 2 },
+  warning:           { label: 'Warning',                   from: 1,  to: 2 },
+  tokenizer:         { label: '1/4 · Loading tokenizer',    from: 2,  to: 5 },
+  'text-encoder':    { label: '1/4 · Text encoder',         from: 5,  to: 25 },
+  embeddings:        { label: '1/4 · Token embeddings',     from: 25, to: 28 },
+  weights:           { label: '2/4 · Streaming weights',    from: 28, to: 78 },
+  'weights-upload':  { label: '2/4 · Uploading to GPU',     from: 78, to: 84 },
+  'weights-ready':   { label: '2/4 · Weights ready',        from: 84, to: 85 },
+  lora:              { label: '2/4 · LoRA',                 from: 84, to: 86 },
+  'lora-ready':      { label: '2/4 · LoRA ready',           from: 86, to: 87 },
+  release:           { label: 'Freeing GPU memory',         from: 87, to: 88 },
+  'encode-prompt':   { label: '3/4 · Encoding prompt',      from: 88, to: 90 },
+  'encode-reference':{ label: '3/4 · Encoding your picture', from: 88, to: 90 },
+  'build-engine':    { label: '3/4 · Building engine',      from: 90, to: 91 },
+  denoise:           { label: '3/4 · Denoising',            from: 91, to: 98 },
+  decode:            { label: '4/4 · Decoding pixels',      from: 98, to: 99 },
+  cooldown:          { label: 'Waiting on GPU memory',      from: 96, to: 98 },
+  worker:            { label: 'Working',                    from: 5,  to: 78 },
+  'worker-fallback': { label: 'Retrying a stage',           from: 5,  to: 78 },
+  'idle-release':    { label: 'GPU memory released',        from: 99, to: 99 }
 };
 
-/** Highest percent already shown, so a stage that reports no fraction can never
- *  walk the bar backwards. Reset per run. */
-let lastPercent = 0;
+const MB = 2 ** 20;
+/** An ETA needs two samples this far apart. Anything sooner is noise with a
+ *  confident unit on it. */
+const RATE_MIN_MS = 1200;
 
-function reportProgress(ev, onProgress) {
-  if (!onProgress) return;
-  let phase = PHASES[ev?.stage];
-  let frac = null;
+/** Per-run progress state. `generateWaffleImage` makes one; `reportProgress` reads it. */
+export function newProgressState(now = 0) {
+  return { lastPercent: 0, startedAt: now, sample: null, rate: 0 };
+}
+
+let progressState = newProgressState(0);
+
+const clamp01 = n => (Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0);
+
+/**
+ * The fraction an event really carries, or `null` when it carries none.
+ *
+ * Two rules the engine's own `progressFraction` does not apply, because it answers
+ * a narrower question:
+ *   • `cached: true` is a *finished* stage, not 0% of itself. Reading a weight
+ *     shard out of OPFS takes milliseconds and used to park the bar at the floor
+ *     of its band;
+ *   • a shard's `loaded/total` describes that shard. Folded into the band on its
+ *     own it restarts at zero for every shard, so the bar climbs once and then
+ *     waits at the clamp while the rest of the download happens.
+ */
+export function stageFraction(ev) {
+  const d = ev?.detail || {};
+  if (ev?.stage === 'denoise') {
+    if (Number(d.n) > 0) return clamp01(d.i / d.n);
+    // Half a step's credit for a finished step: after step 1 of 2 a run is
+    // halfway through the denoise, not at zero and not at one.
+    if (Number(d.steps) > 0) return clamp01((Math.max(1, d.step) - 0.5) / d.steps);
+    return null;
+  }
+  if (d.cached) return 1;
+  if (Number(d.total) > 0) {
+    const one = clamp01((Number(d.loaded) || 0) / d.total);
+    const shards = Number(d.shards) || 0;
+    const shard = Number(d.shard) || 0;
+    if (shards > 1 && shard >= 1) return clamp01((shard - 1 + one) / shards);
+    return one;
+  }
+  // Nothing this file has a rule for still gets the engine's own answer rather
+  // than silence: it knows stages that may not exist yet.
   try {
-    frac = kleinLib?.progressFraction ? kleinLib.progressFraction(ev) : null;
-  } catch {}
+    const lib = kleinLib?.progressFraction ? kleinLib.progressFraction(ev) : null;
+    return lib === null || Number.isNaN(lib) ? null : clamp01(lib);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Bytes still to come on the download in flight, shards included: what is left of
+ * this one plus the ones after it, assuming they are the same size. Built only
+ * from totals the engine reported, never from a size this file guessed.
+ */
+function bytesRemaining(ev) {
+  const d = ev?.detail || {};
+  if (!(Number(d.total) > 0) || d.cached) return 0;
+  const shards = Math.max(1, Number(d.shards) || 1);
+  const shard = Math.max(1, Number(d.shard) || 1);
+  return Math.max(0, d.total - (Number(d.loaded) || 0)) + Math.max(0, shards - shard) * d.total;
+}
+
+/**
+ * Track the byte rate of the download in flight and return the ETA it implies.
+ *
+ * Sampled per stage *and* per shard, so a rate measured on the 5 MB tokenizer is
+ * never used to promise a time for three gigabytes of weights. `null` until two
+ * samples at least `RATE_MIN_MS` apart show the transfer actually moving.
+ */
+function trackRate(ev, state, now) {
+  const d = ev?.detail || {};
+  const key = `${ev.stage}:${d.shard || 0}`;
+  const loaded = Number(d.loaded) || 0;
+  const s = state.sample;
+  if (!s || s.key !== key) {
+    state.sample = { key, firstT: now, t: now, loaded };
+    state.rate = 0;
+    return null;
+  }
+  const dt = (now - s.t) / 1000;
+  const dB = loaded - s.loaded;
+  s.t = now;
+  s.loaded = loaded;
+  if (!(dt > 0) || !(dB > 0)) return null;
+  const inst = dB / dt;
+  // Smoothed, because one burst on a phone's radio is not a speed.
+  state.rate = state.rate ? state.rate * 0.6 + inst * 0.4 : inst;
+  if (now - state.sample.firstT < RATE_MIN_MS) return null;
+  const left = bytesRemaining(ev);
+  return left > 0 && state.rate > 0 ? Math.round((left / state.rate) * 1000) : null;
+}
+
+/**
+ * One engine event → one honest report. Pure apart from the state it is handed,
+ * which is why the tests can drive a whole first run through it without an engine,
+ * a GPU or a download.
+ */
+export function progressFromEvent(ev, state = progressState, now = performance.now()) {
+  const d = ev?.detail || {};
+  const frac = stageFraction(ev);
+  const known = frac !== null;
+  const phase = PHASES[ev?.stage];
+  let label;
+  let percent;
+  let indeterminate;
+
   if (!phase) {
     // An event this file does not know about is still worth showing: the engine's
     // own sentence, held at the current percent rather than dropped.
-    onProgress({ stage: 'Working…', percent: Math.min(99, Math.max(lastPercent, 1)), detail: safeDetail(ev) });
-    return;
+    label = 'Working…';
+    percent = Math.max(state.lastPercent, 1);
+    indeterminate = true;
+  } else if (ev?.stage === 'warning') {
+    // A warning arrives mid-run and carries nothing measurable, so the percent is
+    // held rather than pulled back to the band's floor — a run 78% through a
+    // download has not become 1% because the GPU said something. What changes is
+    // the sentence: "Warning" on its own is the one label here that tells nobody
+    // anything, and the device-lost case is the one a person most needs named.
+    label = d.code === 'device-lost' ? 'The GPU went away · retrying needs a fresh device' : 'Heads up';
+    percent = Math.max(state.lastPercent, phase.from);
+    indeterminate = true;
+  } else if (known) {
+    label = phase.label;
+    percent = Math.round(phase.from + frac * (phase.to - phase.from));
+    indeterminate = false;
+  } else {
+    // The engine named the stage but has nothing to measure yet — "fetching text
+    // encoder…" before the first byte lands, say. The band's floor is all that is
+    // known, so the report says so instead of standing on a number as if it were.
+    label = phase.label;
+    percent = Math.max(state.lastPercent, phase.from);
+    indeterminate = true;
   }
-  const percent = frac === null || Number.isNaN(frac)
-    ? phase.from
-    : Math.round(phase.from + Math.max(0, Math.min(1, frac)) * (phase.to - phase.from));
-  lastPercent = Math.max(lastPercent, Math.min(99, percent));
-  onProgress({ stage: phase.label, percent: lastPercent, detail: safeDetail(ev) });
+
+  state.lastPercent = Math.max(state.lastPercent, Math.min(99, percent));
+  const report = {
+    stage: label,
+    percent: state.lastPercent,
+    detail: safeDetail(ev),
+    indeterminate,
+    // `startedAt` of 0 is a real epoch, not a missing one, so this cannot be a
+    // truthiness check: at 0 the bar would have counted from `now` forever.
+    elapsedMs: Math.max(0, Math.round(now - (Number.isFinite(state.startedAt) ? state.startedAt : now))),
+    engineStage: ev?.stage || ''
+  };
+  if (Number(d.total) > 0 && !d.cached) {
+    report.loadedMB = Math.round((Number(d.loaded) || 0) / MB);
+    report.totalMB = Math.round(d.total / MB);
+    if (Number(d.shards) > 1) {
+      report.shard = Number(d.shard);
+      report.shards = Number(d.shards);
+    }
+    const eta = trackRate(ev, state, now);
+    if (eta !== null) report.etaMs = eta;
+  }
+  if (ev?.stage === 'denoise' && Number(d.steps) > 0) {
+    report.step = Number(d.step);
+    report.steps = Number(d.steps);
+  }
+  return report;
+}
+
+function reportProgress(ev, onProgress) {
+  if (!onProgress) return;
+  onProgress(progressFromEvent(ev, progressState, performance.now()));
 }
 
 function safeDetail(ev) {
@@ -485,6 +721,111 @@ function safeDetail(ev) {
   } catch {
     return String(ev?.stage || '');
   }
+}
+
+/**
+ * How long a wait is, in the shape a person reads: "42 s", "3 min 20 s",
+ * "1 h 04 min". Deliberately coarse — a countdown to the second on a transfer
+ * whose rate is still settling would be a more precise lie than the one this
+ * replaces.
+ */
+export function humanDuration(ms) {
+  const total = Math.max(0, Math.round((Number(ms) || 0) / 1000));
+  if (total < 60) return `${total} s`;
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  if (mins < 60) return secs ? `${mins} min ${secs} s` : `${mins} min`;
+  const hours = Math.floor(mins / 60);
+  return `${hours} h ${String(mins % 60).padStart(2, '0')} min`;
+}
+
+// --- holding the screen on --------------------------------------------------------------------
+
+/**
+ * The screen lock a generation holds, and the honest limits of holding one.
+ *
+ * A long run is exactly what an aggressive power manager is built to interrupt.
+ * Android freezes a backgrounded tab; HarmonyOS and Huawei's own browsers go
+ * further and discard or kill the renderer outright, which is what lands on screen
+ * as Chrome's "Aw, Snap". From inside the page the two are indistinguishable: no
+ * JavaScript is running to move the bar, so the bar simply stops, and switching
+ * battery optimisation off for Chrome does not reliably stop either one — the
+ * freeze is a decision about the *tab*, and a tab with the screen off is a
+ * background tab however the app itself is classified.
+ *
+ * What a page can do is keep the screen on, which is the one signal an OEM power
+ * manager consistently respects: `navigator.wakeLock.request('screen')`. The
+ * sentinel is dropped by the system whenever the page is hidden, so it is asked
+ * for again on the way back, and it is released when the run ends rather than held
+ * against the rest of the tab's life. Where the API does not exist — and on some
+ * Huawei builds it does not — nothing here can help, and `screenLockState()` says
+ * so plainly instead of letting the surface imply a protection it does not have.
+ */
+let wakeLock = null;
+let wakeLockWanted = false;
+let wakeLockHooked = false;
+
+export function screenLockSupported() {
+  try {
+    return typeof navigator !== 'undefined' && Boolean(navigator.wakeLock?.request);
+  } catch {
+    return false;
+  }
+}
+
+/** `{ supported, held, wanted }` — the most the device facts may claim. */
+export function screenLockState() {
+  return {
+    supported: screenLockSupported(),
+    held: Boolean(wakeLock) && wakeLock.released !== true,
+    wanted: wakeLockWanted
+  };
+}
+
+async function acquireScreenLock() {
+  if (!screenLockSupported()) return false;
+  if (wakeLock && wakeLock.released !== true) return true;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    // Fired when the system takes the lock away: the page was hidden, a
+    // browser-level power save kicked in, or the display went. The run is still
+    // going either way and still wants it back.
+    wakeLock.addEventListener?.('release', () => {
+      wakeLock = null;
+      if (wakeLockWanted && typeof document !== 'undefined' && !document.hidden) acquireScreenLock();
+    });
+    return true;
+  } catch {
+    // NotAllowedError is the usual one — the page is not visible, or the browser
+    // refused. Neither is a reason to throw a generation away.
+    wakeLock = null;
+    return false;
+  }
+}
+
+function hookVisibilityForScreenLock() {
+  if (wakeLockHooked || typeof document === 'undefined') return;
+  wakeLockHooked = true;
+  document.addEventListener('visibilitychange', () => {
+    // Coming back to a run that is still in flight is exactly when the lock has to
+    // be re-asked for, because hiding the page is what took it away.
+    if (!document.hidden && wakeLockWanted) acquireScreenLock();
+  });
+}
+
+/** Ask for the screen for the length of a run. Safe to call more than once. */
+export async function holdScreenForRun() {
+  wakeLockWanted = true;
+  hookVisibilityForScreenLock();
+  return acquireScreenLock();
+}
+
+/** Give it back. A finished run has no business holding a screen on. */
+export function releaseScreenLock() {
+  wakeLockWanted = false;
+  const lock = wakeLock;
+  wakeLock = null;
+  try { lock?.release?.(); } catch {}
 }
 
 // --- sizes ------------------------------------------------------------------------------------
@@ -524,7 +865,7 @@ export async function generateWaffleImage({
 } = {}) {
   const t0 = performance.now();
   const cfg = resolveImageModel(model);
-  lastPercent = 0;
+  progressState = newProgressState(performance.now());
 
   const caps = await detectImageCapabilities();
   if (!caps.hasWebGPU) {
@@ -545,12 +886,23 @@ export async function generateWaffleImage({
     });
   }
 
+  // Asked for before the first byte rather than after the first stall: by then
+  // the tab may already be frozen, and nothing is running to ask.
+  clearGpuLost();
+  const lockHeld = await holdScreenForRun();
+  const lockNote = lockHeld
+    ? ' The screen is being held on for as long as this runs.'
+    : screenLockSupported()
+      ? ' The screen lock was refused, so keep this tab on screen — a hidden tab is the one thing that will pause this run.'
+      : ' This browser offers no screen lock, so keep the tab open and the screen on: nothing in here can stop the system pausing a hidden run.';
+
   onProgress?.({
     stage: mode === engineMode && engine ? 'Warming up…' : `Starting the ${mode} build…`,
     percent: 1,
-    detail: engine && engineMode === mode
+    indeterminate: true,
+    detail: (engine && engineMode === mode
       ? 'Weights are already in this tab.'
-      : `First run streams the weights from ${new URL(KLEIN_BASE).host} into this browser's own storage and keeps them for next time.`
+      : `First run streams the weights from ${new URL(KLEIN_BASE).host} into this browser's own storage and keeps them for next time.`) + lockNote
   });
 
   const totalSteps = Math.max(KLEIN_MIN_STEPS, Math.min(KLEIN_MAX_STEPS, Number(steps) || cfg.defaultSteps));
@@ -568,18 +920,30 @@ export async function generateWaffleImage({
     // where most of the ways a first run can fail actually happen.
     eng = await ensureEngine({ mode });
     side = sideWithinArea(side, eng.limits?.maxArea);
-    res = await eng.generate({
-      prompt: String(prompt || 'a cozy golden waffle in a sunny kitchen'),
-      width: side,
-      height: side,
-      steps: totalSteps,
-      seed: usedSeed,
-      signal
-    });
+    // Raced against the loss rather than awaited alone: a run whose device has
+    // gone away may never resolve, and a bar that holds still forever is the exact
+    // thing this release set out to stop.
+    const lost = raceGpuLoss();
+    // The race may never pick it, and that is not an error — but a rejection with
+    // nobody listening for it is reported as one, so it is swallowed here.
+    lost.catch(() => {});
+    res = await Promise.race([
+      eng.generate({
+        prompt: String(prompt || 'a cozy golden waffle in a sunny kitchen'),
+        width: side,
+        height: side,
+        steps: totalSteps,
+        seed: usedSeed,
+        signal
+      }),
+      lost
+    ]);
   } catch (err) {
     throw explainFailure(err, { mode, side });
   } finally {
     progressSink = null;
+    releaseScreenLock();
+    gpuLostWaiters = [];
   }
 
   const W = res.width;
@@ -620,9 +984,10 @@ export async function generateWaffleImage({
  * with its own message attached, because a guessed explanation is worse than the
  * real one.
  */
-function explainFailure(err, { mode, side }) {
+export function explainFailure(err, { mode, side }) {
   const name = err?.name || '';
   const text = String(err?.message || err || '');
+  const code = String(err?.code || '');
   if (name === 'AbortError' || /aborted/i.test(text)) {
     const e = new DOMException('Aborted', 'AbortError');
     return e;
@@ -637,6 +1002,12 @@ function explainFailure(err, { mode, side }) {
 
   if (/WebGPU is not available|no WebGPU adapter/i.test(text)) {
     return wrap('This browser cannot run the image model — it needs WebGPU (Chrome or Edge 121+, Safari 18+). Text chat still works here.', 'no-webgpu');
+  }
+  if (code === 'gpu-lost' || /device-lost/i.test(text)) {
+    return wrap(
+      `The GPU went away mid-run${side ? ` at ${side}×${side}` : ''}: the system took it back, which is what a power manager or an out-of-memory kill looks like from inside a page. The weights already in this browser are kept, so trying again does not re-download them. If it keeps happening on the ${mode} build, the phone build in Settings keeps far less memory resident.`,
+      'gpu-lost'
+    );
   }
   if (/Integer overflow|out of memory|OutOfMemory|allocation failed|buffer is too large|exceeded memory limit|device lost|Device lost/i.test(text)) {
     return wrap(

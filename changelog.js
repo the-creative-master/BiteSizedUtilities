@@ -39,7 +39,7 @@ export const APP_VERSION = '1.2.8';
  * cycle's release ships — and once 1.3 has, a build made on top of it is a test
  * version *after* a release, so it reads 1.3 TVAR 1 rather than TVBR.
  */
-export const TVBR = 2;
+export const TVBR = 3;
 
 /**
  * The release the open test build comes *before*.
@@ -73,6 +73,86 @@ export function appVersionLabel() {
  * what is known to be rough — that is the whole point of writing them down.
  */
 export const TVBR_LOG = [
+  {
+    version: '1.3 TVBR 3',
+    date: 'November 24, 2026',
+    title: 'The progress bar was lying, the cupboard stars were invisible, and the Music Lab grew a bench',
+    tvbr: true,
+    groups: [
+      {
+        label: '\u{1F3A8} Image generation: 4% for several minutes, and 4% was never a measurement',
+        items: [
+          'The report was \u201Cimage gen stuck at 4%\u201D, and it was not stuck. At 4% the run was waiting on the chat model, which rewrites a short prompt as one vivid sentence before the image engine is asked for anything: a separate model to download and load on a cold start, announced the whole time as Polishing prompt\u2026 4%. Then it moved, and a picture arrived. The bar had been describing nothing at all.',
+          'That phase could always have reported. streamWaffleChat takes an onStatus callback and the chat surface uses it; the call from /imagine did not pass one, so the only thing on screen was a number chosen before the work started. It now passes the chat engine\u2019s own status through, word for word, and says which model is loading and why.',
+          'Two more ways the same bar lied, both in the mapping from engine events to a percentage. A stage that reported no fraction fell back to the bottom of its band, and the rule that stops the bar walking backwards then held that number for as long as the stage lasted \u2014 so \u201Cfetching text encoder\u2026\u201D, which arrives before the first byte does, parked the run at the floor of a 20-point band. And weights arrive in shards, each restarting its own loaded/total at zero, so shard two pulled the bar back down and the same rule froze it at shard one\u2019s high-water mark for the rest of a multi-gigabyte download.',
+          'Shards are folded in now: the fraction is (shard \u2212 1 + this shard\u2019s progress) \u00F7 shards, so three shards walk the band once between them instead of three times over the same ground. A cold run reads 36, 45, 61, 78 where it used to read 45, 45, 45, 45.',
+          '\u201Ccached\u201D is a finished stage rather than 0% of itself. Reading a shard out of the browser\u2019s own storage takes milliseconds, and it used to spend them at the bottom of its band on every warm run \u2014 the run that should look fastest looked stuck.',
+          'A report now carries what is actually known, and says when that is not enough. indeterminate means the engine named a stage but reported no fraction for it, and the surface then stripes the bar and counts seconds instead of printing a number it cannot back up. Alongside it go the engine\u2019s own bytes \u2014 412 MB of 1,024 MB, part 2 of 3 \u2014 the denoise step, and how long the run has taken.',
+          'An estimate appears only once there is something to estimate from: two samples of the same download at least 1.2 seconds apart, smoothed, and rate-limited to the file in flight so a speed measured on the 5 MB tokenizer is never used to promise a time for three gigabytes of weights. It is labelled \u201Cabout \u2026 left, estimated\u201D, because a guess with a unit on it is the same lie with extra steps.',
+          'One clock on screen cannot freeze. The run stamps its own elapsed time onto the bubble once a second whether or not the engine has said anything, so a busy download and a dead one no longer look identical \u2014 which was the actual complaint. It is cleared in the same finally that clears the abort controller, so a stopped run does not leave a counter running behind a finished message.',
+          'The header badge printed a percentage even when the run had nothing to measure, so the frozen number appeared twice on screen. It reads elapsed time during an indeterminate phase and a percentage only when one was measured.',
+          'One stage had no band at all: encode-reference, where a picture supplied as a reference goes through the VAE encoder. It fell into the generic \u201CWorking\u2026\u201D row. The band table now covers every stage the engine can emit, and an event it still does not recognise is printed as the engine worded it, held at the current percent, and marked indeterminate rather than dropped.',
+          'What is still true and not fixed by any of this: a first run is a multi-gigabyte download, a phone radio changes its mind about its own speed, and the estimate will be wrong sometimes. What is no longer true is a number that holds still and implies nothing is happening.'
+        ]
+      },
+      {
+        label: '\u{1F50B} Battery optimisation: a run that gets interrupted now ends, explains itself, and can be finished',
+        items: [
+          'The report was that battery optimisation kept killing image generation, and that turning it off for Chrome did not stop Chrome printing \u201CAw, Snap!\u201D. Both halves are true and they are not the same failure. A frozen tab is an OEM power manager suspending a background tab\u2019s timers, and a killed one is the renderer or the GPU process being discarded \u2014 which is what lands on screen as Aw, Snap. Exempting the app does not reliably stop the first, because the decision is about the tab and a tab with the screen off is a background tab however the app is classified.',
+          'A page cannot prevent either. What it can do is stop being silent about them and stop being broken afterwards, which is what changed here. Neither is prevented; both are now survivable.',
+          'The screen lock a power manager actually respects. navigator.wakeLock.request(\u2019screen\u2019) is asked for before the first byte rather than after the first stall \u2014 by the time a run has stalled there may be nothing left running to ask \u2014 held for the length of the run, and released when it ends, because a finished generation has no business keeping a screen on. The system drops the sentinel whenever the page is hidden, so it is asked for again on the way back and after every release event.',
+          'Where there is no lock to give, the page says so instead of implying a protection it does not have. The first progress report carries one of three sentences: the screen is being held on; the lock was refused, so keep this tab on screen, because a hidden tab is the one thing that will pause this run; or this browser offers no screen lock at all, and nothing in here can stop the system pausing a hidden run. Settings and the AI panel\u2019s device facts both state which of those applies, because it is part of choosing a build.',
+          'A lost GPU used to be invisible. The engine reports device.lost as a warning event and carries on, so a run whose device had been taken away could simply never finish \u2014 the bar held its last number, the seconds counted up, and nothing was coming. Worse, the engine object survived, so every later attempt in the same tab was handed the same dead device and failed the same quiet way until the page was reloaded. A loss now ends that run and releases that engine, so the next attempt asks for a device that works.',
+          'The generation is raced against the loss rather than awaited alone, and the failure is put into words that name the cause, the size it happened at, and the lever that changes the odds: the weights already in this browser are kept, so trying again does not re-download them, and if it keeps happening on this build the phone build keeps far less memory resident. A warning event no longer pulls the bar backwards either \u2014 it holds the percent and says \u201CThe GPU went away\u201D instead of the label \u201CWarning\u201D, which told nobody anything.',
+          'A paused tab is reported as paused. The one-second ticker measures its own gap, and a timer that took three minutes to fire was not busy: the overrun is accumulated and printed in the facts line as \u201Cthe system paused this tab for 4 min 12 s\u201D. That is the one measurement of an interruption that cannot be faked from inside a frozen tab, because the tab was not running to fake it.',
+          'And a killed tab can offer to finish. What was in flight is written to storage before the first byte and cleared in the finally, so a run the system killed leaves a trace; the tab that comes back offers it once, with a \u25B6 Run it again button in the same place in the thread, and says the part that matters \u2014 the weights it had already downloaded are still in this browser, so trying again does not start from nothing. A twelve-hour expiry keeps a run cut off yesterday from being news today, and a notice that cannot be dismissed is clutter, so there is a Dismiss.',
+          'What none of this does, stated because the alternative is a settings screen that over-promises: it cannot stop a renderer being killed, it cannot keep a tab alive that the system has decided to discard, and on a browser with no Screen Wake Lock there is no protection to offer at all. What it can do is make the interruption cheap \u2014 the download survives, the retry works, and the reason is on screen.'
+        ]
+      },
+      {
+        label: '\u2B50 Star utilities: a plinth instead of a slot, and a badge that follows the tool',
+        items: [
+          'catalog.js has named one utility per cupboard as its star since 1.2 \u2014 Calculator, CodeHub, File Converter, Art Studio, Physics Hub, Waffle Translate, Waffle Music Lab, Waffle Studio \u2014 and nothing on screen ever read the flag. A cupboard\u2019s flagship looked exactly like the fourteenth utility beside it, and the sentence that says what it is had nowhere to go: a shelf card is a tile and a name.',
+          'A cupboard now opens on a plinth. The star sits above the shelves at twice the tile size with its description under the name, a badge that names the cupboard it stars in \u2014 \u2B50 Star of Coding & Developing \u2014 an Open it \u2192 pill, and the same heart sticker it always had, so saving it did not move. The whole card is the button, and it is labelled for a screen reader as what it is and where it comes from.',
+          'The star comes off the row rather than being emphasised inside it, which is the part that makes it a layout and not a highlight: a cupboard reads as one flagship and the tools beside it, and the shelf underneath is one slot shorter rather than one slot louder.',
+          'The same tool as a guest keeps the shelf and wears a corner \u2B50 instead \u2014 on Saved Toys, in Recently Played, and in search results, where three hits could each have claimed a plinth and none of them is the star of the shelf they are standing on. The cupboard is named in the accessible label, and the tile gets an underline and a warm glow so a 27 px badge is not the only thing carrying it.',
+          'Games & Fun declares its star as the cupboard itself and carries no tool list, so the arcade gets no plinth: it has its own cabinet view, and 51 games are not one flagship.',
+          'Both layouts collapse on a phone \u2014 the plinth tile to 74 px, the strip of steps to eight across \u2014 and neither animates for anybody who has asked the system not to.'
+        ]
+      },
+      {
+        label: '\u{1F3B5} Waffle Music Lab: a sixth mode, and it says experimental on the panel',
+        items: [
+          '\u{1F9EA} Experimental joins Song Maker, Kandinsky, Rhythm, Chords and Harmonics. The badge is on the panel itself and not only in these notes, because a bench is allowed to change and a visitor is entitled to know that before they trust it.',
+          'A seeded composer. The Song Maker\u2019s Randomize is uniform noise \u2014 every cell an independent 11% \u2014 which is why nobody plays it twice. This walks the scale instead: mostly steps with a leap now and then, momentum so a phrase runs in one direction for a couple of notes before turning, rests that get likelier as the phrase fills so Density actually means something, a slow arch up through the first half and back down through the second, and a landing on the nearest tonic, because degree zero reads as a full stop and a two-octave leap to find it sounds like the phrase was cut off.',
+          'Momentum was not in the first version and the difference is the whole feature. Picking a direction afresh per note made the walk oscillate between two adjacent degrees, which is less a tune than two notes arguing. Twenty-five seeds now produce twenty-five distinct melodies with rests in them.',
+          'The seed is the point: mulberry32, and a bench code carries the settings and the seed rather than the melody, so WL1.Minor.sine.132.7.24.10.4242.0 hands somebody else the same tune instead of a similar one. Copy, paste, load. A code that does not parse says so and prints one that does.',
+          'Swing and Humanise change how a tune is played rather than what it says. Swing pushes every other step late by a percentage of one step \u2014 the thing a metronome-locked grid cannot do, and the reason the same notes stop sounding like a typewriter somewhere around 25%. Humanise jitters timing and loudness and is deliberately not seeded: it is the difference between two performances of the same tune, so it must not repeat.',
+          'Auto bass puts the tonic two octaves down on the two steps a sixteen-bar phrase turns on, and a spectrum draws what the lab is actually playing. Every voice now goes through one gain into one analyser into the speakers instead of straight to destination, which is what makes that possible \u2014 a visualiser wired to the microphone would have drawn the room, and one wired to an oscillator it invented itself would have drawn a guess.',
+          'The sixteen steps are tappable: a rest becomes a note at the last pitch used, a note becomes a rest, and the readout keeps saying what the bench is holding \u2014 8 notes in Minor, seed 4242 \u00B7 swing 24% \u00B7 humanise 10% \u00B7 auto bass on.',
+          'A bug found while testing it, written down because it is the kind that survives a review and a green test run: the first version of the generator re-derived its state from the seed inside the returned function, so every call produced the same number, and any seed whose one number fell under the rest threshold composed sixteen rests and played silence. State lives in the closure and is mutated per call now, and a composer that places nothing falls back to a four-note phrase rather than handing over an empty strip.'
+        ]
+      },
+      {
+        label: '\u{1F6A2} What makes it into 1.2.10',
+        items: [
+          'The star utilities \u2014 the overhauled layouts and the clear badges \u2014 are what this build contributes to 1.2.10. They are layout and copy over a flag the catalogue has carried since 1.2, they touch no model, no storage and no network, and they behave the same on a phone and a desktop.',
+          'The image progress work and the Music Lab bench are not on that list. The bench calls itself experimental on its own panel, and the progress work is a repair to a run rather than something a release note would advertise. Both ship in this build; neither is claimed for 1.2.10 here.'
+        ]
+      },
+      {
+        label: '\u{1F9EA} What is checked',
+        items: [
+          'tests/image-progress-honest.test.js drives a whole cold run through the mapping without an engine, a GPU or a download: shards fold into the band instead of restarting it, a cached stage lands at the top of its band, a stage with no fraction is flagged rather than printed as a number, an unknown stage is held and labelled, the bar never walks backwards, and the estimate appears only after a measured rate.',
+          'Two of those are written down because they were found rather than designed. elapsedMs counted from now forever when the run started at a zero epoch, because a truthiness check treats 0 as missing; and the seeded composer played silence for some seeds. Both have a test that fails if they come back.',
+          'tests/star-utilities.test.js holds the rendering the catalogue test could not: a cupboard gets exactly one plinth and its star is not also on a shelf underneath, the badge names the cupboard, a guest appearance carries the corner badge and the cupboard in its accessible label, and Saved Toys and search results get no plinth at all.',
+          'tests/music-lab-bench.test.js mounts the bench in jsdom with no AudioContext anywhere \u2014 the state it has to survive, since a page without one gets null from the bus and must not throw: sixteen tappable steps, a code that round-trips to the same tune, a code that does not parse refused in words, Density changing the note count, and a sweep of seeds in which none produces an empty pattern.',
+          'tests/image-battery-survive.test.js drives the interruption itself with a fake wake lock and no GPU: the screen is asked for once and given back, asked for again after the system drops it, refused without throwing the run away, and reported as unavailable where the API does not exist; a device loss ends the run, releases the engine, and is worded as one; the bar holds its percent through a warning; and the whole surface is checked for the claims it must not make \u2014 no \u201Cfixed\u201D, no \u201Cnever paused\u201D, no \u201Cprevents the system from\u201D, because pinning an over-claim as a test is how an over-claim survives a review.',
+          'Re-anchored rather than added: the progress pins in tests/ai-image-engine.test.js now describe the shard-aware mapping and the honest badge instead of the frozen one, and tests/backup-build.test.js points at this entry for the new build\u2019s title.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.3 TVBR 2',
     date: 'November 24, 2026',

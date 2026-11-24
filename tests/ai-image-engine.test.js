@@ -312,20 +312,34 @@ test('sizes land on the packing grid and steps on a count the engine can run', (
     'so the step count is clamped the same way');
 });
 
-test('progress is a band per stage, filled in by the engine’s own fraction', () => {
+test('progress is a band per stage, and the bar says when it is only guessing', () => {
   assert.match(engineSrc, /const PHASES = \{/, 'every stage owns a slice of the bar');
-  for (const stage of ['weights', 'denoise', 'decode', 'text-encoder', 'tokenizer']) {
+  for (const stage of ['weights', 'denoise', 'decode', 'text-encoder', 'tokenizer', 'encode-reference']) {
     // The hyphenated stages are quoted keys, so the quote is optional here.
     assert.ok(new RegExp(`'?${stage}'?:\\s*\\{ label:`).test(engineSrc), `${stage} has a band and a label`);
   }
-  assert.match(engineSrc, /progressFraction/, 'the fraction comes from the engine rather than being re-derived here');
+  assert.match(engineSrc, /progressFraction/, 'a stage this file has no rule for still gets the engine’s own fraction');
   assert.match(engineSrc, /formatProgress/, 'and so does the sentence, so nothing invents wording');
-  // A download that reports nothing must not walk the bar backwards, and an event
-  // this file has never heard of must still be shown rather than dropped.
-  assert.match(engineSrc, /lastPercent = Math\.max\(lastPercent/, 'the bar only moves forward');
-  assert.match(engineSrc, /if \(!phase\) \{/, 'and an unknown stage is printed anyway');
-  assert.match(aiSrc, /updateStatusBadge\(`\$\{imgCfg\.name\} · \$\{p\.stage\} \(\$\{p\.percent\}%\)`\)/,
-    'the chat surface still shows it in the header badge');
+
+  // The two ways the bar that shipped first lied, both pinned here because both
+  // looked correct and both were reported from a real device as "stuck":
+  //   • weights arrive in shards and each shard restarts its own loaded/total at
+  //     zero, so the bar climbed once and then waited at the clamp;
+  //   • a stage with nothing to measure printed the floor of its band, and the
+  //     rule against walking backwards held that number for the whole stage.
+  assert.match(engineSrc, /\(shard - 1 \+ one\) \/ shards/, 'shards fold into one walk across the band');
+  assert.match(engineSrc, /if \(d\.cached\) return 1;/, 'a stage that was instant is finished, not 0% of itself');
+  assert.match(engineSrc, /indeterminate/, 'and a report says when its number is a band edge rather than a reading');
+  assert.match(engineSrc, /RATE_MIN_MS/, 'an estimate waits for a rate that was actually measured');
+  assert.match(engineSrc, /state\.lastPercent = Math\.max\(state\.lastPercent/, 'the bar still only moves forward');
+  assert.match(engineSrc, /if \(!phase\) \{/, 'and an event this file has never heard of is printed anyway');
+
+  assert.match(aiSrc, /p\.indeterminate \? humanDuration\(p\.elapsedMs/,
+    'the header badge reads elapsed time when there is nothing to measure');
+  assert.ok(!/· \$\{p\.stage\} \(\$\{p\.percent\}%\)/.test(aiSrc),
+    'and no longer prints a percentage it cannot back up');
+  assert.match(aiSrc, /stampElapsed/, 'the bubble carries the run’s own clock');
+  assert.match(aiSrc, /is-indeterminate/, 'so a phase with no fraction is drawn as one');
 });
 
 test('a second generation reports to its own bubble, not the first one’s', () => {
@@ -334,11 +348,12 @@ test('a second generation reports to its own bubble, not the first one’s', () 
   // second picture would otherwise have drawn its progress into the first one's
   // message, and a late GPU event could put a bar back on a finished one.
   assert.match(engineSrc, /let progressSink = null;/, 'progress goes through a sink the run sets');
-  assert.match(engineSrc, /onEvent: ev => reportProgress\(ev, progressSink\)/,
+  assert.match(engineSrc, /onEvent: ev => \{\n      if \(isDeviceLostEvent\(ev\)\)/,
     'which the engine reads when the event happens, not when it was created');
+  assert.match(engineSrc, /reportProgress\(ev, progressSink\);\n    \}/, 'and still forwards every event to whichever run is live');
   assert.match(engineSrc, /progressSink = typeof onProgress === 'function' \? onProgress : null;/, 'set per run');
-  const cleared = engineSrc.indexOf('progressSink = null;\n  }');
-  assert.ok(cleared > engineSrc.indexOf('await eng.generate('), 'and cleared in a finally once the run is over');
+  const cleared = engineSrc.indexOf('progressSink = null;\n    releaseScreenLock();');
+  assert.ok(cleared > engineSrc.indexOf('res = await Promise.race(['), 'and cleared in a finally once the run is over');
   assert.match(engineSrc, /if \(!onProgress\) return;/, 'so an event with nowhere to go is dropped');
 
   // Starting the engine is where a first run fetches the tokenizer, the ORT wasm
@@ -456,9 +471,12 @@ test('the module still exposes what the rest of the kitchen imports from it', ()
       `${arg} is still accepted`);
   }
   assert.match(engineSrc, /dataUrl: canvas\.toDataURL\('image\/png'\)/, 'and still returns a PNG data URL');
-  assert.match(aiSrc, /import \{\n  IMAGE_MODELS,\n  resolveImageModel,\n  isRetiredImageModel,\n  detectImageCapabilities,\n  generateWaffleImage,\n  imageCacheInfo,\n  clearImageModelCache\n\} from '\.\/waffle-image-gen\.js';/,
-    'which is what the AI panel imports');
-  assert.match(appSrc, /IMAGE_MODELS,\n  detectImageCapabilities,\n  imageCacheInfo,\n  clearImageModelCache\n\} from '\.\/waffle-image-gen\.js';/,
+  assert.match(aiSrc, /import \{\n  IMAGE_MODELS,\n  resolveImageModel,\n  isRetiredImageModel,\n  detectImageCapabilities,\n  generateWaffleImage,\n  imageCacheInfo,\n  clearImageModelCache,\n  humanDuration,\n  screenLockState\n\} from '\.\/waffle-image-gen\.js';/,
+    'which is what the AI panel imports — humanDuration included, so the bubble and the header badge word the same wait the same way, and screenLockState so the device facts can say whether a run can be protected at all');
+  assert.match(appSrc, /IMAGE_MODELS,\n  detectImageCapabilities,\n  imageCacheInfo,\n  clearImageModelCache,\n  screenLockState\n\} from '\.\/waffle-image-gen\.js';/,
     'and what Settings does');
+  for (const name of ['screenLockSupported', 'screenLockState', 'holdScreenForRun', 'releaseScreenLock', 'gpuLostState', 'clearGpuLost']) {
+    assert.match(engineSrc, new RegExp(`export (async )?function ${name}`), `${name} is exported so the panel and the tests can ask`);
+  }
   assert.equal(KLEIN_BASE.startsWith('https://huggingface.co/'), true, 'the weights host is https');
 });

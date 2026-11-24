@@ -44,7 +44,9 @@ import {
   detectImageCapabilities,
   generateWaffleImage,
   imageCacheInfo,
-  clearImageModelCache
+  clearImageModelCache,
+  humanDuration,
+  screenLockState
 } from './waffle-image-gen.js';
 
 const STARTER_PROMPTS = [
@@ -82,6 +84,8 @@ let messages = [WELCOME_MSG];
 let attachments = [];
 let isGenerating = false;
 let activeAbort = null;
+/** One-second redraw of the image run's elapsed clock. See `runImageGeneration`. */
+let progressTicker = null;
 let modelState = { preCached: false, loaded: false, loading: false, serverReachable: null, available: [] };
 
 /**
@@ -902,7 +906,12 @@ function renderDeviceFacts() {
     d.canThread ? 'multi-thread ok' : 'single-thread (no COOP/COEP on static hosts)',
     imageCaps.hasWebGPU
       ? `image model: WebGPU ok${imageCaps.hasF16 ? ' · fp16' : ''} · ${imageCaps.mode} build`
-      : 'image model: no WebGPU here, so /imagine cannot run'
+      : 'image model: no WebGPU here, so /imagine cannot run',
+    // Whether a long run can be protected at all on this browser. Where it cannot,
+    // the fact belongs here rather than in a failure message after the fact.
+    screenLockState().supported
+      ? 'screen lock: held while a picture generates'
+      : 'screen lock: not available in this browser, so a hidden tab can be paused mid-run'
   ].filter(Boolean);
   factsEl.textContent = bits.join(' · ');
   factsEl.hidden = false;
@@ -1079,15 +1088,41 @@ function renderMessages() {
           </div>
         </div>
       `;
+    } else if (m.imageCutOff) {
+      bodyHtml = `
+        <div class="waffle-img-cut">
+          ${formatWaffleMarkdown(m.content, streamingNow)}
+          <div class="waffle-msg-actions">
+            <button type="button" class="waffle-mini-btn is-primary" data-img-resume="${idx}">▶ Run it again</button>
+            <button type="button" class="waffle-mini-btn" data-img-dismiss="${idx}">Dismiss</button>
+          </div>
+        </div>
+      `;
     } else if (m.imageProgress) {
       const p = m.imageProgress;
+      // A number this run cannot back up is not printed as one. `indeterminate`
+      // means the engine named a stage but reported no fraction for it, so the bar
+      // stripes and the seconds keep counting instead — that clock is the one
+      // signal here guaranteed to be telling the truth. The old markup printed a
+      // hard `Math.max(4, percent)` and a hard number, which is how a first run
+      // spent several minutes announcing "4%" while gigabytes arrived.
+      const pct = Number.isFinite(p.percent) ? p.percent : null;
+      const width = p.indeterminate ? Math.max(8, Math.min(99, pct ?? 8)) : Math.max(2, pct ?? 0);
+      const facts = [
+        p.suspendedMs ? `the system paused this tab for ${humanDuration(p.suspendedMs)}` : '',
+        p.totalMB ? `${p.loadedMB ?? 0} MB of ${p.totalMB} MB${p.shards ? ` · part ${p.shard} of ${p.shards}` : ''}` : '',
+        p.etaMs ? `about ${humanDuration(p.etaMs)} left, estimated` : '',
+        p.step && p.steps ? `step ${p.step} of ${p.steps}` : '',
+        p.elapsedMs ? `${humanDuration(p.elapsedMs)} in` : ''
+      ].filter(Boolean);
       bodyHtml = `
-        <div class="waffle-img-progress">
+        <div class="waffle-img-progress${p.indeterminate ? ' is-indeterminate' : ''}">
           <div class="waffle-img-prog-head">
             <span>🎨 ${esc(p.stage || 'Preparing image model…')}</span>
-            <b>${p.percent || 0}%</b>
+            <b>${p.indeterminate ? '…' : `${pct ?? 0}%`}</b>
           </div>
-          <div class="waffle-img-prog-bar"><span style="width:${Math.max(4, p.percent || 0)}%"></span></div>
+          <div class="waffle-img-prog-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"${pct === null || p.indeterminate ? ' aria-valuetext="still working"' : ` aria-valuenow="${pct}"`}><span style="width:${width}%"></span></div>
+          ${facts.length ? `<small class="waffle-img-prog-facts">${esc(facts.join(' · '))}</small>` : ''}
           ${p.detail ? `<small class="waffle-img-prog-detail" title="${esc(p.detail)}">${esc(p.detail)}</small>` : ''}
         </div>
       `;
@@ -1172,6 +1207,28 @@ function renderMessages() {
       playSparkle();
       closeWaffleAI();
       window.dispatchEvent(new CustomEvent('waffle-open-art-studio', { detail: { dataUrl: m.imageResult.dataUrl } }));
+    });
+  });
+
+  feed.querySelectorAll('[data-img-resume]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const at = Number(btn.dataset.imgResume);
+      const cut = messages[at]?.imageCutOff;
+      if (!cut || isGenerating) return;
+      playPop(600);
+      // The notice goes and the run comes back, in the same place in the thread.
+      messages.splice(at, 1);
+      runImageGeneration(cut.prompt, cut.prompt, false);
+    });
+  });
+
+  feed.querySelectorAll('[data-img-dismiss]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const at = Number(btn.dataset.imgDismiss);
+      if (!messages[at]?.imageCutOff) return;
+      playPop(420);
+      messages.splice(at, 1);
+      renderMessages();
     });
   });
 
@@ -1267,6 +1324,65 @@ function parseImageIntent(text) {
   return natural ? natural[1].trim() : null;
 }
 
+/**
+ * The run this tab was in the middle of when the system took it away.
+ *
+ * A screen lock makes that less likely and cannot make it impossible: some
+ * browsers have no lock to give, and an OEM that discards a renderer does not ask
+ * first. What can be changed is what an interruption *costs*. The weights land in
+ * the browser's own storage as they arrive and survive the tab, so a killed run
+ * loses the picture and not the download — provided somebody says so and offers
+ * the retry. Without this the tab comes back showing a conversation that ends
+ * mid-sentence, with no explanation and no way to continue it.
+ */
+const IMAGE_RUN_KEY = 'waffle-ai-image-run-v1';
+/** A run cut off yesterday is not news today. */
+const IMAGE_RUN_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
+function noteImageRun(intent) {
+  try { localStorage.setItem(IMAGE_RUN_KEY, JSON.stringify({ ...intent, at: Date.now() })); } catch {}
+}
+
+function clearImageRun() {
+  try { localStorage.removeItem(IMAGE_RUN_KEY); } catch {}
+}
+
+/** What was in flight when this tab last died, or null. Exported for the tests. */
+export function cutOffImageRun() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(IMAGE_RUN_KEY) || 'null');
+    if (!saved || typeof saved.prompt !== 'string' || !saved.prompt) return null;
+    if (!(Date.now() - Number(saved.at || 0) < IMAGE_RUN_MAX_AGE_MS)) { clearImageRun(); return null; }
+    return saved;
+  } catch {
+    return null;
+  }
+}
+
+/** Offer the retry once, after the saved conversation has been swapped in. */
+function offerCutOffRun() {
+  if (isGenerating) return;
+  const cut = cutOffImageRun();
+  if (!cut) return;
+  if (messages.some(m => m.imageCutOff)) return;
+  // Offered once rather than on every open: the button stays in the thread, so
+  // nothing is lost by not repeating it, and a notice that reappears forever is a
+  // notice people stop reading.
+  clearImageRun();
+  const desktop = cut.model === 'klein-desktop';
+  messages.push({
+    role: 'assistant',
+    authorLabel: 'Sir Waffle',
+    imageCutOff: cut,
+    content: [
+      '🧇 That last picture never arrived. The tab was closed, crashed, or frozen by the system while the run was still going — from in here those look identical, and battery optimisation is the usual reason even with Chrome exempted, because the freeze is about the tab and not the app.',
+      'The weights it had already downloaded are still in this browser, so trying again does not start from nothing.',
+      desktop ? 'It was running the desktop build, which keeps roughly 4 GB resident on the GPU and is the likeliest thing on this page to be killed for it. If it happens again, the phone build in Settings is the smaller one.' : ''
+    ].filter(Boolean).join('\n\n')
+  });
+  renderMessages();
+}
+
 async function runImageGeneration(promptText, displayPrompt = promptText, allowEnhance = getSmartPromptEnabled()) {
   if (isGenerating) return;
   const imgCfg = activeImageCfg();
@@ -1281,7 +1397,7 @@ async function runImageGeneration(promptText, displayPrompt = promptText, allowE
     role: 'assistant',
     authorLabel: `Sir Waffle · ${imgCfg.name}`,
     imagePrompt: displayPrompt,
-    imageProgress: { stage: 'Preparing…', percent: 2, detail: '' },
+    imageProgress: { stage: 'Preparing…', percent: 1, indeterminate: true, elapsedMs: 0, detail: '' },
     content: ''
   });
 
@@ -1291,11 +1407,48 @@ async function runImageGeneration(promptText, displayPrompt = promptText, allowE
 
   const assistantIdx = messages.length - 1;
   activeAbort = new AbortController();
+  // The bar can only move when something reports, and a first run spends minutes
+  // between reports. This redraws once a second and stamps the run's own clock
+  // onto whatever the last report was, so a busy download and a dead one no longer
+  // look identical on screen.
+  const runStartedAt = Date.now();
+  const stampElapsed = prog => (prog ? { ...prog, elapsedMs: Date.now() - runStartedAt } : prog);
+  // Written down before the first byte and cleared in the finally below: a run the
+  // system kills leaves this behind, and it is the only trace of it that survives.
+  noteImageRun({ prompt: displayPrompt, model: getSelectedImageModel(), modelName: imgCfg.name });
+  if (progressTicker) clearInterval(progressTicker);
+  let lastTickAt = Date.now();
+  let suspendedMs = 0;
+  progressTicker = setInterval(() => {
+    const nowAt = Date.now();
+    const gap = nowAt - lastTickAt;
+    lastTickAt = nowAt;
+    const cur = messages[assistantIdx]?.imageProgress;
+    if (!cur) return;
+    // A one-second timer that took three minutes to fire was not busy. The tab was
+    // throttled, frozen, or discarded and restored, and nothing in here can tell
+    // which — so it says that instead of carrying on as though the run had been
+    // ticking along the whole time.
+    if (gap > 5_000) suspendedMs += gap - 1_000;
+    messages[assistantIdx].imageProgress = suspendedMs
+      ? { ...stampElapsed(cur), suspendedMs }
+      : stampElapsed(cur);
+    renderMessages();
+  }, 1000);
 
   try {
     let finalPrompt = promptText;
     if (allowEnhance && promptText.split(/\s+/).length <= 12) {
-      messages[assistantIdx].imageProgress = { stage: 'Polishing prompt…', percent: 4, detail: promptText };
+      // This is the phase the old bar froze in. Rewriting the prompt runs the
+      // *chat* model, which on a cold start is its own download and load before a
+      // single image weight moves — minutes, announced as "4%". It now says which
+      // model is being loaded and passes the chat engine's own status through.
+      messages[assistantIdx].imageProgress = stampElapsed({
+        stage: 'Polishing your prompt with the chat model',
+        percent: 2,
+        indeterminate: true,
+        detail: 'A short idea is rewritten as one vivid sentence first. On a cold start that loads the chat model before the image engine begins.'
+      });
       renderMessages();
       try {
         // Worded for FLUX.2 Klein, not for a 2023 Stable Diffusion: Klein's text
@@ -1307,7 +1460,16 @@ async function runImageGeneration(promptText, displayPrompt = promptText, allowE
           systemPrompt: 'Output ONLY that one descriptive sentence. No quotes, no intro, no comma-separated tag lists.',
           maxTokens: 70,
           temperature: 0.6,
-          signal: activeAbort.signal
+          signal: activeAbort.signal,
+          onStatus: s => {
+            messages[assistantIdx].imageProgress = stampElapsed({
+              stage: 'Polishing your prompt with the chat model',
+              percent: 3,
+              indeterminate: true,
+              detail: String(s?.detail || s?.state || '')
+            });
+            renderMessages();
+          }
         });
         if (polished && polished.length > 6 && polished.length < 240) {
           finalPrompt = polished.replace(/^["']|["']$/g, '').trim();
@@ -1322,9 +1484,11 @@ async function runImageGeneration(promptText, displayPrompt = promptText, allowE
       size: imgCfg.defaultSize,
       signal: activeAbort.signal,
       onProgress(p) {
-        messages[assistantIdx].imageProgress = p;
+        messages[assistantIdx].imageProgress = stampElapsed(p);
         renderMessages();
-        updateStatusBadge(`${imgCfg.name} · ${p.stage} (${p.percent}%)`);
+        // The badge printed a percentage even when the run had nothing to measure,
+        // so the frozen number appeared in the header as well as the bubble.
+        updateStatusBadge(`${imgCfg.name} · ${p.stage} · ${p.indeterminate ? humanDuration(p.elapsedMs || 0) : `${p.percent}%`}`);
       }
     });
 
@@ -1347,6 +1511,8 @@ async function runImageGeneration(promptText, displayPrompt = promptText, allowE
   } finally {
     isGenerating = false;
     activeAbort = null;
+    clearImageRun();
+    if (progressTicker) { clearInterval(progressTicker); progressTicker = null; }
     renderMessages();
     syncComposerState();
     overlayEl?.querySelector('#waffle-ai-input')?.focus();
@@ -2225,9 +2391,13 @@ export function openWaffleAI() {
     renderMessages();
     syncComposerState();
     updateSavingPill();
+    // After the saved conversation is swapped in, or the notice would be
+    // overwritten by the thread it was appended to.
+    offerCutOffRun();
   }).catch(() => {
     chatSaving = 'failed';
     updateSavingPill();
+    offerCutOffRun();
   });
   detectDeviceDiagnostics().then(d => {
     deviceDiag = d;

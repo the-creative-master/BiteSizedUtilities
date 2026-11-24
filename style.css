@@ -768,6 +768,119 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 
 .shelf-object:active { transform: translateY(3px) scale(0.94); }
 
+/* ============================== the cupboard star ==============================
+   One tool per cupboard is its star — catalog.js has said so since 1.2 — and
+   nothing on screen ever read the flag. Two layouts now do: the plinth, which is
+   what a cupboard opens on, and the corner badge, which follows the same tool
+   onto Saved Toys, Recently Played and into search, where it is a guest rather
+   than the flagship and a whole plinth would be nonsense. */
+
+/* The badge on a guest appearance. Top left, because the heart sticker owns the
+   top right of a shelf slot and the two must not fight. */
+.shelf-star-badge {
+  position: absolute;
+  top: -6px;
+  left: 4%;
+  z-index: 3;
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border: 2.5px solid var(--ink);
+  border-radius: 50%;
+  background: var(--butter, #ffe17d);
+  font-size: 13px;
+  line-height: 1;
+  box-shadow: 0 3px 0 #3f2210;
+}
+.shelf-object-slot.is-star .object-tile {
+  filter: drop-shadow(0 6px 0 rgba(35, 16, 6, 0.42)) drop-shadow(0 0 10px rgba(255, 225, 125, 0.95));
+}
+.shelf-object-slot.is-star .object-label { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+
+/* The plinth itself. */
+.star-plinth {
+  position: relative;
+  max-width: 720px;
+  margin: 16px auto 20px;
+  padding: 16px 18px 18px;
+  border: 3px solid var(--ink);
+  border-radius: 22px;
+  background: linear-gradient(180deg, var(--cup) 0%, #fff9ec 58%);
+  box-shadow: 0 7px 0 rgba(63, 34, 16, 0.32), inset 0 0 0 3px rgba(255, 255, 255, 0.45);
+}
+.star-badge {
+  display: inline-block;
+  margin-bottom: 12px;
+  padding: 5px 13px;
+  border: 2.5px solid var(--ink);
+  border-radius: 999px;
+  background: var(--butter, #ffe17d);
+  font-family: var(--display);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  box-shadow: 0 3px 0 #3f2210;
+}
+.star-plinth-open {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.star-plinth-open:active { transform: translateY(3px) scale(0.985); }
+.star-plinth-tile {
+  flex: 0 0 auto;
+  width: 108px;
+  height: 108px;
+  display: grid;
+  place-items: center;
+}
+.star-plinth-tile svg { width: 106px; height: 106px; display: block; }
+.star-plinth-copy { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.star-plinth-name {
+  font-family: var(--display);
+  font-size: 23px;
+  font-weight: 700;
+  line-height: 1.12;
+}
+.star-plinth-desc { font-size: 13.5px; line-height: 1.45; color: #5d3c22; }
+.star-plinth-cta {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 6px 15px;
+  border: 2.5px solid var(--ink);
+  border-radius: 999px;
+  background: #fffdf7;
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 3px 0 #3f2210;
+}
+.star-plinth-open:hover .star-plinth-cta,
+.star-plinth-open:focus-visible .star-plinth-cta { background: var(--butter, #ffe17d); }
+.star-plinth .favorite-sticker { top: 12px; right: 12px; }
+@media (max-width: 640px) {
+  .star-plinth { padding: 14px 12px 16px; border-radius: 18px; }
+  .star-plinth-open { gap: 12px; }
+  .star-plinth-tile { width: 74px; height: 74px; }
+  .star-plinth-tile svg { width: 72px; height: 72px; }
+  .star-plinth-name { font-size: 18px; }
+  .star-plinth-desc { font-size: 12.5px; }
+  .star-badge { font-size: 11.5px; padding: 4px 10px; margin-bottom: 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .star-plinth-open, .star-plinth-open:active { transition: none; transform: none; }
+}
+
 .object-tile {
   width: 82px;
   height: 82px;
@@ -1156,6 +1269,94 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+/* ====================== Waffle Music Lab · the experimental bench ======================
+   New in 1.3 TVBR 3. A bench says what it is: the badge is on the panel itself,
+   not buried in the release notes, because the point of the mode is that it is
+   allowed to change. */
+.bench-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 2.5px dashed var(--ink);
+  border-radius: 16px;
+  background: #fff6e0;
+}
+.bench-badge {
+  align-self: flex-start;
+  padding: 4px 12px;
+  border: 2.5px solid var(--ink);
+  border-radius: 999px;
+  background: var(--lavender);
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  box-shadow: 0 3px 0 #3f2210;
+}
+.bench-readout {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.bench-strip {
+  display: grid;
+  grid-template-columns: repeat(16, minmax(24px, 1fr));
+  gap: 4px;
+  padding: 10px;
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  background: #fff9ec;
+  overflow-x: auto;
+}
+.bench-cell {
+  height: 44px;
+  padding: 0;
+  border: 2.5px solid var(--ink);
+  border-radius: 10px;
+  background: #fffdf8;
+  font-family: var(--display);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.bench-cell:hover { transform: translateY(-2px); }
+.bench-cell.is-live {
+  transform: translateY(-3px) scale(1.06);
+  box-shadow: 0 0 0 3px var(--ink), 0 4px 0 #3f2210;
+}
+.bench-scope {
+  width: 100%;
+  height: 110px;
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  background: #241814;
+  display: block;
+}
+.bench-code-input {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 2.5px solid var(--ink);
+  border-radius: 12px;
+  background: #fffdf7;
+  font-family: var(--body);
+  font-size: 13px;
+  color: var(--ink);
+}
+@media (max-width: 640px) {
+  .bench-strip { grid-template-columns: repeat(8, minmax(30px, 1fr)); }
+  .bench-cell { height: 38px; font-size: 10.5px; }
+  .bench-scope { height: 84px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bench-cell, .bench-cell:hover, .bench-cell.is-live { transition: none; transform: none; }
 }
 
 .pastel-card {
@@ -3034,6 +3235,18 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   box-shadow: 0 3px 0 #c76e99;
 }
 
+/* A run the system took away: same card family as the progress bar, because it is
+   the same information — what happened, and what can be done about it. */
+.waffle-img-cut {
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line, rgba(90, 70, 55, 0.22));
+  border-left: 3px solid #b4703c;
+  border-radius: 10px;
+  background: rgba(180, 112, 60, 0.08);
+}
+.waffle-img-cut .waffle-md-p { margin: 0 0 0.5rem; }
+.waffle-img-cut .waffle-msg-actions { margin-top: 0.55rem; }
+
 .waffle-img-progress {
   display: flex;
   flex-direction: column;
@@ -3061,6 +3274,44 @@ html[data-kitchen-theme="mintchoco"] .waffle-grid-layer {
   height: 100%;
   background: linear-gradient(90deg, #f3a55b, #e8729f);
   transition: width 0.2s ease;
+}
+/* A stage that reported no fraction: the engine said what it is doing but not how
+   far through it is. The stripes keep moving so a busy run and a dead one no
+   longer look identical, which was the whole complaint — the bar used to print a
+   hard number and hold it for minutes while gigabytes arrived underneath it. */
+.waffle-img-progress.is-indeterminate .waffle-img-prog-bar > span {
+  background-image:
+    linear-gradient(115deg,
+      rgba(255, 255, 255, 0.5) 0 25%, rgba(255, 255, 255, 0) 25% 50%,
+      rgba(255, 255, 255, 0.5) 50% 75%, rgba(255, 255, 255, 0) 75% 100%),
+    linear-gradient(90deg, #f3a55b, #e8729f);
+  background-size: 18px 18px, 100% 100%;
+  background-position: 0 0, 0 0;
+  animation: waffle-prog-stripes 0.9s linear infinite;
+}
+@keyframes waffle-prog-stripes {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 18px 0, 0 0; }
+}
+.waffle-img-progress.is-indeterminate .waffle-img-prog-head > b {
+  animation: waffle-prog-breathe 1.4s ease-in-out infinite;
+}
+@keyframes waffle-prog-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .waffle-img-progress.is-indeterminate .waffle-img-prog-bar > span,
+  .waffle-img-progress.is-indeterminate .waffle-img-prog-head > b { animation: none; }
+}
+/* The numbers that are actually measurements: bytes the engine counted, an
+   estimate that says it is one, and the run's own clock. On a first run this is
+   the line worth reading; the percentage is the least interesting thing here. */
+.waffle-img-prog-facts {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #6d4b2f;
+  font-variant-numeric: tabular-nums;
 }
 /* The engine's own sentences, which are usually one line ("downloading weights
    3/12 — 412/890 MB") and occasionally a paragraph of storage advice. Clamped so

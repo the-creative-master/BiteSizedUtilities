@@ -24,6 +24,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { cupboards, allTools } from '../catalog.js';
+import { APP_VERSION, CHANGELOG, appVersionLabel } from '../changelog.js';
 
 const appSrc = fs.readFileSync(path.join(process.cwd(), 'app.js'), 'utf8');
 const styleSrc = fs.readFileSync(path.join(process.cwd(), 'style.css'), 'utf8');
@@ -169,4 +170,98 @@ test('the search grid still gives every hit the same shelf, stars included', () 
   const search = appSrc.slice(appSrc.indexOf('function renderSearchMatches'), appSrc.indexOf('function home('));
   assert.match(search, /shelfItemCard/, 'results are rendered with the shelf card');
   assert.doesNotMatch(search, /starPlinthHTML/, 'and never with the plinth');
+});
+
+/* ============================ the public release notes ============================
+ * 1.2.10 is the release this work ships in, and the public notes are the most
+ * discoverable page on the site. These check the entry against the code and the
+ * catalogue rather than against itself: a release note that names eight stars, a
+ * tile size and a utility count should fail if any of those move.
+ */
+
+test('1.2.10 is the public entry for this work, and it is the newest one', () => {
+  assert.equal(APP_VERSION, '1.2.10', 'the kitchen reports the release it is');
+  assert.equal(appVersionLabel(), '1.2.10', 'and a public build prints nothing else');
+  assert.equal(CHANGELOG[0].version, '1.2.10', 'newest first, because that is the order they render in');
+  assert.equal(CHANGELOG[0].groups.length, 4, 'the plinth, the badge, the eight stars, and what did not change');
+});
+
+test('the public notes name the stars the catalogue actually has', () => {
+  const text = CHANGELOG[0].groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
+  for (const c of cupboards) {
+    const star = c.tools.find(([id]) => id === c.star);
+    assert.ok(text.includes(star[1]), `${star[1]} is named in the public notes`);
+    assert.ok(text.includes(c.name), `and so is the cupboard it stars in, ${c.name}`);
+  }
+  assert.match(text, /Games & Fun gets no plinth/, 'including the cupboard that has none, and why');
+  assert.match(text, /51 games are not one flagship/, 'in the reason rather than as an omission');
+});
+
+test('the public notes quote a description that is really on the plinth', () => {
+  // The entry makes the case for a bigger tile by quoting one. If the catalogue
+  // copy changes and the note does not, the note is quoting something no visitor
+  // will ever read.
+  const video = cupboards.find(c => c.id === 'video');
+  const star = video.tools.find(([id]) => id === video.star);
+  const text = CHANGELOG[0].groups.map(g => g.items.join(' ')).join(' ');
+  assert.ok(text.includes(star[2]), `Waffle Studio's description is quoted verbatim: "${star[2]}"`);
+  const art = cupboards.find(c => c.id === 'art');
+  const artStar = art.tools.find(([id]) => id === art.star);
+  assert.equal(artStar[1], 'Art Studio');
+  assert.match(text, /layers, 18 brushes and a 4096 px canvas/i,
+    'and Art Studio is described in the words its own catalogue entry uses');
+});
+
+test('the numbers in the public notes are the numbers in the build', () => {
+  const text = CHANGELOG[0].groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
+  assert.equal(allTools.length, 115, 'the utility count the notes claim');
+  assert.match(text, /115 utilities across eight cupboards/);
+  assert.equal(cupboards.length, 8);
+  assert.match(text, /the plinth tile drops to 74 px/, 'the collapsed tile size');
+  assert.match(styleSrc, /\.star-plinth-tile \{ width: 74px; height: 74px; \}/, 'which is what the CSS says');
+  // Measured out of the CSS rather than asserted, because the first version of
+  // these notes said "twice the tile size" and the tiles are 108 px against 82 —
+  // 1.32\u00D7 across, 1.76\u00D7 in area. A comparison written as `>= 2 * x - 20`
+  // against a selector that did not match passed on a fallback of zero, which is
+  // how an over-claim gets a green test attached to it.
+  const plinthPx = Number(/\n\.star-plinth-tile \{[^}]*?width: (\d+)px/.exec(styleSrc)[1]);
+  const shelfPx = Number(/\n\.object-tile \{[^}]*?width: (\d+)px/.exec(styleSrc)[1]);
+  assert.equal(plinthPx, 108, 'the plinth tile, read out of the CSS');
+  assert.equal(shelfPx, 82, 'and the shelf object it is being compared with');
+  const areaRatio = (plinthPx / shelfPx) ** 2;
+  assert.ok(areaRatio > 1.5 && areaRatio < 2,
+    `close to twice the area, which is what the notes now claim (${areaRatio.toFixed(2)}\u00D7)`);
+  assert.match(text, /108 px across against a shelf object\u2019s 82/, 'the note carries both numbers');
+  assert.match(text, /close to twice the area/, 'and the honest ratio rather than the tidier one');
+  assert.doesNotMatch(text, /twice the tile size/, 'the over-claim does not come back');
+  assert.match(text, /prefers-reduced-motion/, 'the motion promise');
+  assert.match(styleSrc, /\.star-plinth-open, \.star-plinth-open:active \{ transition: none; transform: none; \}/,
+    'is a rule that exists');
+});
+
+test('the public notes describe a badge the code really renders', () => {
+  const text = CHANGELOG[0].groups.map(g => g.items.join(' ')).join(' ');
+  assert.match(text, /Star of Art & Coloring/, 'the badge is quoted as it appears');
+  assert.match(plinth, /⭐ Star of \$\{esc\(cupName\)\}/, 'and that is the template it comes from');
+  assert.match(text, /Open Art Studio, star of the Art & Coloring cupboard/, 'as is the aria-label');
+  assert.match(plinth, /aria-label="Open \$\{esc\(t\.name\)\}, star of the \$\{esc\(cupName\)\} cupboard"/,
+    'built from the same two values, so the two cannot disagree');
+  assert.match(text, /never spoken twice/, 'the decorative star is hidden from a screen reader');
+  assert.match(shelfCard, /aria-hidden="true">⭐/, 'in both layouts');
+});
+
+test('the public notes do not describe anything this release did not do', () => {
+  const text = CHANGELOG[0].groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
+  assert.match(text, /No behaviour did\./, 'it says so plainly, because that is the honest scope of a layout release');
+  // The claims a layout release must not make. Each of these would be a promise
+  // about something the star work does not touch.
+  for (const claim of [/new utilit/i, /added .* tools?/i, /faster/i, /no longer needs WebGPU/i, /offline/i]) {
+    assert.doesNotMatch(text, claim, `does not claim: ${claim}`);
+  }
+  // And the machinery behind a test build is not something a public note carries:
+  // the release notes are the most discoverable page on the site.
+  for (const forbidden of ['tvbr', 'tvar', 'dontaskme', 'backup.html', 'backupkitchen', 'passphrase']) {
+    assert.ok(!JSON.stringify(CHANGELOG).toLowerCase().includes(forbidden),
+      `the public notes never reveal "${forbidden}"`);
+  }
 });

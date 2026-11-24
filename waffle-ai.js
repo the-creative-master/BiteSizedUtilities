@@ -2118,7 +2118,7 @@ function setRailOpen(open) {
 function buildOverlay() {
   /**
    * The overhauled layout and the chats it keeps are what this test version is
-   * for, so they are the backup kitchen's alone: the public kitchen at 1.2.8
+   * for, so they are the backup kitchen's alone: the public kitchen at 1.2.10
    * keeps its single pane and its single, unsaved conversation. Markup and
    * behaviour both read this one flag, so the two cannot disagree about which
    * build they are in — a rail that renders without a store behind it, or a

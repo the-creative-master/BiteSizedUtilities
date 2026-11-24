@@ -208,10 +208,13 @@ test('the paused dialog is still dismissible, and counts nothing', () => {
   assert.ok(!css.includes('waffle-ai-locked-tap-hint'), 'the hint styling went with the hint');
 });
 
-test('the changelog puts 1.2.8 above 1.2.7 above 1.2.6 above 1.2.5 above 1.2.1 above 1.2 above 1.1.1 above 1.1 above 1.0.1 above the original 1.0 release', () => {
-  assert.equal(APP_VERSION, '1.2.8');
-  assert.equal(CHANGELOG.length, 10, 'every release is documented');
-  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.2.8', '1.2.7', '1.2.6', '1.2.5', '1.2.1', '1.2', '1.1.1', '1.1', '1.0.1', '1.0'], 'newest release is listed first');
+test('the changelog puts 1.2.10 above 1.2.8 above 1.2.7 above 1.2.6 above 1.2.5 above 1.2.1 above 1.2 above 1.1.1 above 1.1 above 1.0.1 above the original 1.0 release', () => {
+  assert.equal(APP_VERSION, '1.2.10');
+  assert.equal(CHANGELOG.length, 11, 'every release is documented');
+  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.2.10', '1.2.8', '1.2.7', '1.2.6', '1.2.5', '1.2.1', '1.2', '1.1.1', '1.1', '1.0.1', '1.0'], 'newest release is listed first');
+  // There is no 1.2.9: the star utilities were the whole of what this release
+  // carries, and a version is not a queue to be filled in.
+  assert.ok(!CHANGELOG.some(e => e.version === '1.2.9'), 'and nothing was invented to fill the gap');
 
   for (const entry of CHANGELOG) {
     assert.match(entry.version, /^\d+\.\d+(\.\d+)?$/);

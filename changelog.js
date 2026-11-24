@@ -17,12 +17,12 @@ import { isBackupBuild } from './build-mode.js';
  *                     1.1, and the three 1.2 ones after 1.2.
  *                TVBR means "Test Version BEfore Release": built toward a
  *                     release that has not shipped yet. 1.3 TVBR 1 is open while
- *                     the public kitchen is still on 1.2.8, because 1.3 does not
- *                     exist yet and this is what it is being tried on.
+ *                     the public kitchen is still on 1.2.10, because 1.3 does
+ *                     not exist yet and this is what it is being tried on.
  *
  *              The counter resets when the release it belongs to ships, and
  *              nothing about it is mentioned on the public page — there it is
- *              simply 1.2.8. Each entry keeps the label that says where it sat,
+ *              simply 1.2.10. Each entry keeps the label that says where it sat,
  *              so the six below read TVAR and are not renamed to agree with the
  *              one above them. The list itself is named for the label the open
  *              build carries, and it holds both kinds.
@@ -32,7 +32,7 @@ import { isBackupBuild } from './build-mode.js';
  * visitors on GitHub Pages never see repo files, and the release notes belong
  * where the kitchen is.
  */
-export const APP_VERSION = '1.2.8';
+export const APP_VERSION = '1.2.10';
 
 /**
  * How many test builds of the open cycle there have been. Reset to 0 when that
@@ -45,11 +45,16 @@ export const TVBR = 3;
  * The release the open test build comes *before*.
  *
  * Its own constant rather than APP_VERSION, because the two are not the same
- * string and cannot be: 1.2.8 is what the public kitchen reports, while the
+ * string and cannot be: 1.2.10 is what the public kitchen reports, while the
  * backup kitchen is testing toward 1.3, which has not shipped. Deriving the
- * extended label from APP_VERSION would have announced "1.2.8 TVBR 1" — a build
- * that has never existed — and renumbered the entries that document the ones
- * that have.
+ * extended label from APP_VERSION would have announced "1.2.10 TVBR 1" — a
+ * build that has never existed — and renumbered the entries that document the
+ * ones that have.
+ *
+ * A public release that ships *part* of an open cycle does not close it. 1.2.10
+ * carries the star utilities and nothing else from 1.3 TVBR 3, so the counter
+ * stays where it is and the cycle stays 1.3: the test build is still before the
+ * release it is named for.
  */
 export const TVBR_CYCLE = '1.3';
 
@@ -113,7 +118,7 @@ export const TVBR_LOG = [
         label: '\u2B50 Star utilities: a plinth instead of a slot, and a badge that follows the tool',
         items: [
           'catalog.js has named one utility per cupboard as its star since 1.2 \u2014 Calculator, CodeHub, File Converter, Art Studio, Physics Hub, Waffle Translate, Waffle Music Lab, Waffle Studio \u2014 and nothing on screen ever read the flag. A cupboard\u2019s flagship looked exactly like the fourteenth utility beside it, and the sentence that says what it is had nowhere to go: a shelf card is a tile and a name.',
-          'A cupboard now opens on a plinth. The star sits above the shelves at twice the tile size with its description under the name, a badge that names the cupboard it stars in \u2014 \u2B50 Star of Coding & Developing \u2014 an Open it \u2192 pill, and the same heart sticker it always had, so saving it did not move. The whole card is the button, and it is labelled for a screen reader as what it is and where it comes from.',
+          'A cupboard now opens on a plinth. The star sits above the shelves on a 108 px tile against a shelf object\u2019s 82 \u2014 close to twice the area \u2014 with its description under the name, a badge that names the cupboard it stars in \u2014 \u2B50 Star of Coding & Developing \u2014 an Open it \u2192 pill, and the same heart sticker it always had, so saving it did not move. The whole card is the button, and it is labelled for a screen reader as what it is and where it comes from.',
           'The star comes off the row rather than being emphasised inside it, which is the part that makes it a layout and not a highlight: a cupboard reads as one flagship and the tools beside it, and the shelf underneath is one slot shorter rather than one slot louder.',
           'The same tool as a guest keeps the shelf and wears a corner \u2B50 instead \u2014 on Saved Toys, in Recently Played, and in search results, where three hits could each have claimed a plinth and none of them is the star of the shelf they are standing on. The cupboard is named in the accessible label, and the tile gets an underline and a warm glow so a 27 px badge is not the only thing carrying it.',
           'Games & Fun declares its star as the cupboard itself and carries no tool list, so the arcade gets no plinth: it has its own cabinet view, and 51 games are not one flagship.',
@@ -134,10 +139,11 @@ export const TVBR_LOG = [
         ]
       },
       {
-        label: '\u{1F6A2} What makes it into 1.2.10',
+        label: '\u{1F6A2} What made it into 1.2.10, and what did not',
         items: [
-          'The star utilities \u2014 the overhauled layouts and the clear badges \u2014 are what this build contributes to 1.2.10. They are layout and copy over a flag the catalogue has carried since 1.2, they touch no model, no storage and no network, and they behave the same on a phone and a desktop.',
-          'The image progress work and the Music Lab bench are not on that list. The bench calls itself experimental on its own panel, and the progress work is a repair to a run rather than something a release note would advertise. Both ship in this build; neither is claimed for 1.2.10 here.'
+          'Shipped: the star utilities \u2014 the overhauled layouts and the clear badges \u2014 are public as 1.2.10. They are layout and copy over a flag the catalogue has carried since 1.2, they touch no model, no storage and no network, and they behave the same on a phone and a desktop, which is why they were the part worth releasing on their own.',
+          'Not shipped: the image progress work, the interruption work and the Music Lab bench. The bench calls itself experimental on its own panel, and the other two are repairs to a run rather than something a public release note would advertise as a feature. All three stay in this build and in the 1.3 cycle.',
+          'Releasing part of an open cycle does not close it, so the counter did not reset: 1.3 has still not shipped, and this build is still a test version before it. What changed is that the public kitchen moved from 1.2.8 to 1.2.10 underneath an unchanged TVBR label.'
         ]
       },
       {
@@ -546,6 +552,49 @@ export const TVBR_LOG = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: '1.2.10',
+    date: 'November 24, 2026',
+    title: 'Every cupboard opens on its star now: Art Studio and seven others came off the shelf and onto a plinth',
+    groups: [
+      {
+        label: '\u2B50 A plinth instead of a slot',
+        items: [
+          'The catalogue has named one utility per cupboard as its star since 1.2, and until now nothing on screen read that flag. Art Studio \u2014 layers, 18 brushes and a 4096 px canvas \u2014 sat on a shelf in Art & Coloring looking exactly like any of the fourteen utilities beside it, which is not what the tool a cupboard is known for should look like.',
+          'A cupboard now opens on a plinth. The star sits above the shelves on a tile 108 px across against a shelf object\u2019s 82 \u2014 a third wider, and close to twice the area \u2014 in the cupboard\u2019s own colour, with its description under the name and an \u201COpen it \u2192\u201D on the tile. The shelves below hold everything else.',
+          'The star comes off the row rather than being emphasised inside it, and that is the part which makes this a layout instead of a highlight: a cupboard reads as one flagship and the tools beside it, rather than fifteen equal tiles one of which glows. It also means a cupboard opens on the tool it is known for rather than on whatever happens to sort first.',
+          'The description is why the plinth is bigger. A shelf label is forty pixels of name with no room for anything else, and \u201CMulti-layer Photo & Video NLE + WebM export\u201D is the difference between recognising Waffle Studio and wondering what it is.',
+          'The heart sticker moved with the tile and kept its state, so a saved star is still saved on its plinth, and the plinth opens its tool through the same binding every other tile uses. Nothing about tapping a utility changed.'
+        ]
+      },
+      {
+        label: '\u{1F3F7}\uFE0F One badge, meaning the same thing everywhere',
+        items: [
+          'The badge names the cupboard: \u201C\u2B50 Star of Art & Coloring\u201D on the plinth. It is one sentence rather than one design, so the same badge cannot drift into meaning two different things in two different places.',
+          'The same tool as a guest keeps the shelf it is on and wears a corner \u2B50 instead \u2014 on Saved Toys, in Recently Played, and in search results, where three hits could each have claimed a plinth and none of them should. A guest does not take over somebody else\u2019s shelf, so the emphasis there is a corner star and an underline rather than a bigger tile.',
+          'A screen reader is told the same fact either way. The plinth\u2019s open button reads \u201COpen Art Studio, star of the Art & Coloring cupboard\u201D, a guest tile carries that sentence as its own label, and the visible \u2B50 is decorative so it is never spoken twice.',
+          'The heart on both is a real toggle reporting its state, and its label changes between Save and Unsave along with the state it is in.'
+        ]
+      },
+      {
+        label: '\u{1F3A8} The eight stars, and the cupboard that has none',
+        items: [
+          'Calculator in Math & Numbers, CodeHub in Coding & Developing, File Converter in Text & Files, Art Studio in Art & Coloring, Physics Hub in Science & Physics, Waffle Translate in English & Languages, Waffle Music Lab in Music & Composing, and Waffle Studio in Videography & Editing.',
+          'Games & Fun gets no plinth. It declares itself as its own star and carries no utility list: 51 games are not one flagship, and the arcade has its own cabinet view rather than shelves of tools.',
+          'Each star is derived from the cupboard it belongs to instead of being listed a second time, so a cupboard cannot end up with two flags or none \u2014 and a test holds that, along with one plinth per cupboard and no star left sitting on a shelf underneath its own plinth.'
+        ]
+      },
+      {
+        label: '\u{1F6AB} What did not change',
+        items: [
+          'No behaviour did. The kitchen still has 115 utilities across eight cupboards, every tool opens the way it did, and nothing was added, removed or renamed to make the layout work.',
+          'Both layouts collapse on a phone: the plinth tile drops to 74 px and the badge shrinks with it, so a flagship does not eat the screen it is being shown on.',
+          'Neither animates for anybody who has asked the system not to. The plinth\u2019s press transform and transition sit inside a prefers-reduced-motion block, along with the rest of the kitchen\u2019s.',
+          'Search did not change either. Results are still two to a shelf on a phone and four on a wide screen; the only difference is a corner star on the ones that are somebody\u2019s flagship.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.2.8',
     date: 'November 23, 2026',

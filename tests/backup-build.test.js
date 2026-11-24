@@ -24,8 +24,8 @@ function pageWith(dataset) {
 
 test('the public kitchen reports a plain release version and knows nothing about TVBR', () => {
   pageWith({});
-  assert.equal(APP_VERSION, '1.2.8');
-  assert.equal(appVersionLabel(), '1.2.8', 'index.html says 1.2.8 and nothing else');
+  assert.equal(APP_VERSION, '1.2.10');
+  assert.equal(appVersionLabel(), '1.2.10', 'index.html says 1.2.10 and nothing else');
   assert.equal(isBackupBuild(), false);
   assert.equal(isPublicBuild(), true);
   // Both spellings: the label is TVBR now, but six shipped builds read TVAR, and
@@ -49,14 +49,19 @@ test('the public kitchen reports a plain release version and knows nothing about
 
 test('the backup kitchen reports the test build it is, not the release beside it', () => {
   pageWith({ backup: '1' });
-  // 1.2.8 is what the public kitchen says. This build is the third test version
+  // 1.2.10 is what the public kitchen says. This build is the third test version
   // of the open cycle, so it says so — and the two labels are allowed to
   // disagree, which is the whole reason the cycle is its own constant instead of
   // APP_VERSION. A new cycle restarts the counter at 1 rather than counting on
   // from the last cycle's 3, and the entries below keep the numbers they had.
+  //
+  // 1.2.10 is the case that proves the cycle has to be its own constant. It ships
+  // part of 1.3 TVBR 3 — the star utilities — so the public version moved while
+  // the cycle this build is named for did not. Resetting here would have announced
+  // that 1.3 had shipped, which it has not.
   assert.equal(TVBR, 3, 'the counter sits at the build this kitchen reports');
   assert.equal(TVBR_CYCLE, '1.3', 'on the 1.3 cycle');
-  assert.equal(APP_VERSION, '1.2.8', 'while the release has moved on without it');
+  assert.equal(APP_VERSION, '1.2.10', 'while the release has moved on without it');
   assert.equal(appVersionLabel(), '1.3 TVBR 3', 'backup.html reports the build it is');
   assert.equal(isBackupBuild(), true);
   assert.equal(isPublicBuild(), false);
@@ -190,7 +195,9 @@ test('TVBR entries reset with each release and are rendered only in the backup b
   assert.match(src, /export const APP_VERSION_EXTENDED = `\$\{TVBR_CYCLE\} TVBR \$\{TVBR\}`;/,
     'the extended label is derived, so bumping TVBR is a one-character change');
   assert.match(src, /export const TVBR_CYCLE = '1\.3';/,
-    'from the cycle it belongs to, which is a literal: APP_VERSION has moved on to 1.2.8 and deriving from it would announce a build that has never existed');
+    'from the cycle it belongs to, which is a literal: APP_VERSION has moved on to 1.2.10 and deriving from it would announce a build that has never existed');
+  assert.match(src, /A public release that ships \*part\* of an open cycle does not close it/,
+    'and the rule for a partial release is written down where the constants live, because 1.2.10 is the first one');
   assert.match(src, /Reset to 0 when that/, 'the reset rule is written down where the counter lives');
   assert.match(src, /const releases = isBackupBuild\(\) \? \[\.\.\.TVBR_LOG, \.\.\.CHANGELOG\] : CHANGELOG;/,
     'the renderer only prepends TVBR entries in the backup build');
@@ -395,7 +402,7 @@ test('the paused-AI notice quotes the current cabinet and keeps its promise', ()
 
 /* ============================== the open build's own entry ============================== */
 
-test('1.3 TVBR 3 says what the bar used to do, and what makes it into 1.2.10', () => {
+test('1.3 TVBR 3 says what the bar used to do, what an interruption costs, and what made it into 1.2.10', () => {
   const entry = TVBR_LOG[0];
   assert.equal(entry.version, APP_VERSION_EXTENDED);
   assert.equal(entry.date, 'November 24, 2026');
@@ -430,9 +437,27 @@ test('1.3 TVBR 3 says what the bar used to do, and what makes it into 1.2.10', (
   assert.match(text, /analyser/, 'and the spectrum is of the output, not of the room');
   assert.match(text, /sixteen rests/, 'the silence bug is written down rather than quietly fixed');
 
-  // What ships where, which is the part a reader of this build acts on.
-  assert.match(text, /1\.2\.10/, 'the entry says which release the star work is for');
-  assert.match(text, /not on that list/, 'and that the rest of this build is not on it');
+  // The interruption work, which arrived after the progress complaint and is the
+  // half a reader on a phone acts on. The entry has to carry the limits as well as
+  // the fix, or it reads as a setting that was switched off.
+  assert.match(text, /Aw, Snap/, 'the crash is named in the words it arrives in');
+  assert.match(text, /the decision is about the tab/, 'and so is why exempting the app did not stop it');
+  assert.match(text, /navigator\.wakeLock\.request/, 'the one signal a power manager consistently respects');
+  assert.match(text, /before the first byte rather than after the first stall/, 'asked for while something is still running to ask');
+  assert.match(text, /device\.lost as a warning event/, 'the loss the engine reports and used to carry on through');
+  assert.match(text, /handed the same dead device/, 'which is what made it permanent rather than one bad run');
+  assert.match(text, /the system paused this tab for/, 'a frozen tab is reported as frozen, by a clock that cannot be faked');
+  assert.match(text, /Run it again/, 'and a killed tab offers the retry rather than leaving a thread that ends mid-sentence');
+  assert.match(text, /it cannot stop a renderer being killed/, 'with the limit stated, because the alternative is an over-promise');
+
+  // What shipped where, which is the part a reader of this build acts on. 1.2.10
+  // is now a real release rather than a plan, so this group reads as a record.
+  assert.match(text, /1\.2\.10/, 'the entry says which release the star work went into');
+  assert.match(text, /Shipped: the star utilities/, 'what is public now');
+  assert.match(text, /Not shipped: the image progress work, the interruption work and the Music Lab bench/,
+    'and what stayed in this build');
+  assert.match(text, /Releasing part of an open cycle does not close it/,
+    'the rule that kept TVBR at 3 while APP_VERSION moved to 1.2.10');
 
   // The bench badge sits on a panel that ships in the public kitchen too, so the
   // sentence a visitor reads must not be the one carrying this build's label.

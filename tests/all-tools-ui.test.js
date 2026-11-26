@@ -156,9 +156,9 @@ function makeDOMShim() {
   return { FakeElement };
 }
 
-test('all 115 utilities across all 8 cupboards render with cozy 2.5D game UI and zero default HTML select/range/checkbox/color controls', () => {
+test('all 120 utilities across all 8 cupboards render with cozy 2.5D game UI and zero default HTML select/range/checkbox/color controls', () => {
   const { FakeElement } = makeDOMShim();
-  assert.equal(allTools.length, 115);
+  assert.equal(allTools.length, 120);
 
   for (const t of allTools) {
     const root = new FakeElement('div');

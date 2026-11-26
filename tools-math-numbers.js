@@ -1,4 +1,4 @@
-// 10 bespoke 2.5D Mobile-Game Math & Numbers utilities with tactile toys, visualizers & SFX.
+// 15 bespoke 2.5D Mobile-Game Math & Numbers utilities with tactile toys, visualizers & SFX.
 import { el, createGameSlider, createGameTabs, createGameToggle, createGameField } from './game-ui.js';
 import { playPop, playSquish, playDiceRoll, playSparkle } from './sfx.js';
 
@@ -2962,6 +2962,698 @@ function sequencePlayground(root) {
   renderInspector();
 }
 
+/* =========================================================================================
+ * The five added in 1.2.11 / 1.3 TVBR 4.
+ *
+ * Each one shows its working rather than only its answer, because a math tool that
+ * prints a number you cannot check is a calculator you have to trust — and the rest
+ * of this cupboard already shows the substitution (`100 × (1 + 15 ÷ 100)`), so a new
+ * tool that did not would be the odd one out.
+ *
+ * They also refuse out loud. A quadratic with a = 0 is not a quadratic, a singular
+ * 2×2 system has no unique answer, and a list with one number in it has no sample
+ * variance. Each of those is a real mathematical fact, and printing a plausible
+ * number instead would be the same mistake the image progress bar was making.
+ * ========================================================================================= */
+
+/** Round for display the way the rest of the cupboard does, and say when it is exact. */
+function mathsText(n) {
+  if (typeof n === 'bigint') return String(n);
+  if (!Number.isFinite(n)) return null;
+  return numberText(n);
+}
+
+/** A line of working: the expression, then what it came to. */
+function workingLine(expr, value) {
+  return el('div', { class: 'mw-line' },
+    el('code', { class: 'mw-expr' }, expr),
+    el('span', { class: 'mw-arrow', 'aria-hidden': 'true' }, '→'),
+    el('b', { class: 'mw-val' }, value)
+  );
+}
+
+function mathsNote(text, cls = '') {
+  return el('p', { class: `mw-note ${cls}`.trim() }, text);
+}
+
+/* ---------------------------------------------------------------- Equation Solver */
+
+function equationSolver(root) {
+  let mode = 'quadratic';
+  const body = el('div', { class: 'mw-body' });
+
+  const num = (v, fallback = 0) => {
+    const t = String(v ?? '').trim();
+    if (t === '') return fallback;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : NaN;
+  };
+
+  const field = (label, value) => createGameField({ label, value, inputmode: 'decimal' });
+
+  function linear() {
+    const a = field('a  (a·x + b = c)', '3');
+    const b = field('b', '7');
+    const c = field('c', '22');
+    const out = el('div', { class: 'mw-out' });
+    const solve = () => {
+      playPop(560);
+      out.replaceChildren();
+      const [av, bv, cv] = [num(a.input.value), num(b.input.value), num(c.input.value)];
+      if ([av, bv, cv].some(Number.isNaN)) { out.append(mathsNote('One of those is not a number.', 'is-bad')); return; }
+      out.append(el('p', { class: 'mw-eq' }, `${mathsText(av)}·x + ${mathsText(bv)} = ${mathsText(cv)}`));
+      if (av === 0) {
+        // Not a linear equation any more, and the answer depends entirely on b and c.
+        out.append(bv === cv
+          ? mathsNote('a is 0, so x has disappeared: every number is a solution.', 'is-warn')
+          : mathsNote(`a is 0 and ${mathsText(bv)} ≠ ${mathsText(cv)}, so nothing satisfies this. There is no solution.`, 'is-bad'));
+        return;
+      }
+      out.append(workingLine(`x = (${mathsText(cv)} − ${mathsText(bv)}) ÷ ${mathsText(av)}`, mathsText((cv - bv) / av)));
+    };
+    // Solving on every keystroke as well as on the button: the rest of this
+    // cupboard answers as you type, and a Solve button that is the only way to
+    // refresh is a button people press twice.
+    for (const f of [a, b, c]) f.input.addEventListener('input', solve);
+    return { nodes: [a.el, b.el, c.el], actions: [el('button', { class: 'gbtn gbtn-primary', onClick: solve }, 'Solve')], out, run: solve };
+  }
+
+  function quadratic() {
+    const a = field('a  (a·x² + b·x + c = 0)', '1');
+    const b = field('b', '-3');
+    const c = field('c', '-4');
+    const out = el('div', { class: 'mw-out' });
+    const solve = () => {
+      playPop(600);
+      out.replaceChildren();
+      const [av, bv, cv] = [num(a.input.value), num(b.input.value), num(c.input.value)];
+      if ([av, bv, cv].some(Number.isNaN)) { out.append(mathsNote('One of those is not a number.', 'is-bad')); return; }
+      out.append(el('p', { class: 'mw-eq' }, `${mathsText(av)}x² + ${mathsText(bv)}x + ${mathsText(cv)} = 0`));
+      if (av === 0) {
+        out.append(mathsNote('a is 0, so this is not a quadratic — it is a straight line. Switch to the Linear tab; it will tell you whether that line has one solution, none, or infinitely many.', 'is-warn'));
+        return;
+      }
+      const disc = bv * bv - 4 * av * cv;
+      out.append(workingLine('discriminant  b² − 4ac', mathsText(disc)));
+      if (disc > 0) {
+        const r = Math.sqrt(disc);
+        const x1 = (-bv + r) / (2 * av);
+        const x2 = (-bv - r) / (2 * av);
+        out.append(el('span', { class: 'gbadge mw-two' }, 'TWO REAL ROOTS'));
+        out.append(workingLine(`x = (−b + √D) ÷ 2a = (${-bv} + ${mathsText(r)}) ÷ ${mathsText(2 * av)}`, mathsText(x1)));
+        out.append(workingLine(`x = (−b − √D) ÷ 2a = (${-bv} − ${mathsText(r)}) ÷ ${mathsText(2 * av)}`, mathsText(x2)));
+        out.append(mathsNote(`Check: the roots sum to ${mathsText(x1 + x2)} (−b ÷ a = ${mathsText(-bv / av)}) and multiply to ${mathsText(x1 * x2)} (c ÷ a = ${mathsText(cv / av)}).`));
+      } else if (disc === 0) {
+        const x = -bv / (2 * av);
+        out.append(el('span', { class: 'gbadge mw-one' }, 'ONE REPEATED ROOT'));
+        out.append(workingLine(`x = −b ÷ 2a = ${-bv} ÷ ${mathsText(2 * av)}`, mathsText(x)));
+        out.append(mathsNote('The parabola touches the axis here rather than crossing it.'));
+      } else {
+        const re = -bv / (2 * av);
+        const im = Math.sqrt(-disc) / Math.abs(2 * av);
+        out.append(el('span', { class: 'gbadge mw-complex' }, 'NO REAL ROOTS'));
+        out.append(workingLine('real part  −b ÷ 2a', mathsText(re)));
+        out.append(workingLine('imaginary part  √(−D) ÷ |2a|', mathsText(im)));
+        out.append(el('p', { class: 'mw-eq' }, `x = ${mathsText(re)} ± ${mathsText(im)}i`));
+        out.append(mathsNote('The parabola never reaches the axis, so the two roots are a complex pair.'));
+      }
+      out.append(workingLine(`vertex  x = −b ÷ 2a,  y = c − b² ÷ 4a`, `(${mathsText(-bv / (2 * av))}, ${mathsText(cv - (bv * bv) / (4 * av))})`));
+    };
+    for (const f of [a, b, c]) f.input.addEventListener('input', solve);
+    return { nodes: [a.el, b.el, c.el], actions: [el('button', { class: 'gbtn gbtn-primary', onClick: solve }, 'Solve')], out, run: solve };
+  }
+
+  function system() {
+    const a1 = field('a₁  (a₁x + b₁y = c₁)', '2');
+    const b1 = field('b₁', '3');
+    const c1 = field('c₁', '8');
+    const a2 = field('a₂  (a₂x + b₂y = c₂)', '4');
+    const b2 = field('b₂', '-1');
+    const c2 = field('c₂', '2');
+    const out = el('div', { class: 'mw-out' });
+    const solve = () => {
+      playPop(520);
+      out.replaceChildren();
+      const v = [a1, b1, c1, a2, b2, c2].map(f => num(f.input.value));
+      if (v.some(Number.isNaN)) { out.append(mathsNote('One of those is not a number.', 'is-bad')); return; }
+      const [A, B, C, D, E, F] = v;
+      out.append(el('p', { class: 'mw-eq' }, `${mathsText(A)}x + ${mathsText(B)}y = ${mathsText(C)}`));
+      out.append(el('p', { class: 'mw-eq' }, `${mathsText(D)}x + ${mathsText(E)}y = ${mathsText(F)}`));
+      const det = A * E - B * D;
+      out.append(workingLine(`determinant  a₁b₂ − b₁a₂ = ${mathsText(A)}·${mathsText(E)} − ${mathsText(B)}·${mathsText(D)}`, mathsText(det)));
+      if (det === 0) {
+        // Singular: the two lines are parallel or the same line. Which one depends
+        // on whether the right-hand side is consistent, and the two answers are
+        // opposites, so guessing here would be worse than refusing.
+        const consistent = (A === 0 && B === 0) ? C === 0 : (Math.abs(D * C - A * F) < 1e-9 && Math.abs(E * C - B * F) < 1e-9);
+        out.append(consistent
+          ? mathsNote('The determinant is 0 and the two equations are the same line: every point on it is a solution, so there are infinitely many.', 'is-warn')
+          : mathsNote('The determinant is 0 and the lines are parallel, so they never meet. There is no solution.', 'is-bad'));
+        return;
+      }
+      const x = (C * E - B * F) / det;
+      const y = (A * F - C * D) / det;
+      out.append(el('span', { class: 'gbadge mw-two' }, 'ONE SOLUTION'));
+      out.append(workingLine(`x = (c₁b₂ − b₁c₂) ÷ det`, mathsText(x)));
+      out.append(workingLine(`y = (a₁c₂ − c₁a₂) ÷ det`, mathsText(y)));
+      out.append(mathsNote(`Check: ${mathsText(A)}·${mathsText(x)} + ${mathsText(B)}·${mathsText(y)} = ${mathsText(A * x + B * y)}, and the first equation asks for ${mathsText(C)}.`));
+    };
+    for (const f of [a1, b1, c1, a2, b2, c2]) f.input.addEventListener('input', solve);
+    return { nodes: [a1.el, b1.el, c1.el, a2.el, b2.el, c2.el], actions: [el('button', { class: 'gbtn gbtn-primary', onClick: solve }, 'Solve')], out, run: solve };
+  }
+
+  const tabs = createGameTabs({
+    items: [{ value: 'linear', label: 'Linear' }, { value: 'quadratic', label: 'Quadratic' }, { value: 'system', label: 'System 2×2' }],
+    value: mode,
+    cls: 'mw-tabs',
+    onChange: v => { mode = v; playPop(500); draw(); }
+  });
+
+  function draw() {
+    const built = mode === 'linear' ? linear() : mode === 'system' ? system() : quadratic();
+    body.replaceChildren(
+      el('div', { class: 'mw-fields' }, built.nodes),
+      el('div', { class: 'mw-actions' }, built.actions),
+      built.out
+    );
+    built.run();
+  }
+
+  root.replaceChildren(
+    el('div', { class: 'game-panel mw-panel' },
+      el('p', { class: 'mw-lead' }, 'Solve for x — one variable, two variables, or a curve. Every answer comes with the substitution it came from.'),
+      tabs.el,
+      body
+    )
+  );
+  draw();
+}
+
+/* ---------------------------------------------------------------- Statistics Lab */
+
+function statisticsLab(root) {
+  const input = createGameField({
+    label: 'Your numbers (commas, spaces or new lines)',
+    value: '4, 8, 15, 16, 23, 42, 8, 15, 15',
+    placeholder: '12, 7, 9.5, 20',
+    inputmode: 'decimal'
+  });
+  const out = el('div', { class: 'mw-out' });
+
+  function medianOf(sorted) {
+    const n = sorted.length;
+    if (!n) return NaN;
+    const mid = n >> 1;
+    return n % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+
+  function compute() {
+    out.replaceChildren();
+    const raw = input.input.value.split(/[,\s;]+/).map(t => t.trim()).filter(Boolean);
+    if (!raw.length) { out.append(mathsNote('Type some numbers in first.', 'is-warn')); return; }
+    const bad = raw.filter(t => !Number.isFinite(Number(t)));
+    const values = raw.filter(t => Number.isFinite(Number(t))).map(Number);
+    if (bad.length) out.append(mathsNote(`Skipped ${bad.length} thing${bad.length === 1 ? '' : 's'} that are not numbers: ${bad.slice(0, 5).join(', ')}${bad.length > 5 ? '…' : ''}`, 'is-warn'));
+    if (!values.length) { out.append(mathsNote('Nothing left to measure.', 'is-bad')); return; }
+
+    const sorted = values.slice().sort((a, b) => a - b);
+    const n = sorted.length;
+    const sum = sorted.reduce((t, v) => t + v, 0);
+    const mean = sum / n;
+    const median = medianOf(sorted);
+    const min = sorted[0];
+    const max = sorted[n - 1];
+
+    const counts = new Map();
+    for (const v of sorted) counts.set(v, (counts.get(v) || 0) + 1);
+    const top = Math.max(...counts.values());
+    const modes = [...counts.entries()].filter(([, c]) => c === top).map(([v]) => v).sort((a, b) => a - b);
+
+    // Quartiles by the median-of-halves method: with an odd count the middle value
+    // belongs to neither half, which is the convention a hand-worked example uses.
+    const lower = sorted.slice(0, n >> 1);
+    const upper = n % 2 ? sorted.slice((n >> 1) + 1) : sorted.slice(n >> 1);
+    const q1 = medianOf(lower);
+    const q3 = medianOf(upper);
+
+    const sqDev = sorted.reduce((t, v) => t + (v - mean) ** 2, 0);
+    const popVar = sqDev / n;
+    const sampleVar = n > 1 ? sqDev / (n - 1) : NaN;
+    const mad = sorted.reduce((t, v) => t + Math.abs(v - mean), 0) / n;
+
+    const stat = (label, value, note) => el('div', { class: 'mw-stat' },
+      el('span', { class: 'mw-stat-k' }, label),
+      el('b', { class: 'mw-stat-v' }, value === null ? '—' : value),
+      note ? el('span', { class: 'mw-stat-n' }, note) : null
+    );
+    const fmt = v => (Number.isFinite(v) ? mathsText(v) : null);
+
+    const grid = el('div', { class: 'mw-statgrid' },
+      stat('Count', String(n)),
+      stat('Sum', fmt(sum)),
+      stat('Mean', fmt(mean)),
+      stat('Median', fmt(median)),
+      stat('Mode', top > 1 ? modes.map(mathsText).join(', ') : null, top > 1 ? `${modes.length === 1 ? 'appears' : 'each appear'} ${top}×` : 'no value repeats'),
+      stat('Min', fmt(min)),
+      stat('Max', fmt(max)),
+      stat('Range', fmt(max - min)),
+      stat('Q1', fmt(q1)),
+      stat('Q3', fmt(q3)),
+      stat('IQR', fmt(q3 - q1)),
+      stat('Mean abs. deviation', fmt(mad)),
+      stat('Variance (population)', fmt(popVar), '÷ n'),
+      stat('Std dev (population)', fmt(Math.sqrt(popVar)), '÷ n'),
+      stat('Variance (sample)', fmt(sampleVar), n > 1 ? '÷ (n − 1)' : 'needs two values'),
+      stat('Std dev (sample)', n > 1 ? fmt(Math.sqrt(sampleVar)) : null, n > 1 ? '÷ (n − 1)' : 'one number has no spread')
+    );
+
+    out.append(grid);
+
+    if (n > 1 && max > min) {
+      // A histogram of the actual values, not a decoration: the bars are the bins.
+      const bins = Math.min(10, Math.max(2, Math.ceil(Math.sqrt(n))));
+      const width = (max - min) / bins;
+      const counts2 = new Array(bins).fill(0);
+      for (const v of sorted) {
+        let i = Math.floor((v - min) / width);
+        if (i >= bins) i = bins - 1;
+        counts2[i] += 1;
+      }
+      const peak = Math.max(...counts2);
+      out.append(el('div', { class: 'mw-hist', 'aria-hidden': 'true' },
+        counts2.map(c => el('span', { class: 'mw-bar', style: `height:${Math.round((c / peak) * 100)}%`, title: `${c} value${c === 1 ? '' : 's'}` }))
+      ));
+      out.append(mathsNote(`${bins} bins of ${mathsText(width)} each, from ${mathsText(min)} to ${mathsText(max)}. The tallest holds ${peak}.`));
+    } else {
+      out.append(mathsNote(n === 1 ? 'One value has no spread, so there is nothing to draw and no sample variance to report.' : 'Every value is the same, so there is no spread to draw.'));
+    }
+    if (n > 1) {
+      const outliers = sorted.filter(v => v < q1 - 1.5 * (q3 - q1) || v > q3 + 1.5 * (q3 - q1));
+      out.append(outliers.length
+        ? mathsNote(`By the 1.5 × IQR rule, ${outliers.length} value${outliers.length === 1 ? ' sits' : 's sit'} outside the fence: ${outliers.map(mathsText).join(', ')}.`, 'is-warn')
+        : mathsNote('Nothing sits outside the 1.5 × IQR fence, so this rule finds no outliers.'));
+    }
+  }
+
+  input.input.addEventListener('input', compute);
+  root.replaceChildren(
+    el('div', { class: 'game-panel mw-panel' },
+      el('p', { class: 'mw-lead' }, 'Paste a list of numbers and get the whole picture: centre, spread, quartiles, outliers and a histogram of what you actually typed.'),
+      input.el,
+      el('div', { class: 'mw-actions' },
+        el('button', { class: 'gbtn gbtn-primary', onClick: () => { playSparkle(); compute(); } }, '✨ Measure'),
+        el('button', { class: 'gbtn gbtn-chip', onClick: () => { input.input.value = ''; playPop(420); compute(); } }, 'Clear')
+      ),
+      out
+    )
+  );
+  compute();
+}
+
+/* ------------------------------------------------------------- Matrix Calculator */
+
+function matrixCalculator(root) {
+  let size = 2;
+  let op = 'add';
+  const cellsA = [];
+  const cellsB = [];
+  const out = el('div', { class: 'mw-out' });
+
+  const val = (arr, i) => {
+    const t = String(arr[i].value ?? '').trim();
+    if (t === '') return 0;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : NaN;
+  };
+  const read = arr => Array.from({ length: size * size }, (_, i) => val(arr, i));
+
+  const grid = (cells, label) => {
+    cells.length = 0;
+    const inputs = [];
+    for (let i = 0; i < size * size; i++) {
+      const inp = el('input', {
+        type: 'text', class: 'mx-in', inputmode: 'decimal', value: i % (size + 1) === 0 ? '1' : '0',
+        'aria-label': `${label} row ${Math.floor(i / size) + 1} column ${(i % size) + 1}`
+      });
+      inputs.push(inp);
+      cells.push(inp);
+    }
+    return el('div', { class: `mx-grid mx-${size}` },
+      el('span', { class: 'mx-bracket', 'aria-hidden': 'true' }),
+      el('div', { class: 'mx-cells' }, inputs),
+      el('span', { class: 'mx-bracket mx-bracket-r', 'aria-hidden': 'true' })
+    );
+  };
+
+  const showMatrix = (m, cls = '') => el('div', { class: `mx-grid mx-${size} is-result ${cls}` },
+    el('span', { class: 'mx-bracket', 'aria-hidden': 'true' }),
+    el('div', { class: 'mx-cells' }, m.map(v => el('span', { class: 'mx-cell', title: Number.isFinite(v) ? String(v) : 'undefined' }, Number.isFinite(v) ? mathsText(v) : '—'))),
+    el('span', { class: 'mx-bracket mx-bracket-r', 'aria-hidden': 'true' })
+  );
+
+  const det = m => size === 2
+    ? m[0] * m[3] - m[1] * m[2]
+    : m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6]) + m[2] * (m[3] * m[7] - m[4] * m[6]);
+
+  function run() {
+    out.replaceChildren();
+    const A = read(cellsA);
+    const B = read(cellsB);
+    if (A.concat(B).some(Number.isNaN)) { out.append(mathsNote('One of those cells is not a number. Empty cells count as 0.', 'is-bad')); return; }
+    const at = (m, r, c) => m[r * size + c];
+
+    if (op === 'add' || op === 'sub') {
+      const R = A.map((v, i) => op === 'add' ? v + B[i] : v - B[i]);
+      out.append(workingLine(op === 'add' ? 'A + B — cell by cell' : 'A − B — cell by cell', `${size}×${size}`));
+      out.append(showMatrix(R));
+      return;
+    }
+    if (op === 'mul') {
+      const R = new Array(size * size).fill(0);
+      for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) {
+        let acc = 0;
+        for (let k = 0; k < size; k++) acc += at(A, r, k) * at(B, k, c);
+        R[r * size + c] = acc;
+      }
+      out.append(workingLine('A × B — each cell is a row of A dotted with a column of B', `${size}×${size}`));
+      out.append(showMatrix(R));
+      if (size === 2) out.append(mathsNote(`Top-left, worked: (${mathsText(A[0])} × ${mathsText(B[0])}) + (${mathsText(A[1])} × ${mathsText(B[2])}) = ${mathsText(R[0])}.`));
+      out.append(mathsNote('Matrix multiplication is not commutative: B × A is usually a different matrix.'));
+      return;
+    }
+    if (op === 'transpose') {
+      const R = new Array(size * size).fill(0);
+      for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) R[c * size + r] = at(A, r, c);
+      out.append(workingLine('Aᵀ — rows become columns', `${size}×${size}`));
+      out.append(showMatrix(R));
+      return;
+    }
+    const d = det(A);
+    if (op === 'det') {
+      out.append(size === 2
+        ? workingLine(`det A = (a·d − b·c) = (${mathsText(A[0])} × ${mathsText(A[3])}) − (${mathsText(A[1])} × ${mathsText(A[2])})`, mathsText(d))
+        : workingLine('det A = a(ei − fh) − b(di − fg) + c(dh − eg)', mathsText(d)));
+      out.append(el('span', { class: `gbadge ${d === 0 ? 'mw-one' : 'mw-two'}` }, d === 0 ? 'SINGULAR — NOT INVERTIBLE' : 'INVERTIBLE'));
+      out.append(mathsNote(d === 0
+        ? 'A determinant of 0 means the matrix squashes space flat: it has no inverse, and the system it describes has no unique solution.'
+        : `The determinant is the factor by which this matrix scales an area${size === 3 ? ' (a volume, for 3×3)' : ''}. Its sign tells you whether it flips orientation.`));
+      return;
+    }
+    // inverse
+    if (d === 0) {
+      out.append(workingLine('det A', mathsText(0)));
+      out.append(mathsNote('det A is 0, so A has no inverse — dividing by it would mean dividing by zero. There is nothing to print here.', 'is-bad'));
+      return;
+    }
+    let R;
+    if (size === 2) {
+      R = [A[3] / d, -A[1] / d, -A[2] / d, A[0] / d];
+      out.append(workingLine('A⁻¹ = (1 ÷ det) · [d, −b; −c, a]', `÷ ${mathsText(d)}`));
+    } else {
+      const cof = (i, j) => {
+        const rows = [0, 1, 2].filter(r => r !== i);
+        const cols = [0, 1, 2].filter(c => c !== j);
+        const minor = at(A, rows[0], cols[0]) * at(A, rows[1], cols[1]) - at(A, rows[0], cols[1]) * at(A, rows[1], cols[0]);
+        return ((i + j) % 2 === 0 ? 1 : -1) * minor;
+      };
+      R = new Array(9);
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) R[r * 3 + c] = cof(c, r) / d;
+      out.append(workingLine('A⁻¹ = (1 ÷ det) · cofactor matrix, transposed', `÷ ${mathsText(d)}`));
+    }
+    out.append(showMatrix(R));
+    const I = A.map((_, i) => 0).map((_, i) => (Math.floor(i / size) === i % size ? 1 : 0));
+    const check = new Array(size * size).fill(0);
+    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) {
+      let acc = 0;
+      for (let k = 0; k < size; k++) acc += at(A, r, k) * at(R, k * size + c);
+      check[r * size + c] = acc;
+    }
+    const isIdentity = check.every((v, i) => Math.abs(v - I[i]) < 1e-9);
+    out.append(mathsNote(isIdentity ? 'Check: A × A⁻¹ is the identity matrix, as it has to be.' : 'Check: A × A⁻¹ came out slightly away from the identity, which is rounding in the display rather than a wrong inverse.'));
+  }
+
+  const sizeTabs = createGameTabs({
+    items: [{ value: '2', label: '2×2' }, { value: '3', label: '3×3' }],
+    value: String(size), cls: 'mw-tabs',
+    onChange: v => { size = Number(v); playPop(500); draw(); }
+  });
+  const opTabs = createGameTabs({
+    items: [{ value: 'add', label: 'A + B' }, { value: 'sub', label: 'A − B' }, { value: 'mul', label: 'A × B' },
+      { value: 'det', label: 'det A' }, { value: 'transpose', label: 'Aᵀ' }, { value: 'inverse', label: 'A⁻¹' }],
+    value: op, cls: 'mw-tabs',
+    onChange: v => { op = v; playPop(540); run(); }
+  });
+
+  let gridA, gridB;
+  function draw() {
+    gridA = grid(cellsA, 'A');
+    gridB = grid(cellsB, 'B');
+    body.replaceChildren(
+      el('div', { class: 'mw-matrices' },
+        el('div', { class: 'mw-matrix' }, el('span', { class: 'mw-mlabel' }, 'A'), gridA),
+        el('div', { class: 'mw-matrix' }, el('span', { class: 'mw-mlabel' }, 'B'), gridB)
+      ),
+      opTabs.el,
+      el('div', { class: 'mw-actions' }, el('button', { class: 'gbtn gbtn-primary', onClick: () => { playSparkle(); run(); } }, 'Calculate')),
+      out
+    );
+    run();
+  }
+  const body = el('div', { class: 'mw-body' });
+
+  root.replaceChildren(
+    el('div', { class: 'game-panel mw-panel' },
+      el('p', { class: 'mw-lead' }, 'Two matrices, six operations. Empty cells count as 0, and a singular matrix is told to be singular rather than inverted into nonsense.'),
+      sizeTabs.el,
+      body
+    )
+  );
+  draw();
+}
+
+/* ------------------------------------------------------------ Geometry Calculator */
+
+const GEO_SHAPES = {
+  square: { dim: '2D', label: 'Square', fields: [['side', 'Side', '5']], measures: ['Area', 'Perimeter'],
+    calc: ({ side }) => ({ Area: side * side, Perimeter: 4 * side }),
+    formulas: ({ side }) => [`Area = side² = ${mathsText(side)}² `, `Perimeter = 4 × side = 4 × ${mathsText(side)}`] },
+  rectangle: { dim: '2D', label: 'Rectangle', fields: [['width', 'Width', '8'], ['height', 'Height', '5']], measures: ['Area', 'Perimeter', 'Diagonal'],
+    calc: ({ width: w, height: h }) => ({ Area: w * h, Perimeter: 2 * (w + h), Diagonal: Math.hypot(w, h) }),
+    formulas: ({ width: w, height: h }) => [`Area = w × h = ${mathsText(w)} × ${mathsText(h)}`, `Perimeter = 2(w + h)`, `Diagonal = √(w² + h²) — Pythagoras`] },
+  circle: { dim: '2D', label: 'Circle', fields: [['radius', 'Radius', '4']], measures: ['Area', 'Circumference'],
+    calc: ({ radius: r }) => ({ Area: PI * r * r, Circumference: 2 * PI * r }),
+    formulas: ({ radius: r }) => [`Area = πr² = π × ${mathsText(r)}²`, `Circumference = 2πr = 2 × π × ${mathsText(r)}`] },
+  triangle: { dim: '2D', label: 'Triangle (3 sides)', fields: [['a', 'Side a', '5'], ['b', 'Side b', '6'], ['c', 'Side c', '7']], measures: ['Area', 'Perimeter'],
+    calc: ({ a, b, c }) => {
+      if (a + b <= c || a + c <= b || b + c <= a) return { Area: NaN, Perimeter: a + b + c };
+      const sP = (a + b + c) / 2;
+      return { Area: Math.sqrt(Math.max(0, sP * (sP - a) * (sP - b) * (sP - c))), Perimeter: a + b + c };
+    },
+    formulas: ({ a, b, c }) => [`s = (a + b + c) ÷ 2 = ${mathsText((a + b + c) / 2)}`, 'Area = √(s(s−a)(s−b)(s−c)) — Heron', `Perimeter = a + b + c`] },
+  trapezoid: { dim: '2D', label: 'Trapezoid', fields: [['a', 'Parallel side a', '8'], ['b', 'Parallel side b', '5'], ['h', 'Height', '4'], ['leg1', 'Left leg', '5'], ['leg2', 'Right leg', '5']], measures: ['Area', 'Perimeter'],
+    calc: ({ a, b, h, leg1, leg2 }) => ({ Area: ((a + b) / 2) * h, Perimeter: a + b + leg1 + leg2 }),
+    formulas: ({ a, b, h }) => [`Area = ((a + b) ÷ 2) × h = ((${mathsText(a)} + ${mathsText(b)}) ÷ 2) × ${mathsText(h)}`, 'Perimeter = a + b + both legs'] },
+  cube: { dim: '3D', label: 'Cube', fields: [['side', 'Side', '4']], measures: ['Volume', 'Surface area', 'Space diagonal'],
+    calc: ({ side }) => ({ Volume: side ** 3, 'Surface area': 6 * side * side, 'Space diagonal': side * Math.sqrt(3) }),
+    formulas: ({ side }) => [`Volume = side³ = ${mathsText(side)}³`, `Surface area = 6 × side²`, 'Space diagonal = side × √3'] },
+  cuboid: { dim: '3D', label: 'Cuboid', fields: [['length', 'Length', '6'], ['width', 'Width', '4'], ['height', 'Height', '3']], measures: ['Volume', 'Surface area', 'Space diagonal'],
+    calc: ({ length: l, width: w, height: h }) => ({ Volume: l * w * h, 'Surface area': 2 * (l * w + l * h + w * h), 'Space diagonal': Math.sqrt(l * l + w * w + h * h) }),
+    formulas: ({ length: l, width: w, height: h }) => [`Volume = l × w × h = ${mathsText(l)} × ${mathsText(w)} × ${mathsText(h)}`, 'Surface area = 2(lw + lh + wh)', 'Space diagonal = √(l² + w² + h²)'] },
+  sphere: { dim: '3D', label: 'Sphere', fields: [['radius', 'Radius', '3']], measures: ['Volume', 'Surface area'],
+    calc: ({ radius: r }) => ({ Volume: (4 / 3) * PI * r ** 3, 'Surface area': 4 * PI * r * r }),
+    formulas: ({ radius: r }) => [`Volume = (4 ÷ 3)πr³ = (4 ÷ 3) × π × ${mathsText(r)}³`, `Surface area = 4πr²`] },
+  cylinder: { dim: '3D', label: 'Cylinder', fields: [['radius', 'Radius', '3'], ['height', 'Height', '7']], measures: ['Volume', 'Surface area'],
+    calc: ({ radius: r, height: h }) => ({ Volume: PI * r * r * h, 'Surface area': 2 * PI * r * (r + h) }),
+    formulas: ({ radius: r, height: h }) => [`Volume = πr²h = π × ${mathsText(r)}² × ${mathsText(h)}`, 'Surface area = 2πr(r + h) — both lids plus the side'] },
+  cone: { dim: '3D', label: 'Cone', fields: [['radius', 'Radius', '3'], ['height', 'Height', '7']], measures: ['Volume', 'Surface area', 'Slant height'],
+    calc: ({ radius: r, height: h }) => ({ Volume: (PI * r * r * h) / 3, 'Surface area': PI * r * (r + Math.hypot(r, h)), 'Slant height': Math.hypot(r, h) }),
+    formulas: ({ radius: r, height: h }) => [`Volume = (πr²h) ÷ 3 — a third of the cylinder it fits inside`, 'Slant height l = √(r² + h²)', 'Surface area = πr(r + l)'] }
+};
+
+function geometryCalculator(root) {
+  let shapeId = 'circle';
+  const body = el('div', { class: 'mw-body' });
+
+  function draw() {
+    const shape = GEO_SHAPES[shapeId];
+    const fields = shape.fields.map(([key, label, dflt]) => [key, createGameField({ label, value: dflt, inputmode: 'decimal' })]);
+    const out = el('div', { class: 'mw-out' });
+    const run = () => {
+      out.replaceChildren();
+      const vals = {};
+      for (const [key, f] of fields) {
+        const t = f.input.value.trim();
+        const n = Number(t);
+        if (t === '' || !Number.isFinite(n)) { out.append(mathsNote(`${f.input.getAttribute('aria-label') || key} needs a number.`, 'is-bad')); return; }
+        if (n <= 0) { out.append(mathsNote('A length of 0 or less does not describe a shape — it describes a point, or nothing.', 'is-bad')); return; }
+        vals[key] = n;
+      }
+      playPop(580);
+      const res = shape.calc(vals);
+      for (const m of shape.measures) {
+        const v = res[m];
+        if (!Number.isFinite(v)) {
+          out.append(mathsNote(`${m}: those three sides cannot form a triangle — the two shorter ones have to add up to more than the longest.`, 'is-bad'));
+          continue;
+        }
+        // A unit is part of the answer: an area and a length printed the same way
+        // are two numbers the reader has to tell apart themselves.
+        const unit = m === 'Volume' ? 'cubic units'
+          : m === 'Area' || m === 'Surface area' ? 'square units'
+          : 'units';
+        out.append(el('div', { class: 'mw-stat' },
+          el('span', { class: 'mw-stat-k' }, m),
+          el('b', { class: 'mw-stat-v' }, mathsText(v)),
+          el('span', { class: 'mw-stat-n' }, unit)
+        ));
+      }
+      out.append(el('div', { class: 'mw-working' }, shape.formulas(vals).map(f => el('code', { class: 'mw-expr' }, f))));
+    };
+    // Answers as you type, like the rest of the cupboard; the button stays for
+    // anybody who would rather commit to the numbers first.
+    for (const [, f] of fields) f.input.addEventListener('input', run);
+    body.replaceChildren(
+      el('div', { class: 'mw-fields' }, fields.map(([, f]) => f.el)),
+      el('div', { class: 'mw-actions' }, el('button', { class: 'gbtn gbtn-primary', onClick: run }, 'Measure')),
+      out
+    );
+    run();
+  }
+
+  const dimTabs = createGameTabs({
+    items: [{ value: '2D', label: 'Flat (2D)' }, { value: '3D', label: 'Solid (3D)' }],
+    value: GEO_SHAPES[shapeId].dim, cls: 'mw-tabs',
+    onChange: v => {
+      const first = Object.keys(GEO_SHAPES).find(k => GEO_SHAPES[k].dim === v);
+      shapeId = first;
+      playPop(500);
+      drawShapes();
+      draw();
+    }
+  });
+  const holder = el('div', { class: 'mw-holder' });
+  let shapeTabs;
+  function drawShapes() {
+    const dim = GEO_SHAPES[shapeId].dim;
+    shapeTabs = createGameTabs({
+      items: Object.entries(GEO_SHAPES).filter(([, s]) => s.dim === dim).map(([k, s]) => ({ value: k, label: s.label })),
+      value: shapeId, cls: 'mw-tabs',
+      onChange: v => { shapeId = v; playPop(540); draw(); }
+    });
+    holder.replaceChildren(shapeTabs.el);
+  }
+
+  root.replaceChildren(
+    el('div', { class: 'game-panel mw-panel' },
+      el('p', { class: 'mw-lead' }, 'Nine shapes, flat and solid. Every measurement comes with the formula and the numbers substituted into it.'),
+      dimTabs.el,
+      holder,
+      body
+    )
+  );
+  drawShapes();
+  draw();
+}
+
+/* --------------------------------------------------------- Factors, GCD & LCM */
+
+function factorsGcd(root) {
+  const input = createGameField({
+    label: 'Whole numbers, separated by commas or spaces',
+    value: '48, 180, 30',
+    placeholder: '12, 18',
+    inputmode: 'numeric'
+  });
+  const out = el('div', { class: 'mw-out' });
+
+  /** Trial division, which is exact and fast enough for anything a person types. */
+  function factorise(n) {
+    const factors = [];
+    let rest = n;
+    for (let d = 2; d * d <= rest; d += d === 2 ? 1 : 2) {
+      while (rest % d === 0) { factors.push(d); rest = rest / d; }
+    }
+    if (rest > 1) factors.push(rest);
+    return factors;
+  }
+  const gcd = (a, b) => { while (b) { const t = a % b; a = b; b = t; } return a; };
+
+  function run() {
+    out.replaceChildren();
+    const tokens = input.input.value.split(/[,\s;]+/).map(t => t.trim()).filter(Boolean);
+    if (!tokens.length) { out.append(mathsNote('Type some whole numbers in first.', 'is-warn')); return; }
+    const nums = [];
+    for (const t of tokens) {
+      if (!/^\d+$/.test(t)) { out.append(mathsNote(`"${t}" is not a whole number, and factors are only defined for those.`, 'is-bad')); return; }
+      const n = Number(t);
+      if (!Number.isSafeInteger(n)) { out.append(mathsNote(`"${t}" is beyond what this page can count exactly (2⁵³ − 1).`, 'is-bad')); return; }
+      if (n < 1) { out.append(mathsNote(`${n} has no prime factorisation: 0 has infinitely many and negatives are a sign times a positive.`, 'is-bad')); return; }
+      if (n > 1e12) { out.append(mathsNote(`Factoring ${t} by trial division would take longer than this page should. Try something under 1,000,000,000,000.`, 'is-warn')); return; }
+      nums.push(n);
+    }
+    if (nums.length > 12) { out.append(mathsNote('Twelve numbers is plenty — trim the list and try again.', 'is-warn')); return; }
+    playPop(560);
+
+    for (const n of nums) {
+      const f = factorise(n);
+      const grouped = [];
+      for (const p of f) {
+        const last = grouped[grouped.length - 1];
+        if (last && last[0] === p) last[1] += 1;
+        else grouped.push([p, 1]);
+      }
+      const divisors = [];
+      for (let d = 1; d * d <= n; d++) if (n % d === 0) { divisors.push(d); if (d !== n / d) divisors.push(n / d); }
+      divisors.sort((a, b) => a - b);
+      const expr = n === 1 ? '1 (which has no prime factors at all)'
+        : grouped.map(([p, c]) => c > 1 ? `${p}^${c}` : `${p}`).join(' × ');
+      out.append(el('div', { class: 'mw-factor' },
+        el('b', { class: 'mw-factor-n' }, String(n)),
+        el('span', { class: 'mw-factor-eq' }, '='),
+        el('code', { class: 'mw-expr' }, expr),
+        el('span', { class: 'mw-factor-meta' }, `${divisors.length} divisor${divisors.length === 1 ? '' : 's'}${divisors.length <= 40 ? ': ' + divisors.join(', ') : ''}`),
+        el('span', { class: 'mw-factor-meta' }, grouped.length === 1 && grouped[0][1] === 1 ? 'prime' : f.length === 0 ? 'neither prime nor composite' : `${grouped.length} distinct prime${grouped.length === 1 ? '' : 's'}`)
+      ));
+    }
+
+    if (nums.length > 1) {
+      const g = nums.reduce((a, b) => gcd(a, b));
+      // a ÷ gcd first, then × b: the other order overflows on numbers that are
+      // perfectly safe this way round, and an overflow that prints as a wrong
+      // answer is worse than one that refuses.
+      let l = nums[0];
+      let overflow = false;
+      for (let i = 1; i < nums.length; i++) {
+        const step = (l / gcd(l, nums[i])) * nums[i];
+        if (!Number.isSafeInteger(step)) { overflow = true; break; }
+        l = step;
+      }
+      out.append(el('div', { class: 'mw-statgrid' },
+        el('div', { class: 'mw-stat' }, el('span', { class: 'mw-stat-k' }, 'GCD (all of them)'), el('b', { class: 'mw-stat-v' }, String(g)),
+          el('span', { class: 'mw-stat-n' }, g === 1 ? 'coprime as a set' : 'the largest number that divides every one')),
+        el('div', { class: 'mw-stat' }, el('span', { class: 'mw-stat-k' }, 'LCM (all of them)'), el('b', { class: 'mw-stat-v' }, overflow ? '—' : String(l)),
+          el('span', { class: 'mw-stat-n' }, overflow ? 'beyond 2⁵³ − 1, so it cannot be counted exactly here' : 'the smallest number every one divides into'))
+      ));
+      if (!overflow) out.append(mathsNote(`For two numbers the shortcut is GCD × LCM = a × b: ${mathsText(g)} × ${mathsText(l)} = ${mathsText(g * l)}.`));
+      if (g === 1 && nums.length === 2) out.append(mathsNote('A GCD of 1 means the two share no prime factor at all — that is what coprime means.'));
+    }
+  }
+
+  input.input.addEventListener('input', run);
+  root.replaceChildren(
+    el('div', { class: 'game-panel mw-panel' },
+      el('p', { class: 'mw-lead' }, 'Prime factorisations, every divisor, and the GCD and LCM of the whole list — the companion to the Prime Number Checker, which only answers yes or no.'),
+      input.el,
+      el('div', { class: 'mw-actions' },
+        el('button', { class: 'gbtn gbtn-primary', onClick: () => { playSparkle(); run(); } }, '✨ Factor'),
+        el('button', { class: 'gbtn gbtn-chip', onClick: () => { input.input.value = ''; playPop(420); run(); } }, 'Clear')
+      ),
+      out
+    )
+  );
+  run();
+}
+
 export { GRAPH_ANALYSIS };
 
 export const MATH_NUMBER_TOOLS = Object.freeze({
@@ -2974,5 +3666,10 @@ export const MATH_NUMBER_TOOLS = Object.freeze({
   'roman-numerals': romanNumerals,
   'number-base': numberBase,
   'prime-checker': primeChecker,
-  'sequence-playground': sequencePlayground
+  'sequence-playground': sequencePlayground,
+  'equation-solver': equationSolver,
+  'statistics-lab': statisticsLab,
+  'matrix-calculator': matrixCalculator,
+  'geometry-calculator': geometryCalculator,
+  'factors-gcd': factorsGcd
 });

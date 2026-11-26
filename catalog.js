@@ -1,5 +1,5 @@
 export const cupboards = [
-{id:'math',name:'Math & Numbers',short:'10 chunky number toys',icon:'◈',color:'#c7e3b5',trim:'#8fb977',star:'calculator',tools:[
+{id:'math',name:'Math & Numbers',short:'15 chunky number toys',icon:'◈',color:'#c7e3b5',trim:'#8fb977',star:'calculator',tools:[
   ['calculator','Calculator','Chunky tactile arithmetic keypad'],
   ['graphing-calculator','Graphing Calculator','Plot curves on a 2.5D grid'],
   ['bodily-calculator','Bodily Calculator','BMI, calories & cozy health stats'],
@@ -9,10 +9,15 @@ export const cupboards = [
   ['roman-numerals','Roman Numeral Calculator','Large numbers with vinculum'],
   ['number-base','Number Base Converter','Binary, octal, decimal, hex & base-36'],
   ['prime-checker','Prime Number Checker','Spot primes with confetti pops'],
-  ['sequence-playground','Sequence Playground','8 physical sequence tiles to explore']
+  ['sequence-playground','Sequence Playground','8 physical sequence tiles to explore'],
+  ['equation-solver','Equation Solver','Linear, quadratic & 2×2 systems, worked'],
+  ['statistics-lab','Statistics Lab','Mean, median, quartiles & a histogram'],
+  ['matrix-calculator','Matrix Calculator','Add, multiply, invert & determinants'],
+  ['geometry-calculator','Geometry Calculator','Areas, perimeters & volumes of 9 shapes'],
+  ['factors-gcd','Factors, GCD & LCM','Prime factorisations & common multiples']
 ]},
 {id:'code',name:'Coding & Developing',short:'Fresh ideas, freshly coded',icon:'⌘',color:'#f6cfa0',trim:'#d39c5d',star:'codehub',tools:[['codehub','CodeHub','Your little in-browser coding workshop'],['json-validator','JSON Validator','A tidy home for structured data'],['regex-tester','Regex Tester','Find just what you are looking for'],['uuid-generator','UUID Generator','A uniquely useful little identifier'],['timestamp','Timestamp Kitchen','A moment in every format'],['base-converter','Developer Base Converter','Bits, bytes & number bases'],['html-entities','HTML Entities','Encode your angle brackets'],['jwt-decoder','JWT Decoder','Peek inside a token, locally'],['css-minifier','CSS Minifier','Less space, same lovely styles'],['js-formatter','JavaScript Formatter','Give your code breathing room'],['sql-formatter','SQL Formatter','Serve your queries neatly'],['hash-playground','Hash Playground','Small fingerprints for your text'],['color-tokens','Color Tokens','Turn a palette into CSS variables'],['git-cheatsheet','Git Cheatsheet','A helping hand with your history'],['http-status','HTTP Status Codes','Understand what the server said']]},
-{id:'text',name:'Text & Files',short:'A place for every word',icon:'▤',color:'#c3dcf2',trim:'#83add4',star:'file-converter',tools:[['file-converter','File Converter','A fresh format for your files'],['crazy-text-filters','Crazy Text Filters','Give your words a wild makeover'],['word-counter','Word Counter','Make every word count'],['case-converter','Case Converter','UPPER, lower & everything between'],['json-formatter','JSON Formatter','Untangle your curly brackets'],['base64','Base64 Studio','Encode & decode a little mystery'],['url-codec','URL Encoder','Make your links travel safely'],['markdown-preview','Markdown Preview','Watch your words take shape'],['text-diff','Text Diff','Spot the little differences'],['find-replace','Find & Replace','A little text spring cleaning'],['lorem-ipsum','Lorem Ipsum','A pinch of placeholder prose'],['hash-generator','File & Text Hash','Check a digital fingerprint'],['csv-editor','CSV Editor','Put your rows in order'],['notepad','Pocket Notepad','Save a thought for later'],['file-inspector','File Inspector','Get to know your files']]},
+{id:'text',name:'Text & Files',short:'A place for every word',icon:'▤',color:'#c3dcf2',trim:'#83add4',star:'file-converter',tools:[['file-converter','File Converter','A fresh format for your files'],['crazy-text-filters','Crazy Text Filters','Give your words a wild makeover'],['word-counter','Word Counter','Make every word count'],['case-converter','Case Converter','UPPER, lower & everything between'],['json-formatter','JSON Formatter','Untangle your curly brackets'],['base64','Base64 Studio','Encode & decode a little mystery'],['url-codec','URL Encoder','Make your links travel safely'],['markdown-preview','Markdown Preview','Watch your words take shape'],['text-diff','Text Diff','Spot the little differences'],['find-replace','Find & Replace','A little text spring cleaning'],['file-splitter','File Splitter','Split & rejoin files, extension kept last'],['hash-generator','File & Text Hash','Check a digital fingerprint'],['csv-editor','CSV Editor','Put your rows in order'],['notepad','Pocket Notepad','Save a thought for later'],['file-inspector','File Inspector','Get to know your files']]},
 {id:'art',name:'Art & Coloring',short:'Make a beautiful little mess',icon:'✿',color:'#f5c7cb',trim:'#d48c94',star:'art-studio',tools:[['art-studio','Art Studio','Layers, 18 brushes & a 4096px canvas'],['color-picker','Color Picker','Find your next favorite hue'],['palette-generator','Palette Generator','Colors that belong together'],['gradient-maker','Gradient Maker','A lovely shade in between'],['pixel-art','Pixel Art','Big ideas, tiny squares'],['image-resizer','Image Resizer','Just the right dimensions'],['image-cropper','Image Cropper','Keep the part you love'],['image-filters','Image Filters','A new mood for your images'],['svg-editor','SVG Playground','Draw with a little code'],['contrast-checker','Contrast Checker','Beautiful and readable'],['color-converter','Color Converter','One color, many languages'],['pattern-maker','Pattern Maker','A little joy, on repeat'],['collage-maker','Collage Maker','Bring your pictures together'],['ascii-art','ASCII Art','Pictures made of characters'],['mandala','Mandala Maker','Find a moment of symmetry']]},
 {id:'science',name:'Science & Physics',short:'Feed your curiosity',icon:'⚛',color:'#c7e3d4',trim:'#7eb699',star:'physics-hub',tools:[['physics-hub','Physics Hub','A playground for the laws of nature'],['periodic-table','Periodic Table','Meet the building blocks'],['motion','Motion Calculator','A little distance, a little time'],['force','Force & Momentum','Put your ideas in motion'],['energy','Energy Calculator','Potential for something great'],['gravity','Gravity Explorer','A universally attractive tool'],['waves','Wave Lab','Find your frequency'],['electricity','Circuit Calculator','Let a bright idea flow'],['optics','Optics Bench','See things a little differently'],['pressure','Pressure Calculator','Spread the force'],['density','Density Calculator','How much is in a little space?'],['temperature','Temperature Lab','Warm up your conversions'],['ideal-gas','Ideal Gas Law','A little room to expand'],['half-life','Half-Life Calculator','Watch the numbers decay'],['constants','Scientific Constants','The dependable ingredients']]},
 {id:'english',name:'English & Languages',short:'15 language, writing & translation tools',icon:'文',color:'#f8d9a6',trim:'#c78c46',star:'waffle-translate',tools:[
@@ -73,7 +78,7 @@ export const allTools=cupboards.flatMap(c=>c.tools.map(([id,name,description])=>
  * Backup-only utilities.
  *
  * These are NOT part of `cupboards` or `allTools`, so the public kitchen stays
- * exactly 115 utilities and every count, icon and dispatch invariant that
+ * exactly 120 utilities and every count, icon and dispatch invariant that
  * tests/catalog.test.js pins keeps holding. `resolveTools(true)` splices them
  * into their cupboard, and only `backup.html` (data-backup="1") ever asks for that.
  *
@@ -99,7 +104,7 @@ export function cupboardToolCount(cupboardId,includeBackup=false){
 }
 
 /**
- * The tool list to render. `includeBackup` false returns the shipped 115
+ * The tool list to render. `includeBackup` false returns the shipped 120
  * untouched (the same array identity as `allTools`); true returns a new array
  * with each backup-only tool inserted directly after the tool it upgrades.
  */

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { cupboards, allTools } from '../catalog.js';
 import { toolPropSVG, gamePropSVG } from '../icons-25d.js';
 
-test('Math & Numbers cupboard contains exact 10 utilities and other seven cupboards (including English, Music & Composing, and Videography & Editing) contain 15 each', () => {
+test('Math & Numbers cupboard contains exact 15 utilities and the other seven cupboards (including English, Music & Composing, and Videography & Editing) contain 15 each', () => {
   assert.equal(cupboards.length, 8);
   const math = cupboards.find(c => c.id === 'math');
   assert.ok(math);
@@ -20,7 +20,12 @@ test('Math & Numbers cupboard contains exact 10 utilities and other seven cupboa
       'roman-numerals',
       'number-base',
       'prime-checker',
-      'sequence-playground'
+      'sequence-playground',
+      'equation-solver',
+      'statistics-lab',
+      'matrix-calculator',
+      'geometry-calculator',
+      'factors-gcd'
     ]
   );
   const eng = cupboards.find(c => c.id === 'english');
@@ -39,16 +44,16 @@ test('Math & Numbers cupboard contains exact 10 utilities and other seven cupboa
   for (const c of cupboards) {
     if (c.id !== 'math') assert.equal(c.tools.length, 15, c.name);
   }
-  assert.equal(allTools.length, 115);
+  assert.equal(allTools.length, 120);
 });
 
-test('every single one of the 115 utilities has its own unique 2.5D SVG icon', () => {
+test('every single one of the 120 utilities has its own unique 2.5D SVG icon', () => {
   const svgs = allTools.map(t => toolPropSVG(t.id));
-  assert.equal(new Set(svgs).size, 115, 'Every tool across all cupboards must have a distinct SVG');
+  assert.equal(new Set(svgs).size, 120, 'Every tool across all cupboards must have a distinct SVG');
 });
 
 test('tool identifiers are unique and every cupboard has its star', () => {
-  assert.equal(new Set(allTools.map(t => t.id)).size, 115);
+  assert.equal(new Set(allTools.map(t => t.id)).size, 120);
   for (const c of cupboards) assert.ok(c.tools.some(t => t[0] === c.star));
 });
 

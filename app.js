@@ -108,7 +108,7 @@ const ALL_CUPBOARDS = [
 ];
 
 // Backup-only utilities (see `backupToolAdditions` in catalog.js). The public
-// kitchen resolves to the identical 115-tool array it always used; only
+// kitchen resolves to the identical 120-tool array it always used; only
 // backup.html asks for the extras, which are spliced in beside the tool each one
 // is an upgrade of.
 const BACKUP_BUILD = isBackupBuild();

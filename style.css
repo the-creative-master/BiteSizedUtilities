@@ -1666,6 +1666,264 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 .seq-num-chip small { font-size: 10px; color: var(--ink-soft); }
 
 /* ==========================================================================
+   MATH & NUMBERS · THE FIVE NEW TOYS (1.2.11)
+   Equation Solver, Statistics Lab, Matrix Calculator, Geometry Calculator,
+   Factors/GCD & LCM. One shared skeleton — lead, fields, actions, results —
+   so five tools feel like one cupboard rather than five opinions. The point
+   of all five is the working, so the working gets the most room: results sit
+   in a cream panel and every step is a line you can read across.
+   ========================================================================== */
+
+.mw-panel { gap: 13px; }
+.mw-lead { margin: 0; font-size: 14px; line-height: 1.55; color: var(--ink-soft); }
+.mw-holder { display: flex; flex-direction: column; gap: 13px; min-width: 0; }
+.mw-body { display: flex; flex-direction: column; gap: 13px; min-width: 0; }
+.mw-tabs { row-gap: 8px; }
+.mw-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 10px;
+}
+.mw-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.mw-out {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px 14px;
+  background: #fffbf2;
+  border: var(--outline-thin);
+  border-radius: 16px;
+  box-shadow: inset 0 4px 0 #eedcbf;
+  min-width: 0;
+}
+.mw-eq {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 20px;
+  line-height: 1.35;
+  text-align: center;
+  letter-spacing: 0.4px;
+  overflow-wrap: anywhere;
+}
+
+/* one line of working: the expression, an arrow, and what it came to */
+.mw-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.mw-expr {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.mw-arrow { color: var(--ink-soft); font-weight: 800; }
+.mw-val {
+  margin-left: auto;
+  padding: 2px 11px;
+  background: var(--butter);
+  border: 2.5px solid var(--ink);
+  border-radius: 999px;
+  font-family: var(--display);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.mw-working { display: flex; flex-direction: column; gap: 5px; }
+
+/* a note under the answer: plain, warning, or wrong — never a bare alert() */
+.mw-note {
+  margin: 0;
+  padding: 8px 11px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  background: var(--parchment);
+  border-left: 4px solid var(--ink-soft);
+  border-radius: 0 12px 12px 0;
+}
+.mw-note.is-warn { color: #7a5410; background: #ffefc7; border-left-color: #c98a1e; }
+.mw-note.is-bad { color: #a83328; background: #ffe3de; border-left-color: #a83328; }
+
+/* statistics: a grid of labelled numbers, and a histogram of what was typed */
+.mw-statgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
+  gap: 8px;
+}
+.mw-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--cream);
+  border: 2.5px solid var(--ink);
+  border-radius: 14px;
+  min-width: 0;
+}
+.mw-stat-k {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.mw-stat-v {
+  font-family: var(--display);
+  font-size: 19px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.mw-stat-n { font-size: 11.5px; line-height: 1.4; color: var(--ink-soft); }
+.mw-hist {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 92px;
+  padding: 8px;
+  background: var(--parchment);
+  border: 2.5px solid var(--ink);
+  border-radius: 14px;
+}
+.mw-bar {
+  flex: 1 1 0;
+  min-width: 4px;
+  min-height: 3px;
+  background: #ffb899;
+  border: 2px solid var(--ink);
+  border-radius: 5px 5px 0 0;
+}
+
+/* factors: the number, what it equals, then the divisors underneath */
+.mw-factor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 0;
+  border-bottom: 2px dashed rgba(79, 47, 35, 0.22);
+}
+.mw-factor:last-child { border-bottom: 0; padding-bottom: 0; }
+.mw-factor-n { font-family: var(--display); font-size: 22px; line-height: 1.1; }
+.mw-factor-eq { color: var(--ink-soft); font-weight: 800; }
+.mw-factor-meta {
+  flex-basis: 100%;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+/* matrices: brackets are drawn, not typed, and results are tinted to tell
+   them apart from the two you are editing */
+.mw-matrices { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; }
+.mw-matrix { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.mw-mlabel { font-family: var(--display); font-size: 18px; }
+.mx-grid { display: flex; align-items: stretch; gap: 4px; min-width: 0; }
+.mx-cells { display: grid; gap: 5px; }
+.mx-2 .mx-cells { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mx-3 .mx-cells { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mx-in {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 3px;
+  text-align: center;
+  background: #fff9ec;
+  border: 2.5px solid var(--ink);
+  border-radius: 10px;
+  font-family: var(--display);
+  font-size: 14px;
+}
+.mx-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  padding: 6px 5px;
+  background: var(--cream);
+  border: 2.5px solid var(--ink);
+  border-radius: 10px;
+  font-family: var(--display);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.is-result .mx-cell { background: var(--sage); }
+.mx-bracket {
+  flex: 0 0 9px;
+  border: 3.5px solid var(--ink);
+  border-right: 0;
+  border-radius: 10px 0 0 10px;
+}
+.mx-bracket-r {
+  border: 3.5px solid var(--ink);
+  border-left: 0;
+  border-right: 3.5px solid var(--ink);
+  border-radius: 0 10px 10px 0;
+}
+.gbadge.mw-two { background: var(--sage); }
+.gbadge.mw-one { background: var(--butter); }
+.gbadge.mw-complex { background: var(--lavender); }
+
+/* ==========================================================================
+   FILE SPLITTER (1.2.11, in place of Lorem Ipsum)
+   The names are the feature, so the names get shown before anything is
+   downloaded: a numbered list of exactly what will land in the folder.
+   ========================================================================== */
+
+.fs-pane { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.fs-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: #fffbf2;
+  border: var(--outline-thin);
+  border-radius: 16px;
+  box-shadow: inset 0 4px 0 #eedcbf;
+  font-size: 14px;
+  line-height: 1.5;
+  min-width: 0;
+}
+.fs-names {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fs-names li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+.fs-names code {
+  padding: 3px 10px;
+  background: var(--parchment);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  font-family: var(--display);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.fs-size { margin-left: auto; font-size: 11.5px; color: var(--ink-soft); }
+.fs-hint { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--ink-soft); }
+.fs-bad {
+  margin: 0;
+  padding: 9px 11px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #a83328;
+  background: #ffe3de;
+  border-left: 4px solid #a83328;
+  border-radius: 0 12px 12px 0;
+}
+
+/* ==========================================================================
    2.5D UI KIT & TOYS FOR SCIENCE, CODE, TEXT & ART CUPBOARDS
    ========================================================================== */
 

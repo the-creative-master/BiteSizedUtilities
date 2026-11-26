@@ -173,21 +173,25 @@ test('the search grid still gives every hit the same shelf, stars included', () 
 });
 
 /* ============================ the public release notes ============================
- * 1.2.10 is the release this work ships in, and the public notes are the most
+ * 1.2.10 is the release this work shipped in, and the public notes are the most
  * discoverable page on the site. These check the entry against the code and the
  * catalogue rather than against itself: a release note that names eight stars, a
- * tile size and a utility count should fail if any of those move.
+ * tile size and a utility count should fail if any of those move. 1.2.11 has
+ * since landed above it, so the entry is the second one down — and it is still
+ * checked against the present, because a note that stops being true about the
+ * code is worse than no note at all.
  */
 
-test('1.2.10 is the public entry for this work, and it is the newest one', () => {
-  assert.equal(APP_VERSION, '1.2.10', 'the kitchen reports the release it is');
-  assert.equal(appVersionLabel(), '1.2.10', 'and a public build prints nothing else');
-  assert.equal(CHANGELOG[0].version, '1.2.10', 'newest first, because that is the order they render in');
-  assert.equal(CHANGELOG[0].groups.length, 4, 'the plinth, the badge, the eight stars, and what did not change');
+test('1.2.10 is the public entry for this work, and 1.2.11 renders above it', () => {
+  assert.equal(APP_VERSION, '1.2.11', 'the kitchen reports the release it is');
+  assert.equal(appVersionLabel(), '1.2.11', 'and a public build prints nothing else');
+  assert.equal(CHANGELOG[0].version, '1.2.11', 'newest first, because that is the order they render in');
+  assert.equal(CHANGELOG[1].version, '1.2.10', 'and the star work is the entry below it');
+  assert.equal(CHANGELOG[1].groups.length, 4, 'the plinth, the badge, the eight stars, and what did not change');
 });
 
 test('the public notes name the stars the catalogue actually has', () => {
-  const text = CHANGELOG[0].groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
+  const text = CHANGELOG[1].groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
   for (const c of cupboards) {
     const star = c.tools.find(([id]) => id === c.star);
     assert.ok(text.includes(star[1]), `${star[1]} is named in the public notes`);
@@ -203,7 +207,7 @@ test('the public notes quote a description that is really on the plinth', () => 
   // will ever read.
   const video = cupboards.find(c => c.id === 'video');
   const star = video.tools.find(([id]) => id === video.star);
-  const text = CHANGELOG[0].groups.map(g => g.items.join(' ')).join(' ');
+  const text = CHANGELOG[1].groups.map(g => g.items.join(' ')).join(' ');
   assert.ok(text.includes(star[2]), `Waffle Studio's description is quoted verbatim: "${star[2]}"`);
   const art = cupboards.find(c => c.id === 'art');
   const artStar = art.tools.find(([id]) => id === art.star);
@@ -213,9 +217,12 @@ test('the public notes quote a description that is really on the plinth', () => 
 });
 
 test('the numbers in the public notes are the numbers in the build', () => {
-  const text = CHANGELOG[0].groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
-  assert.equal(allTools.length, 115, 'the utility count the notes claim');
-  assert.match(text, /115 utilities across eight cupboards/);
+  const text = CHANGELOG[1].groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
+  // The note is a record of the kitchen as 1.2.10 shipped it, so it still says
+  // 115 — five more utilities arrived in 1.2.11 and rewriting an old entry to
+  // agree with the present is how a release note stops being a record.
+  assert.equal(allTools.length, 120, 'the catalogue has moved on since that note was written');
+  assert.match(text, /115 utilities across eight cupboards/, 'and the 1.2.10 note still says what was true then');
   assert.equal(cupboards.length, 8);
   assert.match(text, /the plinth tile drops to 74 px/, 'the collapsed tile size');
   assert.match(styleSrc, /\.star-plinth-tile \{ width: 74px; height: 74px; \}/, 'which is what the CSS says');
@@ -240,7 +247,7 @@ test('the numbers in the public notes are the numbers in the build', () => {
 });
 
 test('the public notes describe a badge the code really renders', () => {
-  const text = CHANGELOG[0].groups.map(g => g.items.join(' ')).join(' ');
+  const text = CHANGELOG[1].groups.map(g => g.items.join(' ')).join(' ');
   assert.match(text, /Star of Art & Coloring/, 'the badge is quoted as it appears');
   assert.match(plinth, /⭐ Star of \$\{esc\(cupName\)\}/, 'and that is the template it comes from');
   assert.match(text, /Open Art Studio, star of the Art & Coloring cupboard/, 'as is the aria-label');
@@ -251,7 +258,7 @@ test('the public notes describe a badge the code really renders', () => {
 });
 
 test('the public notes do not describe anything this release did not do', () => {
-  const text = CHANGELOG[0].groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
+  const text = CHANGELOG[1].groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
   assert.match(text, /No behaviour did\./, 'it says so plainly, because that is the honest scope of a layout release');
   // The claims a layout release must not make. Each of these would be a promise
   // about something the star work does not touch.

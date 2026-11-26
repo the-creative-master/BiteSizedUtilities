@@ -118,7 +118,7 @@ export const TEXT_MODELS = [
   {
     id: 'smollm2-1.7b',
     label: 'SmolLM2 1.7B',
-    badge: 'Biggest in-browser · ~1 GB, from ~560 MB',
+    badge: 'Biggest on the public menu · ~1 GB, from ~560 MB',
     kind: 'browser',
     // Repo paths written down without being able to check them: this sandbox has
     // no route to huggingface.co. If one is wrong the source report says
@@ -130,7 +130,7 @@ export const TEXT_MODELS = [
     dtype: 'q4',
     hfGgufRepo: 'bartowski/SmolLM2-1.7B-Instruct-GGUF',
     // The widest range on the list, and the only one that reaches down to 2 bit:
-    // this is the biggest model here, so the question about it is whether it fits
+    // this is the biggest model the public menu offers, so the question about it is whether it fits
     // at all, and on a tight device 2 bit is the difference between loading and
     // not. It still *leads* at Q4_K_M, which is the quant 1.2 shipped and the one
     // that has been tested — a range says what may be used, not what to prefer,
@@ -155,7 +155,7 @@ export const TEXT_MODELS = [
     // downloads it once, into their own storage, and the source report tells them
     // the measured size before they do.
     ggufMB: 1050,
-    desc: 'SmolLM2 1.7B, 2 to 6 bit (~1 GB at the Q4_K_M it leads with, ~560 MB at the bottom of the range) — the biggest model here; wants a GPU, or a patient CPU'
+    desc: 'SmolLM2 1.7B, 2 to 6 bit (~1 GB at the Q4_K_M it leads with, ~560 MB at the bottom of the range) — the biggest model the public menu offers; wants a GPU, or a patient CPU'
   },
   {
     id: 'qwen2.5-0.5b',
@@ -254,6 +254,126 @@ export const TEXT_MODELS = [
     ggufFile: 'deepseek-r1-1.5b.gguf',
     ggufMB: 700,
     desc: 'DeepSeek R1 reasoning model (~700 MB Q3_K_L — strong WebGPU device required)'
+  },
+
+  /* ------------------------------------------------------------------ *
+   * The four the test kitchen grew into (1.3 TVBR 4): two 2B models and
+   * two 3B ones, above the 1.7B the public menu has always stopped at.
+   *
+   * Their sizes are arithmetic, not measurements — this sandbox has no
+   * route to huggingface.co, and neither has any other it has been
+   * written in. What makes the arithmetic worth trusting here is that it
+   * is scaled from siblings in this same table whose sizes were measured
+   * on a device, rather than from a bytes-per-weight rule of thumb:
+   * Qwen 2.5 1.5B came back at 881.6 MB, and Llama 3.2 1B and SmolLM2
+   * 1.7B carry the figures the kitchen has been budgeting with. Each
+   * entry below says which sibling it was scaled from, and by how much.
+   *
+   * Every one is then rounded *up*, because ggufMB is a ceiling rather
+   * than a description: it is the budget the real file is checked
+   * against, and the figure "will this fit?" weighs. A ceiling 10% low
+   * fails a load that would have worked and tells the visitor to raise a
+   * number they cannot see; a ceiling 10% high only makes the fit check
+   * slightly conservative, which for a 1.5–2.4 GB model is the right
+   * answer anyway. The repo tree still prices the real file before
+   * anything is downloaded, and the source report shows the measured
+   * size on the device — so a wrong number here is corrected in front
+   * of the visitor rather than silently served.
+   *
+   * They are on the test kitchen's menu and not the public one, which is
+   * what that second list has always been for: four repo paths nobody
+   * could check from here get tried on one device before everybody is
+   * asked to download them.
+   * ------------------------------------------------------------------ */
+  {
+    id: 'minicpm-2b',
+    label: 'MiniCPM 2B',
+    badge: '2B · ~1.5 GB, 4-bit',
+    kind: 'browser',
+    hfId: 'onnx-community/MiniCPM-2B-dpo',
+    hfIdAlts: ['openbmb/MiniCPM-2B-dpo'],
+    dtype: 'q4',
+    hfGgufRepo: 'openbmb/MiniCPM-2B-dpo-GGUF',
+    hfGgufQuant: 'Q4_K_M',
+    ggufQuants: ['Q4_K_M', 'Q5_K_M', 'Q6_K'],
+    ggufFile: 'minicpm-2b.gguf',
+    // Scaled from SmolLM2 1.7B in this table, which leads at the same quant:
+    // 1050 MB for 1.7B parameters is ~0.62 bytes a weight, and MiniCPM 2B is
+    // 2.4B of them, so 1.48 GB — rounded up to 1500. Its 64k vocabulary is a
+    // small share of the model, which is what makes a flat per-weight figure
+    // reasonable here rather than optimistic.
+    ggufMB: 1500,
+    desc: 'MiniCPM 2B (~1.5 GB at Q4_K_M) — a 2.4B-parameter chat model, in the test kitchen first'
+  },
+  {
+    id: 'llama3.2-3b',
+    label: 'Llama 3.2 3B',
+    badge: '3B · ~1.8 GB, 4-bit',
+    kind: 'browser',
+    hfId: 'onnx-community/Llama-3.2-3B-Instruct-ONNX',
+    hfIdAlts: ['onnx-community/Llama-3.2-3B-Instruct'],
+    dtype: 'q4',
+    hfGgufRepo: 'bartowski/Llama-3.2-3B-Instruct-GGUF',
+    hfGgufQuant: 'Q4_K_M',
+    ggufQuants: ['Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
+    ggufFile: 'llama3.2-3b.gguf',
+    // Scaled from the Llama 3.2 1B this table has carried since 1.2: 500 MB at
+    // Q3_K_L for 1.24B parameters. The 3B is 3.21B of them, so 1.29 GB at the
+    // same quant, and ~1.67 GB at the Q4_K_M this entry leads with — rounded up
+    // to 1800. Same family, same 128k vocabulary, so the shape of the model is
+    // the one part of this estimate that is not a guess.
+    ggufMB: 1800,
+    desc: 'Meta Llama 3.2 3B (~1.8 GB at Q4_K_M) — the bigger sibling of the 1B already in this table; wants WebGPU'
+  },
+  {
+    id: 'qwen2.5-3b',
+    label: 'Qwen 2.5 3B',
+    badge: '3B · ~1.85 GB, 4-bit',
+    kind: 'browser',
+    // The one of the four whose sibling was actually measured: Qwen 2.5 1.5B
+    // came back from a source report at 881.6 MB, and both models share a
+    // vocabulary, so this is the least speculative size on the list.
+    hfId: 'onnx-community/Qwen2.5-3B-Instruct',
+    hfIdAlts: ['onnx-community/Qwen2.5-3B-Instruct-ONNX'],
+    dtype: 'q4',
+    hfGgufRepo: 'Qwen/Qwen2.5-3B-Instruct-GGUF',
+    hfGgufQuant: 'Q4_K_M',
+    ggufQuants: ['Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
+    ggufFile: 'qwen2.5-3b.gguf',
+    // 881.6 MB for the 1.5B's real 1.78B parameters is ~0.495 bytes a weight at
+    // Q3_K_M. The 3B is 3.09B parameters, so ~1.53 GB at that quant and ~1.73 GB
+    // at the Q4_K_M it leads with — rounded up to 1850.
+    ggufMB: 1850,
+    desc: 'Qwen 2.5 3B (~1.85 GB at Q4_K_M) — the family and the vocabulary of the 0.5B every visitor starts on'
+  },
+  {
+    id: 'gemma2-2b',
+    label: 'Gemma 2 2B',
+    badge: '2B · ~2.4 GB, 4-bit',
+    kind: 'browser',
+    hfId: 'onnx-community/gemma-2-2b-it',
+    hfIdAlts: ['onnx-community/gemma-2-2b-it-ONNX'],
+    dtype: 'q4',
+    hfGgufRepo: 'bartowski/gemma-2-2b-it-GGUF',
+    hfGgufQuant: 'Q4_K_M',
+    ggufQuants: ['Q4_K_M', 'Q5_K_M', 'Q6_K'],
+    ggufFile: 'gemma2-2b.gguf',
+    // The awkward one, and the reason it is priced from its parts rather than
+    // from a per-weight figure. Gemma 2 2B is 2.61B parameters, and 0.59B of
+    // them — nearly a quarter — are a 256,000-word vocabulary embedding that
+    // GGUF quants conventionally leave at 16-bit. So: 0.59B at two bytes is
+    // 1.18 GB, the other 2.02B at the ~0.57 bytes a weight Q4_K_M costs is
+    // 1.15 GB, and the file is ~2.33 GB — rounded up to 2400.
+    //
+    // If a given repo quantizes the embedding too, the real file is nearer
+    // 1.6 GB and this ceiling is generous by half. That is the direction to be
+    // wrong in: the fit check says "probably not" on a device that might have
+    // managed, instead of "yes" and then failing against a number nobody can
+    // see. It also makes this the heaviest file on any menu here despite being
+    // the smaller of the two 2B models, which is worth saying in the picker
+    // rather than leaving somebody to discover it mid-download.
+    ggufMB: 2400,
+    desc: 'Gemma 2 2B (~2.4 GB at Q4_K_M) — the heaviest file here, because a quarter of a 2B model is its 256,000-word vocabulary'
   }
 ];
 
@@ -279,15 +399,29 @@ export const OFFERED_TEXT_MODEL_IDS = [
 ];
 
 /**
- * What the backup kitchen offers. As of 1.2.6 that is the same list, and it
- * stays a separate constant on purpose: the point of the second kitchen is to
- * try a model before everybody gets it, and that needs somewhere to put one.
+ * What the backup kitchen offers. 1.2.6 made this the same list, because the
+ * wider menu had been tested and there was no reason to hold it back. 1.3 TVBR 4
+ * opens the seam again: four models above the 1.7B the public menu stops at,
+ * carrying repo paths nobody could check from the sandbox they were written in.
+ *
+ * That is what the second kitchen is for — try a model on one device before
+ * everybody is asked to download it — so the cost of using it is written down
+ * here rather than discovered on a device: a model chosen in the test kitchen
+ * and not offered in the public one falls back to the default when the same
+ * browser opens the public page. `getSelectedTextModel` refuses what this page
+ * cannot offer, which loses a preference rather than a working app.
  *
  * Both lists are ids into the same table, and the table keeps every model it has
  * ever had — deleting entries breaks CI, the source reports, and the stored
  * preference of any visitor who chose one.
  */
-export const TVBR_OFFERED_TEXT_MODEL_IDS = [...OFFERED_TEXT_MODEL_IDS];
+export const TVBR_OFFERED_TEXT_MODEL_IDS = [
+  ...OFFERED_TEXT_MODEL_IDS,
+  // Cheapest download first, like the public list: on a tablet that is the only
+  // order anybody reads a model list in, and all four of these are heavier than
+  // anything above them.
+  'minicpm-2b', 'llama3.2-3b', 'qwen2.5-3b', 'gemma2-2b'
+];
 
 /** The menu this page renders: the test build's in the backup kitchen, the release's everywhere else. */
 export function offeredModelIds() {

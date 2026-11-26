@@ -111,6 +111,14 @@ let persistTimer = 0;
  */
 const SERVER_FALLBACK_ID = 'qwen2.5-1.5b';
 let codeArtifacts = [];
+/**
+ * Where each rendered bubble's artifacts begin in `codeArtifacts`, by message
+ * index. The markdown formatter numbers a code box by its position in the whole
+ * thread, so a paint that rebuilds one bubble on its own can only keep the
+ * buttons in every *earlier* bubble pointing at the right entry if it knows
+ * where the tail it is allowed to replace begins.
+ */
+let feedArtifactBase = [];
 let imageMode = false;
 let webSearchMode = false;
 let imageCaps = { hasWebGPU: false, hasF16: false, mode: '', threads: 1, quotaOK: null };
@@ -1050,6 +1058,120 @@ function renderAttachments() {
   });
 }
 
+/* ------------------------------------------------------------------ *
+ * Painting the feed while a reply streams in
+ *
+ * renderMessages() rebuilds the whole feed: every message's markdown is
+ * parsed again and feed.innerHTML is replaced, so every image element in
+ * the thread is destroyed and recreated. That is the right thing to do
+ * once, and a wasteful thing to do per token — a 500-token answer in a
+ * long thread used to mean 500 full rebuilds of work that the screen can
+ * only show 60 times a second anyway.
+ *
+ * So streaming asks for a paint instead of doing one. Requests collapse
+ * into one rebuild per animation frame, which keeps the reply visibly
+ * streaming and cuts the main-thread work to the rate the display can
+ * use. Every path that means "show this now" — a finished reply, a
+ * runtime note, a closed overlay — goes through renderMessagesNow(),
+ * which cancels a queued frame rather than leaving it to paint a state
+ * that has already moved on.
+ * ------------------------------------------------------------------ */
+let feedFrame = 0;
+let cancelFeedFrame = () => {};
+/** Which bubble a queued paint may repaint alone, or -1 for a full render. */
+let feedStreamIdx = -1;
+
+function scheduleFeedRender(streamIdx = -1) {
+  if (streamIdx >= 0) feedStreamIdx = streamIdx;
+  if (feedFrame) return;
+  const paint = () => {
+    feedFrame = 0;
+    cancelFeedFrame = () => {};
+    const idx = feedStreamIdx;
+    feedStreamIdx = -1;
+    if (idx >= 0 && paintStreamingMessage(idx)) return;
+    renderMessages();
+  };
+  if (typeof requestAnimationFrame === 'function') {
+    feedFrame = requestAnimationFrame(paint);
+    cancelFeedFrame = () => cancelAnimationFrame(feedFrame);
+  } else {
+    // No frames to wait for (a test shim, or a page with no display): a short
+    // timer still collapses a burst of tokens into one rebuild.
+    feedFrame = setTimeout(paint, 16);
+    cancelFeedFrame = () => clearTimeout(feedFrame);
+  }
+}
+
+function renderMessagesNow() {
+  if (feedFrame) { cancelFeedFrame(); feedFrame = 0; cancelFeedFrame = () => {}; }
+  feedStreamIdx = -1;
+  renderMessages();
+}
+
+/** Wire the copy/download buttons of code and file boxes anywhere in `root`. */
+function wireArtifactButtons(root) {
+  root.querySelectorAll('[data-copy-artifact]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const art = codeArtifacts[Number(btn.dataset.copyArtifact)];
+      if (!art) return;
+      const ok = await copyToClipboard(art.code);
+      btn.textContent = ok ? 'Copied!' : 'Failed';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
+    });
+  });
+
+  root.querySelectorAll('[data-dl-artifact]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const art = codeArtifacts[Number(btn.dataset.dlArtifact)];
+      if (!art) return;
+      playPop(620);
+      if (art.fileName.toLowerCase().endsWith('.docx')) {
+        triggerFileDownload(createDocxBlob(art.code, art.fileName.replace(/\.docx$/i, '')), art.fileName);
+      } else {
+        triggerFileDownload(art.code, art.fileName);
+      }
+    });
+  });
+}
+
+/**
+ * Repaint the one bubble a streaming reply is arriving in, and nothing else.
+ *
+ * This is the win that does not depend on how fast the model is. A full render
+ * re-parses the markdown of every message in the thread and replaces the whole
+ * feed, which also destroys and recreates every image element in it — so the
+ * cost of showing one more token grew with the length of the conversation. On a
+ * long thread that is most of what the chat spends its main thread on, and it
+ * happens whether tokens arrive at 15 a second or 150.
+ *
+ * Every condition it cannot vouch for sends it back to renderMessages(), which
+ * is slower and always correct.
+ */
+function paintStreamingMessage(idx) {
+  if (!overlayEl || idx < 0) return false;
+  const m = messages[idx];
+  // Only a plain assistant reply still streaming can be painted on its own.
+  if (!m || m.role === 'user' || m.imageProgress || m.imageResult || m.imageCutOff) return false;
+  if (idx !== messages.length - 1 || !isGenerating) return false;
+  const feed = overlayEl.querySelector('#waffle-ai-feed');
+  if (!feed || feed.children.length !== messages.length) return false;
+  const bubble = feed.children[idx];
+  const body = bubble?.querySelector('.waffle-msg-body');
+  const base = feedArtifactBase[idx];
+  if (!body || !Number.isFinite(base)) return false;
+
+  // This bubble's artifacts are the tail of the list. Dropping them and letting
+  // the formatter rebuild them from the same base is what keeps every earlier
+  // bubble's buttons pointing at the entries they were rendered with.
+  codeArtifacts.length = base;
+  body.innerHTML = (m.content ? formatWaffleMarkdown(m.content, true) : '<span class="waffle-thinking">Warming up the waffle iron\u2026</span>')
+    + '<span class="waffle-cursor" aria-hidden="true">\u258c</span>';
+  wireArtifactButtons(bubble);
+  feed.scrollTop = feed.scrollHeight;
+  return true;
+}
+
 function renderMessages() {
   if (!overlayEl) return;
   const feed = overlayEl.querySelector('#waffle-ai-feed');
@@ -1057,6 +1179,8 @@ function renderMessages() {
   if (!feed) return;
 
   codeArtifacts = [];
+  feedArtifactBase = [];
+  feedStreamIdx = -1;
 
   feed.innerHTML = messages.map((m, idx) => {
     const isUser = m.role === 'user';
@@ -1068,6 +1192,8 @@ function renderMessages() {
     const imgNote = isUser && m.imageUrls?.length
       ? `<div class="waffle-msg-images">${m.imageUrls.map(u => `<img class="waffle-msg-img" src="${u}" alt="Uploaded image">`).join('')}</div>`
       : '';
+
+    feedArtifactBase[idx] = codeArtifacts.length;
 
     let bodyHtml = '';
     if (isUser) {
@@ -1159,28 +1285,7 @@ function renderMessages() {
     `;
   }).join('');
 
-  feed.querySelectorAll('[data-copy-artifact]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const art = codeArtifacts[Number(btn.dataset.copyArtifact)];
-      if (!art) return;
-      const ok = await copyToClipboard(art.code);
-      btn.textContent = ok ? 'Copied!' : 'Failed';
-      setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
-    });
-  });
-
-  feed.querySelectorAll('[data-dl-artifact]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const art = codeArtifacts[Number(btn.dataset.dlArtifact)];
-      if (!art) return;
-      playPop(620);
-      if (art.fileName.toLowerCase().endsWith('.docx')) {
-        triggerFileDownload(createDocxBlob(art.code, art.fileName.replace(/\.docx$/i, '')), art.fileName);
-      } else {
-        triggerFileDownload(art.code, art.fileName);
-      }
-    });
-  });
+  wireArtifactButtons(feed);
 
   feed.querySelectorAll('[data-dl-img]').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -1706,7 +1811,10 @@ async function sendMessage(rawText) {
       },
       onToken(chunk, acc) {
         messages[assistantIdx].content = typeof acc === 'string' ? acc : (messages[assistantIdx].content + chunk);
-        renderMessages();
+        // One paint per frame, not one per token, and that paint covers this
+        // bubble rather than the thread: the text is already in place, so
+        // nothing is lost by showing it at the rate a screen can.
+        scheduleFeedRender(assistantIdx);
       },
       onRuntime(rt) {
         // Never pretend a fallback answered as the model the user picked.
@@ -1727,7 +1835,7 @@ async function sendMessage(rawText) {
             : ''
         ].filter(Boolean).join('');
         if (rt.swapped) modelState.swappedTo = rt.modelId;
-        renderMessages();
+        renderMessagesNow();
       }
     });
     modelState.loaded = true;
@@ -1744,7 +1852,9 @@ async function sendMessage(rawText) {
   } finally {
     isGenerating = false;
     activeAbort = null;
-    renderMessages();
+    // A frame may still be holding the last few tokens, and the reply is
+    // finished now, so this paints rather than queues.
+    renderMessagesNow();
     syncComposerState();
     overlayEl?.querySelector('#waffle-ai-input')?.focus();
   }
@@ -1797,7 +1907,7 @@ function buildLockedOverlay() {
         <p class="waffle-ai-locked-copy">${esc(WAFFLE_AI_LOCK_MESSAGE)}</p>
         <ul class="waffle-ai-locked-list">
           <li>The chat, CodeHub&rsquo;s AI Error Diagnostics, and the AI writing helpers in English &amp; Languages are all paused together.</li>
-          <li>Everything else in the kitchen &mdash; all 115 utilities and all 51 games &mdash; works exactly as before, on your device, with no account.</li>
+          <li>Everything else in the kitchen &mdash; all 120 utilities and all 51 games &mdash; works exactly as before, on your device, with no account.</li>
           <li>Nothing was deleted. The models and runtimes stay in the build so they can be switched back on when they behave.</li>
         </ul>
         <button type="button" class="gbtn gbtn-primary" id="waffle-ai-locked-done">Back to the Kitchen</button>
@@ -2118,8 +2228,9 @@ function setRailOpen(open) {
 function buildOverlay() {
   /**
    * The overhauled layout and the chats it keeps are what this test version is
-   * for, so they are the backup kitchen's alone: the public kitchen at 1.2.10
-   * keeps its single pane and its single, unsaved conversation. Markup and
+   * for, so they are the backup kitchen's alone: the public kitchen at 1.2.11
+   * keeps its single pane and its single, unsaved conversation. The four models
+   * above the 1.7B are the same kind of decision and live on the same flag. Markup and
    * behaviour both read this one flag, so the two cannot disagree about which
    * build they are in — a rail that renders without a store behind it, or a
    * store writing chats nobody can open, would each be worse than neither.

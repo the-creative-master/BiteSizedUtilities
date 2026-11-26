@@ -57,9 +57,9 @@ function seededRandom(start = 0.42) {
 
 /* ============================== catalogue & gating ============================== */
 
-test('the shipped catalogue is untouched: 8 cupboards, 115 utilities, 15 in Art & Coloring', () => {
+test('the shipped catalogue is untouched: 8 cupboards, 120 utilities, 15 in Art & Coloring', () => {
   assert.equal(cupboards.length, 8);
-  assert.equal(allTools.length, 115);
+  assert.equal(allTools.length, 120);
   const art = cupboards.find(c => c.id === 'art');
   assert.equal(art.tools.length, 15);
   assert.ok(!allTools.some(t => t.id === LAYERS_STUDIO_ID), 'the beta studio is not a shipped utility');
@@ -69,13 +69,13 @@ test('the shipped catalogue is untouched: 8 cupboards, 115 utilities, 15 in Art 
 
 test('resolveTools(false) is the identical shipped array, and 1.1.1 adds no extra tiles', () => {
   assert.equal(resolveTools(false), allTools, 'the public kitchen must not get a copy or a re-sort');
-  assert.equal(resolveTools(false).length, 115);
+  assert.equal(resolveTools(false).length, 120);
   const withExtras = resolveTools(true);
-  assert.equal(withExtras.length, 115, 'the layered studio is Art Studio now, so both kitchens hold the same tools');
-  assert.equal(new Set(withExtras.map(t => t.id)).size, 115, 'and no id is duplicated to get there');
+  assert.equal(withExtras.length, 120, 'the layered studio is Art Studio now, so both kitchens hold the same tools');
+  assert.equal(new Set(withExtras.map(t => t.id)).size, 120, 'and no id is duplicated to get there');
   assert.equal(withExtras.filter(t => t.backup).length, 0, 'no tool is backup-only any more');
   assert.equal(cupboardToolCount('art', true), 15);
-  assert.equal(cupboardToolCount('math', true), 10, 'cupboards with no extra are unchanged');
+  assert.equal(cupboardToolCount('math', true), 15, 'and Math & Numbers is 15 now that the five new ones are in it');
 });
 
 test('Art Studio itself is the layered studio, and no separate tile remains', () => {
@@ -91,13 +91,17 @@ test('Art Studio itself is the layered studio, and no separate tile remains', ()
   assert.equal(backupToolAdditions.length, 0, 'nothing is held back for the backup kitchen any more');
 });
 
-test('the layered studio gets its own hand-drawn 2.5D icon, distinct from all 115', () => {
+test('the layered studio gets its own hand-drawn 2.5D icon, distinct from all 120', () => {
   const layersIcon = toolPropSVG(LAYERS_STUDIO_ID);
   assert.ok(layersIcon.startsWith('<svg') && layersIcon.includes('viewBox="0 0 96 96"'), 'same 96px tile as every other icon');
   const shipped = allTools.map(t => toolPropSVG(t.id));
   assert.ok(!shipped.includes(layersIcon), 'the layered icon is not a duplicate of a shipped one');
   assert.notEqual(layersIcon, toolPropSVG('art-studio'), 'it must not reuse the Art Studio pencil');
-  assert.equal(new Set([...shipped, layersIcon]).size, 116);
+  // Expressed against the catalogue rather than as a literal: what this pins is
+  // that no two shipped icons collide with each other, and that the layered
+  // studio's is a third distinct one. A count typed by hand goes stale the
+  // moment the kitchen grows, and a stale pin is a pin on the wrong thing.
+  assert.equal(new Set([...shipped, layersIcon]).size, allTools.length + 1);
   assert.ok(iconSrc.includes(`'${LAYERS_STUDIO_ID}': wrapTile(`), 'the icon lives in the TOOL_SVGS map');
 });
 

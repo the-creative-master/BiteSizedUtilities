@@ -6,14 +6,14 @@
 
 [![Version](https://img.shields.io/badge/Version-1.2.8-blue)](#)
 [![Built for the web](https://img.shields.io/badge/Built%20for-the%20web-orange)](#)
-[![Utilities](https://img.shields.io/badge/Utilities-115-green)](#)
+[![Utilities](https://img.shields.io/badge/Utilities-120-green)](#)
 [![Games](https://img.shields.io/badge/Games-51-purple)](#)
 
 ---
 
 ## ✨ Highlights
 
-- **115 utility tools** across eight cupboards
+- **120 utility tools** across eight cupboards
 - **51 offline arcade and puzzle games**
 - **No account required** and mostly browser-powered
 - **Favorites and recently opened tools** saved in local browser storage

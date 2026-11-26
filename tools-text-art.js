@@ -14,9 +14,9 @@ import {
   serializeProject, parseProject
 } from './art-studio-layers.js';
 
-const TEXT_IDS = ['file-converter', 'crazy-text-filters', 'word-counter', 'case-converter', 'json-formatter', 'base64', 'url-codec', 'markdown-preview', 'text-diff', 'find-replace', 'lorem-ipsum', 'hash-generator', 'csv-editor', 'notepad', 'file-inspector'];
+const TEXT_IDS = ['file-converter', 'crazy-text-filters', 'word-counter', 'case-converter', 'json-formatter', 'base64', 'url-codec', 'markdown-preview', 'text-diff', 'find-replace', 'file-splitter', 'hash-generator', 'csv-editor', 'notepad', 'file-inspector'];
 const ART_IDS = ['art-studio', 'color-picker', 'palette-generator', 'gradient-maker', 'pixel-art', 'image-resizer', 'image-cropper', 'image-filters', 'svg-editor', 'contrast-checker', 'color-converter', 'pattern-maker', 'collage-maker', 'ascii-art', 'mandala'];
-// Backup-only art toy. Kept out of ART_IDS so the shipped catalogue stays 115
+// Backup-only art toy. Kept out of ART_IDS so the shipped catalogue stays 120
 // tools; it is dispatched from here but refuses to mount unless the page is
 // backup.html.
 const ART_LAYERS_IDS = [LAYERS_STUDIO_ID];
@@ -354,21 +354,7 @@ function textTools(id, ctx) {
     return;
   }
 
-  if (id === 'lorem-ipsum') {
-    const countSl = gameSlider({ label: 'Amount', min: 1, max: 20, step: 1, value: 3, color: '#f7c46c' });
-    const kind = gameTabs([['Paragraphs', 'Paragraphs'], ['Sentences', 'Sentences'], ['Words', 'Words']], 'Paragraphs', null, 'Unit');
-    const out = area('', 8); out.readOnly = true;
-    const words = 'lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua enim ad minim veniam quis nostrud exercitation ullamco'.split(' ');
-    const gen = () => {
-      playSparkle();
-      const n = countSl.num; let idx = 0;
-      const sent = () => { const w = Array.from({ length: 10 }, () => words[idx++ % words.length]).join(' '); return w[0].toUpperCase() + w.slice(1) + '.'; };
-      out.value = kind.value === 'Words' ? Array.from({ length: n }, () => words[idx++ % words.length]).join(' ') : Array.from({ length: n }, () => kind.value === 'Sentences' ? sent() : Array.from({ length: 4 }, sent).join(' ')).join(kind.value === 'Paragraphs' ? '\n\n' : ' ');
-    };
-    ctx.form.append(kind.el, countSl.el, gEl('div', { class: 'gtabs' }, gameBtn('✨ Generate', 'primary', gen), gameBtn('📋 Copy', 'chip', () => copyToClipboard(out.value))), out);
-    gen();
-    return;
-  }
+  if (id === 'file-splitter') { fileSplitter(ctx); return; }
 
   if (id === 'hash-generator') {
     const src = area('Cozy Kitchen', 4), out = area('', 3); out.readOnly = true;
@@ -1844,6 +1830,220 @@ function artStudioLayers(ctx) {
   } catch {}
 
   ctx.say('Art Studio (with layers) ready — pick a brush, then draw. Every layer has its own opacity and blend mode.');
+}
+
+/**
+ * File Splitter — and the naming is the whole feature.
+ *
+ * A splitter that hands back `notes.txt.part1` gives you a file nothing will open:
+ * the extension is now `.part1`, so the operating system has no idea what it is and
+ * every part has to be renamed by hand before it is usable again. That is the thing
+ * this replaces Lorem Ipsum with, so it is the thing it has to get right — the
+ * extension goes *last* by default and each part opens as the type it always was.
+ *
+ * Three details that are easy to get wrong and expensive when you do:
+ *
+ *   - Parts are zero-padded. `part10` sorts before `part2` in every file manager,
+ *     so a joiner that trusted that order would silently hand back a rearranged
+ *     file — the worst possible failure, because it succeeds.
+ *   - Nothing is read into memory. Splitting uses `file.slice()` and joining hands
+ *     an array of Blobs to the Blob constructor, so a 2 GB video splits on a phone.
+ *     The text tools beside this one cap at 20 MB for exactly the reason this does
+ *     not: they need the bytes as a string, and this never does.
+ *   - A file with no extension, and a file whose "extension" is a leading dot
+ *     (`.gitignore`), are both handled — the second has no base name to put an
+ *     extension after, and treating `.gitignore` as base "" plus extension
+ *     "gitignore" would produce `.part01.gitignore`.
+ */
+function fileSplitter(ctx) {
+  const { say, run } = ctx;
+  const MB = 1024 * 1024;
+  const MAX_PARTS = 200;
+  let source = null;
+  let joinFiles = [];
+
+  const human = b => b < 1024 ? `${b} B`
+    : b < MB ? `${(b / 1024).toFixed(1)} KB`
+    : b < 1024 * MB ? `${(b / MB).toFixed(2)} MB`
+    : `${(b / (1024 * MB)).toFixed(2)} GB`;
+
+  function nameParts(filename) {
+    const name = String(filename || 'file');
+    const dot = name.lastIndexOf('.');
+    if (dot > 0 && dot < name.length - 1) return { base: name.slice(0, dot), ext: name.slice(dot + 1) };
+    return { base: name, ext: '' };
+  }
+
+  const partTag = (i, total) => `part${String(i).padStart(Math.max(2, String(total).length), '0')}`;
+
+  function partName(filename, i, total, extLast) {
+    const { base, ext } = nameParts(filename);
+    const tag = partTag(i, total);
+    if (!ext) return `${base}.${tag}`;
+    return extLast ? `${base}.${tag}.${ext}` : `${base}.${ext}.${tag}`;
+  }
+
+  const partIndexOf = name => {
+    const m = /\.part(\d+)(?:\.|$)/.exec(String(name));
+    return m ? Number(m[1]) : null;
+  };
+
+  function originalName(name) {
+    return String(name).replace(/\.part\d+\.(?=[^.]+$)/, '.').replace(/\.part\d+$/, '');
+  }
+
+  /* ------------------------------------------------------------- split */
+
+  const strategy = gameTabs([['size', 'By part size'], ['count', 'By number of parts']], 'size', () => preview(), 'Split by');
+  const sizeSlider = gameSlider({ label: 'Part size', min: 1, max: 256, step: 1, value: 5, unit: ' MB', color: '#8fc487', onChange: () => preview() });
+  const countSlider = gameSlider({ label: 'Number of parts', min: 2, max: 100, step: 1, value: 4, unit: '', color: '#f0b84f', onChange: () => preview() });
+  const extLast = gameToggle('Keep the file extension last (so parts still open)', true, () => preview());
+  const previewBox = gEl('div', { class: 'fs-preview' });
+  const sourceStat = statBox('File', '—');
+  const partsStat = statBox('Parts', '—');
+  const eachStat = statBox('Each about', '—');
+
+  const filePill = gameFilePill('Pick a File to Split', '', false, run(fs => {
+    source = fs[0] || null;
+    if (!source) { say('No file chosen.'); preview(); return; }
+    say(`${source.name} — ${human(source.size)}. Nothing has been read into memory yet.`);
+    preview();
+  }));
+
+  function plan() {
+    if (!source) return null;
+    const size = source.size;
+    if (!size) return { error: 'That file is empty, so there is nothing to split.' };
+    let chunk = strategy.value === 'size'
+      ? Math.max(1, sizeSlider.num) * MB
+      : Math.ceil(size / Math.max(2, countSlider.num));
+    if (chunk > size) chunk = size;
+    const total = Math.max(1, Math.ceil(size / chunk));
+    if (total > MAX_PARTS) return { error: `That would be ${total} parts, and this tool stops at ${MAX_PARTS} — raise the part size or ask for fewer parts. A browser will also start refusing downloads long before that.` };
+    return { size, chunk, total };
+  }
+
+  function preview() {
+    previewBox.replaceChildren();
+    const p = plan();
+    sourceStat.set(source ? `${source.name} · ${human(source.size)}` : '—');
+    if (!p) { partsStat.set('—'); eachStat.set('—'); previewBox.append(gEl('p', { class: 'fs-hint' }, 'Pick a file and the part names will appear here before anything is downloaded.')); return; }
+    if (p.error) { partsStat.set('—'); eachStat.set('—'); previewBox.append(gEl('p', { class: 'fs-bad' }, p.error)); return; }
+    partsStat.set(String(p.total));
+    eachStat.set(human(p.chunk));
+    if (p.total === 1) {
+      previewBox.append(gEl('p', { class: 'fs-hint' }, `This file is ${human(p.size)}, which already fits in one part. There is nothing to split — raise the number of parts or lower the part size.`));
+      return;
+    }
+    const keep = extLast.checked;
+    const shown = Math.min(p.total, 8);
+    const list = gEl('ol', { class: 'fs-names' });
+    for (let i = 1; i <= shown; i++) {
+      const last = i === p.total;
+      const bytes = last ? p.size - (i - 1) * p.chunk : p.chunk;
+      list.append(gEl('li', {}, gEl('code', {}, partName(source.name, i, p.total, keep)), gEl('span', { class: 'fs-size' }, human(bytes))));
+    }
+    previewBox.append(list);
+    if (p.total > shown) previewBox.append(gEl('p', { class: 'fs-hint' }, `… and ${p.total - shown} more, named the same way.`));
+    previewBox.append(gEl('p', { class: 'fs-hint' }, keep
+      ? `Each part keeps .${nameParts(source.name).ext || '(no extension)'} at the end, so it opens as the type it always was and needs no renaming.`
+      : 'With the extension kept last switched off you get the grouping name instead — the parts sort together, and you will have to rename them to open them.'));
+    previewBox.append(gEl('p', { class: 'fs-hint' }, 'Your browser will ask to allow multiple downloads. That is the whole operation, not a mistake.'));
+  }
+
+  const splitBtn = gameBtn('⬇ Split & Download Parts', 'primary', run(async () => {
+    const p = plan();
+    if (!p) throw new Error('Pick a file to split first.');
+    if (p.error) throw new Error(p.error);
+    if (p.total === 1) throw new Error(`That file is ${human(p.size)} and fits in one part already.`);
+    const keep = extLast.checked;
+    const mime = source.type || 'application/octet-stream';
+    for (let i = 1; i <= p.total; i++) {
+      const start = (i - 1) * p.chunk;
+      const end = Math.min(source.size, start + p.chunk);
+      download(source.slice(start, end, mime), partName(source.name, i, p.total, keep), mime);
+      // Spaced out on purpose: a burst of downloads is what makes a browser start
+      // quietly dropping them, and a silently missing part is worse than a slow one.
+      await new Promise(r => setTimeout(r, 320));
+    }
+    say(`Saved ${p.total} parts of ${source.name}, about ${human(p.chunk)} each. If your browser only kept some of them, allow multiple downloads for this site and split again.`);
+  }));
+
+  /* -------------------------------------------------------------- join */
+
+  const joinPreview = gEl('div', { class: 'fs-preview' });
+  const joinStat = statBox('Parts found', '—');
+  const joinPill = gameFilePill('Pick the Parts to Join', '', true, run(fs => {
+    joinFiles = fs || [];
+    joinPreviewList();
+  }));
+
+  /** The parts in the order they have to be concatenated, or the reason they cannot be. */
+  function joinPlan() {
+    if (!joinFiles.length) return { error: 'Pick the part files first — all of them, in one go.' };
+    const tagged = joinFiles.map(f => ({ f, n: partIndexOf(f.name) }));
+    const untagged = tagged.filter(t => t.n === null);
+    if (untagged.length) return { error: `${untagged.length} of those have no .part number in the name (${untagged.slice(0, 3).map(t => t.f.name).join(', ')}), so this cannot tell where they belong.` };
+    const origins = new Set(tagged.map(t => originalName(t.f.name)));
+    if (origins.size > 1) return { error: `Those parts come from ${origins.size} different files (${[...origins].slice(0, 3).join(', ')}). Join one file at a time.` };
+    const sorted = tagged.slice().sort((a, b) => a.n - b.n);
+    const nums = sorted.map(t => t.n);
+    const dupes = nums.filter((n, i) => nums.indexOf(n) !== i);
+    if (dupes.length) return { error: `Part ${dupes[0]} appears twice, so one of them is the wrong file.` };
+    for (let i = 0; i < nums.length; i++) {
+      if (nums[i] !== i + 1) return { error: `Part ${i + 1} is missing — the list jumps from ${nums[i - 1] ?? 'nothing'} to ${nums[i]}. A joined file with a hole in it is worse than no file.` };
+    }
+    return { sorted, origin: [...origins][0], bytes: sorted.reduce((t, x) => t + x.f.size, 0) };
+  }
+
+  function joinPreviewList() {
+    joinPreview.replaceChildren();
+    const p = joinPlan();
+    if (p.error) { joinStat.set('—'); joinPreview.append(gEl('p', { class: 'fs-bad' }, p.error)); return; }
+    joinStat.set(`${p.sorted.length} → ${p.origin}`);
+    const list = gEl('ol', { class: 'fs-names' });
+    for (const t of p.sorted.slice(0, 8)) list.append(gEl('li', {}, gEl('code', {}, t.f.name), gEl('span', { class: 'fs-size' }, human(t.f.size))));
+    joinPreview.append(list);
+    if (p.sorted.length > 8) joinPreview.append(gEl('p', { class: 'fs-hint' }, `… and ${p.sorted.length - 8} more, joined in numerical order — not the order your file manager sorted them into.`));
+    joinPreview.append(gEl('p', { class: 'fs-hint' }, `Joined back into ${p.origin}, ${human(p.bytes)}. Nothing is read into memory to do it.`));
+  }
+
+  const joinBtn = gameBtn('⬇ Join & Download', 'primary', run(() => {
+    const p = joinPlan();
+    if (p.error) throw new Error(p.error);
+    const first = p.sorted[0].f;
+    download(new Blob(p.sorted.map(t => t.f), { type: first.type || 'application/octet-stream' }), p.origin, first.type || 'application/octet-stream');
+    say(`Joined ${p.sorted.length} parts back into ${p.origin} (${human(p.bytes)}).`);
+  }));
+
+  /* -------------------------------------------------------------- shell */
+
+  const splitPane = gEl('div', { class: 'fs-pane' },
+    filePill.el,
+    strategy.el, sizeSlider.el, countSlider.el, extLast.el,
+    gEl('div', { class: 'stat-row' }, sourceStat.el, partsStat.el, eachStat.el),
+    gEl('div', { class: 'gtabs' }, splitBtn),
+    previewBox
+  );
+  const joinPane = gEl('div', { class: 'fs-pane' },
+    joinPill.el,
+    gEl('div', { class: 'stat-row' }, joinStat.el),
+    gEl('div', { class: 'gtabs' }, joinBtn),
+    joinPreview
+  );
+  const stage = gEl('div', {});
+  const mode = gameTabs([['split', 'Split a file'], ['join', 'Join parts back']], 'split', v => {
+    stage.replaceChildren(v === 'join' ? joinPane : splitPane);
+    if (v === 'join') joinPreviewList(); else preview();
+  }, 'Mode');
+
+  ctx.form.append(
+    gEl('p', { class: 'tool-note' }, 'Split any file into numbered parts and join them back. The extension stays at the end of each part — notes.part01.txt, not notes.txt.part1 — so nothing needs renaming before it opens.'),
+    mode.el,
+    stage
+  );
+  stage.replaceChildren(splitPane);
+  preview();
 }
 
 export function mountTextArt(id, root) {

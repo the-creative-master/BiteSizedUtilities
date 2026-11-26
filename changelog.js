@@ -16,13 +16,13 @@ import { isBackupBuild } from './build-mode.js';
  *                     release that has already shipped. 1.1 TVAR 1 came after
  *                     1.1, and the three 1.2 ones after 1.2.
  *                TVBR means "Test Version BEfore Release": built toward a
- *                     release that has not shipped yet. 1.3 TVBR 1 is open while
- *                     the public kitchen is still on 1.2.10, because 1.3 does
+ *                     release that has not shipped yet. 1.3 TVBR 4 is open while
+ *                     the public kitchen is still on 1.2.11, because 1.3 does
  *                     not exist yet and this is what it is being tried on.
  *
  *              The counter resets when the release it belongs to ships, and
  *              nothing about it is mentioned on the public page — there it is
- *              simply 1.2.10. Each entry keeps the label that says where it sat,
+ *              simply 1.2.11. Each entry keeps the label that says where it sat,
  *              so the six below read TVAR and are not renamed to agree with the
  *              one above them. The list itself is named for the label the open
  *              build carries, and it holds both kinds.
@@ -32,28 +32,32 @@ import { isBackupBuild } from './build-mode.js';
  * visitors on GitHub Pages never see repo files, and the release notes belong
  * where the kitchen is.
  */
-export const APP_VERSION = '1.2.10';
+export const APP_VERSION = '1.2.11';
 
 /**
  * How many test builds of the open cycle there have been. Reset to 0 when that
  * cycle's release ships — and once 1.3 has, a build made on top of it is a test
  * version *after* a release, so it reads 1.3 TVAR 1 rather than TVBR.
  */
-export const TVBR = 3;
+export const TVBR = 4;
 
 /**
  * The release the open test build comes *before*.
  *
  * Its own constant rather than APP_VERSION, because the two are not the same
- * string and cannot be: 1.2.10 is what the public kitchen reports, while the
+ * string and cannot be: 1.2.11 is what the public kitchen reports, while the
  * backup kitchen is testing toward 1.3, which has not shipped. Deriving the
- * extended label from APP_VERSION would have announced "1.2.10 TVBR 1" — a
+ * extended label from APP_VERSION would have announced "1.2.11 TVBR 1" — a
  * build that has never existed — and renumbered the entries that document the
  * ones that have.
  *
- * A public release that ships *part* of an open cycle does not close it. 1.2.10
- * carries the star utilities and nothing else from 1.3 TVBR 3, so the counter
- * stays where it is and the cycle stays 1.3: the test build is still before the
+ * A public release that ships *part* of an open cycle does not close it. That is
+ * not a hypothetical any more, it has happened twice: 1.2.10 carried the star
+ * utilities and nothing else of 1.3 TVBR 3, and 1.2.11 carries five new
+ * utilities, a file splitter and a cheaper chat out of 1.3 TVBR 4 while leaving
+ * the four new models in the kitchen they are being tried in. Both moved the
+ * public version and left this cycle where it was, so the counter counts on —
+ * 3, then 4 — rather than resetting, and the test build is still before the
  * release it is named for.
  */
 export const TVBR_CYCLE = '1.3';
@@ -78,6 +82,60 @@ export function appVersionLabel() {
  * what is known to be rough — that is the whole point of writing them down.
  */
 export const TVBR_LOG = [
+  {
+    version: '1.3 TVBR 4',
+    date: 'November 25, 2026',
+    title: 'Four models above the 1.7B, a reply that costs less to watch, and Math & Numbers grows to fifteen',
+    tvbr: true,
+    groups: [
+      {
+        label: '\u{1F916} The model menu grows in this kitchen only: two 2B models and two 3B ones',
+        items: [
+          'The public menu has always stopped at SmolLM2 1.7B, about 1 GB. This build goes past it: MiniCPM 2B (~1.5 GB), Llama 3.2 3B (~1.8 GB), Qwen 2.5 3B (~1.85 GB) and Gemma 2 2B (~2.4 GB), cheapest download first like the rest of the ladder.',
+          'They are here and not there on purpose, and the reason is the honest one: four repository paths that nobody could check from where they were written. This sandbox has no route to huggingface.co, so a wrong path is a guess that costs a failed attempt on a device — which is what the second kitchen exists to absorb before everybody is asked to download it.',
+          'None of the four sizes is a measurement. Each is arithmetic scaled from a sibling in the same table whose size *was* measured on a device: Qwen 2.5 3B from the 881.6 MB the 1.5B came back at, Llama 3.2 3B from the 1B this table has carried since 1.2, MiniCPM 2B from SmolLM2 1.7B at the same quant. Each entry says which sibling and by how much.',
+          'Every one is then rounded up, because ggufMB is a ceiling and not a description. A ceiling ten percent low fails a load that would have worked and tells the visitor to raise a number they cannot see; a ceiling ten percent high only makes the fit check conservative, which for a 1.5\u20132.4 GB model is the right answer anyway. The repository tree still prices the real file before anything downloads, and the source report shows the measured size on the device.',
+          'Gemma 2 2B is the heaviest file on any menu here despite being the smaller of the two 2B models, and that is worth saying out loud rather than discovering mid-download: it is 2.61B parameters, and 0.59B of them are a 256,000-word vocabulary embedding that GGUF quantisation conventionally leaves at 16-bit.',
+          'Opening the seam between the menus again has a cost, so it is written down instead of left to be found: both builds share one localStorage, so a model chosen here and not offered publicly falls back to the default when the same browser opens the public page. That loses a preference, not a working app \u2014 and it is pinned by a test rather than assumed.',
+          'SmolLM2 1.7B stopped being the biggest thing on every menu, so its badge now says which menu it tops. A title that is true in one build and false in the other is the same mistake as a progress bar that reports a number it cannot back up.',
+          'None of the four is anywhere near the 400 MB per-model ceiling a deploy self-hosts under, so no deploy will ship them inside the site. They download once, into the visitor\u2019s own storage, and the pre-cache budget is unaffected.',
+          'What is not being claimed: none of them has been run here. This sandbox has no WebGPU, so no reply in this build has ever been generated by any model, new or old. What has been checked is the table, the menu order, the quantisation ranges, the numbering, and that every entry can be diagnosed without producing junk.'
+        ]
+      },
+      {
+        label: '\u{1F4AC} A reply arrived a token at a time, and every token rebuilt the whole conversation',
+        items: [
+          'The chat feed was rebuilt from scratch for every single token: each message\u2019s markdown parsed again, and feed.innerHTML replaced, which also destroys and recreates every image element in the thread. The cost of showing one more character therefore grew with the length of the conversation \u2014 the wrong way round for the thing that happens most often in a chat.',
+          'A token now paints the bubble it is arriving in, and at most once per frame. The whole feed is rebuilt when the reply is finished, which is when the Copy and Save buttons appear on it.',
+          'This one does not depend on how fast the model is. Coalescing paints into frames only helps above about sixty tokens a second, and a small model on a tablet CPU is nowhere near that; repainting one bubble instead of twenty helps at any speed at all.',
+          'It is main-thread work, which is the part a phone cares about. This is the same class of problem as the image runs that got killed: not the model being slow, but the page spending its budget on something the screen cannot show.',
+          'The bit that could have broken quietly is the numbering. A code box is numbered by its position in a list shared by the whole thread, so a paint of one bubble on its own can leave every older bubble\u2019s Copy button pointing at somebody else\u2019s code. The cheap paint puts the list back to where that bubble starts before it reformats, and refuses to run at all unless the feed on screen still matches the thread in memory.',
+          'Every condition it cannot vouch for sends it back to a full rebuild, which is slower and always correct: a user bubble, an image run, a bubble it cannot find, a thread that is not the one on screen.',
+          'Image generation is deliberately untouched. Its progress still paints directly on its own one-second clock rather than being coalesced into frames \u2014 that clock is the signal a paused or killed run is judged by, and it was written after a run spent several minutes announcing 4%.',
+          'What this does not do: it does not make the model faster. Tokens still arrive at whatever speed the device can produce them. It makes watching them arrive cheap.'
+        ]
+      },
+      {
+        label: '\u{1F522} What shipped publicly as 1.2.10 did not close 1.3, and what 1.2.11 carries',
+        items: [
+          'Math & Numbers goes from ten tools to fifteen: Equation Solver, Statistics Lab, Matrix Calculator, Geometry Calculator, and Factors/GCD & LCM. All five show their working the way the cupboard already does \u2014 an answer arrives with the substitution it came from, not just the answer.',
+          'They recompute as you type rather than only when you press the button. Both are there: the button stays, because pressing a thing is a different kind of confirmation than watching a number change.',
+          'Lorem Ipsum is gone and a File Splitter took its place. The naming is the whole point of it: parts come out as notes.part01.txt, extension last, so each one opens as the type it came from and nobody has to rename twenty files before they can use any of them.',
+          'What it deliberately does not produce is notes.txt.part1 or notes.txt.firstpart. Those need a rename before anything can open them, and a tool that hands you twenty of those has handed you twenty chores. The other naming is available behind a switch that says out loud what it will cost you.',
+          'Joining sorts by part number rather than by the order a file manager handed the pieces over, and refuses a missing part, a duplicate, an untagged name, or pieces of two different files. A joined file with a hole in it is worse than no file at all.',
+          'Releasing part of an open cycle does not close it, so the counter moved to 4 and the cycle stays 1.3: five of the things this build has are public now, and 1.3 itself still has not shipped. The public notes for 1.2.11 say nothing about any of this, because a public page is not allowed to mention a test version in either spelling.'
+        ]
+      },
+      {
+        label: '\u{1F6A7} Still open in 1.3',
+        items: [
+          'The four new models are unrun. Their repository paths, their real file sizes and their behaviour on a device that has to hold them are all still to be found out here, which is the entire reason they are on this menu and not the other one.',
+          'Granite Code 0.5B is still reserved for CodeHub\u2019s error diagnostics with no repository against it, because an invented path would fail as a 404 and read as a broken model rather than a model that has not arrived.',
+          'Nothing in this build changes image generation, the wake lock, the device-lost race or the progress reporting. Those were 1.3 TVBR 3 and they are still the state of the art here.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.3 TVBR 3',
     date: 'November 24, 2026',
@@ -552,6 +610,62 @@ export const TVBR_LOG = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: '1.2.11',
+    date: 'November 25, 2026',
+    title: 'Math & Numbers grows to fifteen, Lorem Ipsum becomes a file splitter that names its own pieces, and a reply costs less to watch',
+    groups: [
+      {
+        label: '\u{1F522} Math & Numbers: five new tools, and every one of them shows its working',
+        items: [
+          'Equation Solver does linear, quadratic and two-equation systems. An answer arrives with the substitution it came from \u2014 x = (7 \u2212 22) \u00F7 3, not just 5 \u2014 and a quadratic brings its discriminant, its vertex, and its complex pair when the curve never reaches the axis.',
+          'It refuses in sentences rather than dividing by zero. a = 0 on the quadratic tab says that is a straight line and points at the tab that solves it; two parallel lines say they never meet; two that are the same line say every point on them is a solution.',
+          'Statistics Lab takes a pasted list and gives the whole picture: count, sum, mean, median, both quartiles, the range between them, outliers by the 1.5 rule, and a histogram of what you actually typed rather than of a smooth curve fitted to it.',
+          'It says what it skipped instead of quietly dropping it, and it will not report a spread for a single number \u2014 a median of one value is a fact, a quartile of one value is a fiction.',
+          'Matrix Calculator handles 2\u00D72 and 3\u00D73: add, subtract, multiply, transpose, determinant and inverse, with the matrices drawn in brackets rather than typed into a grid of labels. A singular matrix is told to be singular instead of being inverted into nonsense.',
+          'Geometry Calculator measures nine shapes, flat and solid, and every measurement comes with the formula and the numbers substituted into it. A triangle gets Heron\u2019s formula from its three sides \u2014 and three sides that cannot form a triangle are refused rather than measured.',
+          'Factors, GCD & LCM is the companion to the Prime Checker that was already here: prime factorisations with their exponents, the full divisor list, and GCD and LCM across a whole set of numbers, with a coprime set named as one.',
+          'All five recompute as you type, not only when you press the button. The button is still there, because pressing a thing is a different kind of confirmation than watching a number change.',
+          'They are built with the cupboard\u2019s own chunky controls like the ten that were already there \u2014 no browser dropdowns, no thin native sliders, no checkboxes.'
+        ]
+      },
+      {
+        label: '\u2702\uFE0F Lorem Ipsum is gone, and a file splitter took its place',
+        items: [
+          'The kitchen had one tool that generated prose nobody reads. It now has one that handles files people actually have, and the cupboard is the same size it was.',
+          'The naming is the point of it, so it is the first thing on screen: a 23 MB notes.txt split at 5 MB comes out as notes.part01.txt, notes.part02.txt and so on. Extension last, so each part opens as the type it came from, with no renaming step before you can use any of them.',
+          'What it deliberately does not produce is notes.txt.part1 or notes.txt.firstpart. Those are grouping names, and every one of them needs a rename before anything can open it \u2014 a tool that hands you twenty of those has handed you twenty chores.',
+          'If you want the grouping names anyway, the switch is right there, and it says out loud that those parts will need renaming. The default is the one that does not.',
+          'Part numbers are zero-padded, so a file manager sorts part02 before part10 and the twentieth piece is not waiting somewhere in the middle of the list.',
+          'Files with no extension split cleanly, a leading dot is treated as a name rather than an extension so .gitignore stays .gitignore, and archive.tar.gz keeps the .gz it is actually opened by.',
+          'Splitting never reads your file into memory \u2014 it slices it \u2014 so a file far larger than the device could hold still splits on it. The neighbouring text tools have a 20 MB reading limit for exactly the reason this one does not.',
+          'Joining puts the pieces back in numerical order rather than in the order your file manager happened to hand them over, and it refuses a missing part, a duplicated one, a name with no part number, or pieces belonging to two different files. A joined file with a hole in it is worse than no file.',
+          'It stops at 200 parts and tells you why, because a browser will not reliably hand over more downloads than that and quietly dropping some of them is the failure nobody can see coming.',
+          'Every part name and size is listed on screen before anything downloads, and the browser will ask permission for multiple downloads \u2014 that is the whole operation, not something going wrong.'
+        ]
+      },
+      {
+        label: '\u{1F4AC} Waffle AI: showing the next word no longer costs the whole conversation',
+        items: [
+          'A reply arrives a token at a time, and the page used to rebuild the entire conversation for every one of them: each message\u2019s markdown parsed again, and every image in the thread destroyed and recreated. The cost of the next character grew with the length of the chat, which is backwards.',
+          'A token now repaints the bubble it is arriving in, at most once per screen frame, and the conversation is rebuilt once when the reply finishes. Same streaming to look at, and far less work behind it.',
+          'This is main-thread work, and main-thread work is what a phone spends its battery and its patience on. A long thread used to make every reply more expensive to watch than the last one.',
+          'The part that could have broken quietly was the numbering: a code box is numbered by its place in the whole conversation, so repainting one bubble on its own could have left an older bubble\u2019s Copy button holding somebody else\u2019s code. It does not, and there is a test that clicks the buttons to say so.',
+          'Image generation is untouched by this. It still reports on its own one-second clock, and that clock still paints directly rather than waiting for a frame \u2014 it is the signal an interrupted run is judged by.',
+          'What this does not do is make the model faster. Tokens still arrive at whatever speed your device can produce them; this only makes watching them arrive cheap.'
+        ]
+      },
+      {
+        label: '\u{1F9FA} What did not change',
+        items: [
+          'The kitchen is 120 utilities across eight cupboards, up from 115, and for the first time all eight cupboards are fifteen deep rather than seven of them matching and one lagging behind.',
+          'Every tool that was already here opens the way it did, including the ten in Math & Numbers that the five new ones joined. Nothing was moved to make room, and nothing was renamed.',
+          'Still no accounts, no subscriptions and no uploads. Everything runs on your device, and the five new tools are arithmetic that never leaves it.',
+          'The star of each cupboard still sits on its own plinth above the shelf, the games cabinet is still 51 games, and CodeHub still runs 41 of its 42 languages in the browser.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.2.10',
     date: 'November 24, 2026',

@@ -97,11 +97,11 @@ function installDomShim() {
   return FakeNode;
 }
 
-test('all 10 Math & Numbers utilities mount and function with zero default HTML range/select inputs', async () => {
+test('all 15 Math & Numbers utilities mount and function with zero default HTML range/select inputs', async () => {
   const FakeNode = installDomShim();
   const { MATH_NUMBER_TOOLS } = await import('../tools-math-numbers.js');
   const mathCupboard = cupboards.find(c => c.id === 'math');
-  assert.equal(mathCupboard.tools.length, 10);
+  assert.equal(mathCupboard.tools.length, 15);
 
   for (const [id] of mathCupboard.tools) {
     const root = new FakeNode('div');

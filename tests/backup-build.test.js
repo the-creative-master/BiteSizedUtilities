@@ -24,8 +24,8 @@ function pageWith(dataset) {
 
 test('the public kitchen reports a plain release version and knows nothing about TVBR', () => {
   pageWith({});
-  assert.equal(APP_VERSION, '1.2.10');
-  assert.equal(appVersionLabel(), '1.2.10', 'index.html says 1.2.10 and nothing else');
+  assert.equal(APP_VERSION, '1.2.11');
+  assert.equal(appVersionLabel(), '1.2.11', 'index.html says 1.2.11 and nothing else');
   assert.equal(isBackupBuild(), false);
   assert.equal(isPublicBuild(), true);
   // Both spellings: the label is TVBR now, but six shipped builds read TVAR, and
@@ -49,26 +49,27 @@ test('the public kitchen reports a plain release version and knows nothing about
 
 test('the backup kitchen reports the test build it is, not the release beside it', () => {
   pageWith({ backup: '1' });
-  // 1.2.10 is what the public kitchen says. This build is the third test version
+  // 1.2.11 is what the public kitchen says. This build is the fourth test version
   // of the open cycle, so it says so — and the two labels are allowed to
   // disagree, which is the whole reason the cycle is its own constant instead of
   // APP_VERSION. A new cycle restarts the counter at 1 rather than counting on
   // from the last cycle's 3, and the entries below keep the numbers they had.
   //
-  // 1.2.10 is the case that proves the cycle has to be its own constant. It ships
+  // 1.2.10 and 1.2.11 are the cases that prove the cycle has to be its own
+  // constant. Each ships
   // part of 1.3 TVBR 3 — the star utilities — so the public version moved while
   // the cycle this build is named for did not. Resetting here would have announced
   // that 1.3 had shipped, which it has not.
-  assert.equal(TVBR, 3, 'the counter sits at the build this kitchen reports');
+  assert.equal(TVBR, 4, 'the counter sits at the build this kitchen reports');
   assert.equal(TVBR_CYCLE, '1.3', 'on the 1.3 cycle');
-  assert.equal(APP_VERSION, '1.2.10', 'while the release has moved on without it');
-  assert.equal(appVersionLabel(), '1.3 TVBR 3', 'backup.html reports the build it is');
+  assert.equal(APP_VERSION, '1.2.11', 'while the release has moved on without it');
+  assert.equal(appVersionLabel(), '1.3 TVBR 4', 'backup.html reports the build it is');
   assert.equal(isBackupBuild(), true);
   assert.equal(isPublicBuild(), false);
 
   // The earlier test versions stay documented as history; they are not this build.
-  assert.equal(TVBR_LOG.length, 9, 'every extended minor version is still documented');
-  assert.deepEqual(TVBR_LOG.map(e => e.version), ['1.3 TVBR 3', '1.3 TVBR 2', '1.3 TVBR 1', '1.2 TVAR 3', '1.2 TVAR 2', '1.2 TVAR 1', '1.1 TVAR 3', '1.1 TVAR 2', '1.1 TVAR 1'],
+  assert.equal(TVBR_LOG.length, 10, 'every extended minor version is still documented');
+  assert.deepEqual(TVBR_LOG.map(e => e.version), ['1.3 TVBR 4', '1.3 TVBR 3', '1.3 TVBR 2', '1.3 TVBR 1', '1.2 TVAR 3', '1.2 TVAR 2', '1.2 TVAR 1', '1.1 TVAR 3', '1.1 TVAR 2', '1.1 TVAR 1'],
     'newest first, and an old entry keeps its own number and its own spelling');
   assert.equal(TVBR_LOG[0].version, APP_VERSION_EXTENDED,
     'the newest entry spells out the label this build reports, so it cannot be renumbered behind its own back');
@@ -88,13 +89,14 @@ test('the backup kitchen reports the test build it is, not the release beside it
   assert.match(all, /test version after release/, 'the 1.1 entry still explains what TVAR stood for when it was written');
   assert.match(all, /Hugging Face/, 'and records the extended AI error report');
 
-  const chat = textOf(TVBR_LOG[2]);
+  const chat = textOf(TVBR_LOG[3]);
   // The build this kitchen reports. It has to state the storage limit in the
   // same breath as the feature, because a chat that says "saved" and then
   // disappears when somebody clears site data has oversold itself.
-  assert.match(TVBR_LOG[0].title, /progress bar|lying/i, '1.3 TVBR 3 says what it is about in the title');
-  assert.match(TVBR_LOG[1].title, /image generation|warnings/i, '1.3 TVBR 2 still says what it was about');
-  assert.match(TVBR_LOG[2].title, /memory|sidebar/i, 'and 1.3 TVBR 1 still says what it was about');
+  assert.match(TVBR_LOG[0].title, /models above the 1\.7B|costs less to watch/i, '1.3 TVBR 4 says what it is about in the title');
+  assert.match(TVBR_LOG[1].title, /progress bar|lying/i, '1.3 TVBR 3 still says what it was about');
+  assert.match(TVBR_LOG[2].title, /image generation|warnings/i, '1.3 TVBR 2 still says what it was about');
+  assert.match(TVBR_LOG[3].title, /memory|sidebar/i, 'and 1.3 TVBR 1 still says what it was about');
   assert.match(chat, /Test Version BEfore Release/, 'the entry says what its own label stands for');
   assert.match(chat, /Test Version BEfore Release/, 'and what the open build\u2019s own label means');
   assert.match(chat, /1\.3 does not exist yet|does not exist yet/, 'which is why it is a before-release build at all');
@@ -111,7 +113,7 @@ test('the backup kitchen reports the test build it is, not the release beside it
   assert.ok(!/syncs to the cloud|saved to (our|a|the) server|follows you to|on every device|backed up for you/i.test(chat),
     'it never claims a chat leaves this browser, because there is no server for it to leave to');
 
-  const imageEntry = textOf(TVBR_LOG[1]);
+  const imageEntry = textOf(TVBR_LOG[2]);
   // The build this kitchen reports. It has to quote the failure it replaced and
   // say why the device it was reported from was a red herring, because the point
   // of the entry is that the bug was never about anybody's hardware.
@@ -131,7 +133,7 @@ test('the backup kitchen reports the test build it is, not the release beside it
   assert.ok(!/works on any device|runs everywhere|any browser can generate|no download/i.test(imageEntry),
     'it never claims the image model runs where WebGPU does not, or without its weights');
 
-  const tvbr3 = textOf(TVBR_LOG[3]);
+  const tvbr3 = textOf(TVBR_LOG[4]);
   // The build this kitchen reports. It has to say what was wrong with the old
   // message rather than only what replaced it, because the point of the entry is
   // that a diagnostic was inventing its own cause.
@@ -146,10 +148,10 @@ test('the backup kitchen reports the test build it is, not the release beside it
   assert.ok(!/runs from a folder now|works offline now|fixed the folder/.test(tvbr3),
     'it never claims the wall came down, because it did not');
 
-  const scrapped = textOf(TVBR_LOG[4]);
+  const scrapped = textOf(TVBR_LOG[5]);
   // The name is in the title, and textOf() reads labels and items — asserting on
   // `scrapped` here would have been asserting on a string the entry never contains.
-  assert.match(TVBR_LOG[4].title, /SCRAPPED/, '1.2 TVAR 2 is the entry that closed the offline package down');
+  assert.match(TVBR_LOG[5].title, /SCRAPPED/, '1.2 TVAR 2 is the entry that closed the offline package down');
   assert.match(scrapped, /whole offline package/i, 'it says what went, in one place, rather than by omission');
   assert.match(scrapped, /release it lived under is deleted/i, 'including the archive somebody could still go and fetch');
   assert.match(scrapped, /public kitchen is untouched/, 'and that the served site never loaded any of it');
@@ -166,13 +168,13 @@ test('the backup kitchen reports the test build it is, not the release beside it
   }
   assert.ok(!scrapped.includes('BACKUPKITCHEN'), 'without printing the string that opens this kitchen');
 
-  const tvbr1 = textOf(TVBR_LOG[5]);
+  const tvbr1 = textOf(TVBR_LOG[6]);
   assert.match(tvbr1, /Falcon 3 1B/, '1.2 TVAR 1 names the model it added');
   assert.match(tvbr1, /DONTASKMEWHATTHATIS\.txt/, 'and the file the build now ships as');
   assert.match(tvbr1, /obfuscation and not encryption/, 'without pretending the disguise is a secret');
   assert.ok(!tvbr1.includes('BACKUPKITCHEN'), 'and without printing the string that opens it');
 
-  const latest = textOf(TVBR_LOG[6]);
+  const latest = textOf(TVBR_LOG[7]);
   assert.match(latest, /Huawei/, '1.1 TVAR 3 records the devices it was built for');
   assert.match(latest, /Kirin NPU cannot be reached from a web page/,
     'and says plainly what the NPU cannot do instead of implying it works');
@@ -182,7 +184,7 @@ test('the backup kitchen reports the test build it is, not the release beside it
   assert.match(latest, /1\.8 GB/, 'so is the tighter heap budget on a tablet');
   assert.match(latest, /ArkWeb/, 'and the mapping that dates a Huawei browser');
 
-  const tvbr2 = textOf(TVBR_LOG[7]);
+  const tvbr2 = textOf(TVBR_LOG[8]);
   assert.match(tvbr2, /freez/, '1.1 TVAR 2 records the freeze it was built to fix');
   assert.match(tvbr2, /Only one inference runs at a time/, 'what replaced it');
   assert.match(tvbr2, /45 seconds/, 'the watchdog window a visitor would actually hit');
@@ -195,9 +197,9 @@ test('TVBR entries reset with each release and are rendered only in the backup b
   assert.match(src, /export const APP_VERSION_EXTENDED = `\$\{TVBR_CYCLE\} TVBR \$\{TVBR\}`;/,
     'the extended label is derived, so bumping TVBR is a one-character change');
   assert.match(src, /export const TVBR_CYCLE = '1\.3';/,
-    'from the cycle it belongs to, which is a literal: APP_VERSION has moved on to 1.2.10 and deriving from it would announce a build that has never existed');
+    'from the cycle it belongs to, which is a literal: APP_VERSION has moved on to 1.2.11 and deriving from it would announce a build that has never existed');
   assert.match(src, /A public release that ships \*part\* of an open cycle does not close it/,
-    'and the rule for a partial release is written down where the constants live, because 1.2.10 is the first one');
+    'and the rule for a partial release is written down where the constants live, because 1.2.10 was the first one and 1.2.11 is the second');
   assert.match(src, /Reset to 0 when that/, 'the reset rule is written down where the counter lives');
   assert.match(src, /const releases = isBackupBuild\(\) \? \[\.\.\.TVBR_LOG, \.\.\.CHANGELOG\] : CHANGELOG;/,
     'the renderer only prepends TVBR entries in the backup build');
@@ -220,13 +222,13 @@ test('TVBR entries reset with each release and are rendered only in the backup b
 test('TVAR and TVBR say where a build sits relative to its release', () => {
   // Not two spellings of one label. TVAR is a test version built AFTER its
   // release shipped; TVBR is one built BEFORE the release it is testing toward.
-  // The open build is 1.3 TVBR 3 because 1.3 does not exist yet, and so are the
-  // two below it; the six under those are TVAR because 1.1 and 1.2 did. Nothing
+  // The open build is 1.3 TVBR 4 because 1.3 does not exist yet, and so are the
+  // three below it; the six under those are TVAR because 1.1 and 1.2 did. Nothing
   // has been renamed, and the entry that documented the label meanings keeps its
   // own number and its own text.
-  assert.equal(TVBR_LOG[0].version, '1.3 TVBR 3', 'the open build comes before its release');
+  assert.equal(TVBR_LOG[0].version, '1.3 TVBR 4', 'the open build comes before its release');
   assert.deepEqual(TVBR_LOG.slice(1).map(e => e.version),
-    ['1.3 TVBR 2', '1.3 TVBR 1', '1.2 TVAR 3', '1.2 TVAR 2', '1.2 TVAR 1', '1.1 TVAR 3', '1.1 TVAR 2', '1.1 TVAR 1'],
+    ['1.3 TVBR 3', '1.3 TVBR 2', '1.3 TVBR 1', '1.2 TVAR 3', '1.2 TVAR 2', '1.2 TVAR 1', '1.1 TVAR 3', '1.1 TVAR 2', '1.1 TVAR 1'],
     'the builds before this one, and then the ones that came after theirs');
 
   const src = fs.readFileSync('changelog.js', 'utf8');
@@ -242,7 +244,7 @@ test('TVAR and TVBR say where a build sits relative to its release', () => {
     'the 1.1 explainer still defines TVAR in its own words, and is still right');
   assert.ok(!/1\.[12] TVBR /.test(history), 'and no after-release build has been called a before-release one');
 
-  const chat = text(TVBR_LOG[2]);
+  const chat = text(TVBR_LOG[3]);
   assert.match(chat, /Test Version AFTER Release/, 'the open entry explains the other label rather than assuming it');
   assert.match(chat, /1\.2 TVAR 1 to 3 and 1\.1 TVAR 1 to 3/, 'and names the builds it sits above');
   assert.match(chat, /not which spelling was current when it was written/,
@@ -284,12 +286,12 @@ test('backup.html is the only page that switches the extra build on', () => {
     'apart from the flag, the title, the description and the noindex tag, the two pages are the same document');
 });
 
-test('no tool is backup-only any more, and both kitchens hold the same 115', () => {
+test('no tool is backup-only any more, and both kitchens hold the same 120', () => {
   pageWith({});
   assert.equal(resolveTools(false), allTools, 'the public list is the shipped array itself');
-  assert.equal(resolveTools(false).length, 115);
+  assert.equal(resolveTools(false).length, 120);
   assert.equal(backupToolAdditions.length, 0, '1.1.1 folded the layered studio into Art Studio');
-  assert.equal(resolveTools(true).length, 115);
+  assert.equal(resolveTools(true).length, 120);
   assert.ok(!resolveTools(true).some(t => t.backup), 'nothing is gated behind the backup page');
   assert.ok(cupboards.find(c => c.id === 'art'), 'the Art & Coloring cupboard still exists');
 
@@ -392,19 +394,62 @@ test('the tap gesture is gone, and nothing explains the door that replaced it', 
 
 test('the paused-AI notice quotes the current cabinet and keeps its promise', () => {
   const aiSrc = fs.readFileSync('waffle-ai.js', 'utf8');
-  assert.match(aiSrc, /all 115 utilities and all 51 games/, 'the notice counts what the kitchen actually has');
+  assert.match(aiSrc, /all 120 utilities and all 51 games/, 'the notice counts what the kitchen actually has');
   assert.ok(!aiSrc.includes('all 45 games'), 'and not the number from launch day');
 
   const games = JSON.parse(fs.readFileSync('games/catalog.json', 'utf8'));
   assert.equal(games.length, 51, 'which is the real cabinet size');
-  assert.equal(allTools.length, 115, 'and the real tool count');
+  assert.equal(allTools.length, 120, 'and the real tool count');
 });
 
 /* ============================== the open build's own entry ============================== */
 
-test('1.3 TVBR 3 says what the bar used to do, what an interruption costs, and what made it into 1.2.10', () => {
+test('1.3 TVBR 4 says which kitchen the four models are in, where their sizes came from, and what 1.2.11 took', () => {
   const entry = TVBR_LOG[0];
-  assert.equal(entry.version, APP_VERSION_EXTENDED);
+  assert.equal(entry.version, APP_VERSION_EXTENDED, 'the newest entry is the build this kitchen reports');
+  assert.equal(entry.date, 'November 25, 2026');
+  assert.equal(entry.tvbr, true, 'and it is marked so the renderer can style it apart');
+  const text = entry.groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
+
+  // The four are named with the kitchen they are in, in the label a reader meets
+  // first. A model that is only in one build has to say so where it is described,
+  // not in a footnote somebody has to look for.
+  for (const m of ['MiniCPM 2B', 'Llama 3.2 3B', 'Qwen 2.5 3B', 'Gemma 2 2B']) {
+    assert.ok(text.includes(m), `${m} is named in the entry`);
+  }
+  assert.match(text, /in this kitchen only/, 'and the group says where they are');
+  assert.match(text, /no route to huggingface\.co/, 'which is why: the repo paths could not be checked from where they were written');
+
+  // The sizes are arithmetic, and the entry says which measured sibling each was
+  // scaled from rather than presenting a bytes-per-weight figure as a fact.
+  assert.match(text, /None of the four sizes is a measurement/, 'no size is presented as a measurement');
+  assert.match(text, /881\.6 MB/, 'the one measured figure in the table anchors the 3B Qwen');
+  assert.match(text, /rounded up, because ggufMB is a ceiling/, 'and the direction of the rounding comes with its reason');
+  assert.match(text, /256,000-word vocabulary/, 'the awkward one is priced from its parts, and says which part is awkward');
+
+  // Reopening the seam between the two menus has a cost. Written down here rather
+  // than discovered by somebody whose chosen model disappeared.
+  assert.match(text, /falls back to the default/, 'a model chosen here and not offered publicly loses a preference, not the app');
+  assert.match(text, /pinned by a test rather than assumed/, 'and the entry says that it is pinned');
+
+  // What it does not claim, which is the half of a release note that makes the
+  // other half worth reading.
+  assert.match(text, /none of them has been run here/, 'no model is claimed to have been run');
+  assert.match(text, /This sandbox has no WebGPU/, 'with the reason');
+  assert.match(text, /it does not make the model faster/, 'and the chat work says what it does not do as well');
+
+  // What shipped where: the part a reader of this build acts on.
+  assert.match(text, /1\.2\.11/, 'the entry says which release the tools, the splitter and the chat work went into');
+  assert.match(text, /the counter moved to 4 and the cycle stays 1\.3/,
+    'and why the counter moved without the cycle closing');
+  assert.match(text, /1\.3 itself still has not shipped/, 'which is the whole reason it is a before-release build');
+});
+
+test('1.3 TVBR 3 says what the bar used to do, what an interruption costs, and what made it into 1.2.10', () => {
+  const entry = TVBR_LOG[1];
+  // Not APP_VERSION_EXTENDED: this entry is history now, and an entry that keeps
+  // the number it was written with is the rule the whole list is built on.
+  assert.equal(entry.version, '1.3 TVBR 3');
   assert.equal(entry.date, 'November 24, 2026');
   const text = entry.groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
 
@@ -451,13 +496,13 @@ test('1.3 TVBR 3 says what the bar used to do, what an interruption costs, and w
   assert.match(text, /it cannot stop a renderer being killed/, 'with the limit stated, because the alternative is an over-promise');
 
   // What shipped where, which is the part a reader of this build acts on. 1.2.10
-  // is now a real release rather than a plan, so this group reads as a record.
+  // was a real release by the time this was read, so this group is a record.
   assert.match(text, /1\.2\.10/, 'the entry says which release the star work went into');
   assert.match(text, /Shipped: the star utilities/, 'what is public now');
   assert.match(text, /Not shipped: the image progress work, the interruption work and the Music Lab bench/,
     'and what stayed in this build');
   assert.match(text, /Releasing part of an open cycle does not close it/,
-    'the rule that kept TVBR at 3 while APP_VERSION moved to 1.2.10');
+    'the rule that kept TVBR at 3 while APP_VERSION moved to 1.2.10, and at 4 while it moved to 1.2.11');
 
   // The bench badge sits on a panel that ships in the public kitchen too, so the
   // sentence a visitor reads must not be the one carrying this build's label.

@@ -55,9 +55,11 @@ test('the table keeps the models the menu stopped offering', () => {
   // report if somebody has one stored.
   const gone = TEXT_MODELS.filter(m => !OFFERED_TEXT_MODEL_IDS.includes(m.id)).map(m => m.id).sort();
   assert.deepEqual(gone, [
-    'deepseek-r1-1.5b', 'granite-code-0.5b', 'llama3.2-1b', 'qwen2.5-coder-1.5b', 'smollm2-135m'
-  ], 'off the menu, and still readable by id');
-  assert.equal(TEXT_MODELS.length, 12, 'the ten 1.2 shipped, plus Falcon 3 1B and the reserved Granite');
+    'deepseek-r1-1.5b', 'gemma2-2b', 'granite-code-0.5b', 'llama3.2-1b', 'llama3.2-3b',
+    'minicpm-2b', 'qwen2.5-3b', 'qwen2.5-coder-1.5b', 'smollm2-135m'
+  ], 'off the public menu, and still readable by id');
+  assert.equal(TEXT_MODELS.length, 16,
+    'the ten 1.2 shipped, plus Falcon 3 1B, the reserved Granite, and the four the test kitchen grew into');
   // SmolLM2 135M is the one 1.2.6 retired: SmolLM2 360M took its place. A
   // visitor who chose it before has it in localStorage, and the source reports
   // still price it by id, so it stays in the table and comes off the menu.
@@ -67,30 +69,46 @@ test('the table keeps the models the menu stopped offering', () => {
   assert.match(retired.desc, /retired from the menu in 1\.2\.6/, 'in the line a visitor would read');
   assert.ok(TEXT_MODELS.some(m => m.id === 'smollm2-360m'), 'its replacement is in the table too');
 
-  // Both kitchens render the same menu now, so "off the public menu" and "on no
-  // menu at all" are the same five. One of them is reserved for CodeHub's error
-  // diagnostics and its weights have not arrived: it must not be pickable and
-  // must not be downloadable, and both fall out of it being on neither list.
+  // 1.3 TVBR 4 opened the seam between the kitchens again, so "off the public
+  // menu" and "on no menu at all" are different lists for the first time since
+  // 1.2.6: four models are in the test kitchen and nowhere else. One of the five
+  // that are on neither is reserved for CodeHub's error diagnostics and its
+  // weights have not arrived: it must not be pickable and must not be
+  // downloadable, and both fall out of it being on neither list.
   const reserved = TEXT_MODELS.filter(m => !ALL_OFFERED_TEXT_MODEL_IDS.includes(m.id)).map(m => m.id).sort();
-  assert.deepEqual(reserved, gone, 'nothing is offered in one kitchen and not the other any more');
+  assert.deepEqual(reserved, [
+    'deepseek-r1-1.5b', 'granite-code-0.5b', 'llama3.2-1b', 'qwen2.5-coder-1.5b', 'smollm2-135m'
+  ], 'on no menu at all, in either kitchen');
+  assert.deepEqual(gone.filter(id => !reserved.includes(id)).sort(), [
+    'gemma2-2b', 'llama3.2-3b', 'minicpm-2b', 'qwen2.5-3b'
+  ], 'and exactly the four the test kitchen offers are on one menu and not the other');
   const granite = TEXT_MODELS.find(m => m.id === 'granite-code-0.5b');
   assert.equal(granite.arrivesIn, 'a later update', 'it says when it is coming instead of guessing a repo');
   assert.equal(granite.hfGgufRepo, undefined, 'and there is no repo to be wrong about');
 });
 
-test('both kitchens render the same menu, and the seam between them still works', () => {
+test('the two kitchens offer different menus again, and the seam between them still works', () => {
   // 1.2 TVAR 1 was the tighter set: a wider menu got compared for reliability in
-  // the second kitchen before the public one was asked to live with it. It has
-  // been tested, so 1.2.6 made it the only menu. The switch is the same one the
-  // rest of the build uses, so there is no second mechanism — and it stays, so
-  // the next model can be tried in one kitchen before everybody gets it.
+  // the second kitchen before the public one was asked to live with it. It had
+  // been tested, so 1.2.6 made it the only menu. 1.3 TVBR 4 uses the seam the
+  // way it was built to be used — four models above the 1.7B, with repo paths
+  // that could not be checked from where they were written, get tried on one
+  // device before everybody is asked to download them. The switch is still the
+  // same one the rest of the build uses, so there is no second mechanism.
   assert.equal(offeredModelIds(), OFFERED_TEXT_MODEL_IDS, 'no page means no test build');
 
   const store = shimStorage();
   globalThis.document = { documentElement: { dataset: { backup: '1' } } };
   try {
     assert.equal(offeredModelIds(), TVBR_OFFERED_TEXT_MODEL_IDS, 'the backup build reads its own constant');
-    assert.deepEqual(TVBR_OFFERED_TEXT_MODEL_IDS, OFFERED_TEXT_MODEL_IDS, 'and the two lists now hold the same models');
+    assert.deepEqual(TVBR_OFFERED_TEXT_MODEL_IDS, [
+      ...OFFERED_TEXT_MODEL_IDS, 'minicpm-2b', 'llama3.2-3b', 'qwen2.5-3b', 'gemma2-2b'
+    ], 'the test kitchen is the public menu plus the four new ones, in that order');
+    const tvbrLadder = offeredTextModels().map(m => m.ggufMB);
+    assert.deepEqual(tvbrLadder, [...tvbrLadder].sort((a, b) => a - b),
+      'and its ladder is still cheapest download first, the four new ones on top');
+    assert.ok(tvbrLadder.every((mb, i) => i < OFFERED_TEXT_MODEL_IDS.length || mb > 1050),
+      'every one of the four is heavier than the 1.7B the public menu stops at');
     assert.ok(TVBR_OFFERED_TEXT_MODEL_IDS !== OFFERED_TEXT_MODEL_IDS,
       'as two separate lists, not one alias: a model tested in the second kitchen must not appear in the first');
     assert.deepEqual(offeredTextModels().map(m => m.id), TVBR_OFFERED_TEXT_MODEL_IDS, 'and the menu renders in that order');
@@ -101,9 +119,7 @@ test('both kitchens render the same menu, and the seam between them still works'
     assert.ok(!offeredTextModels().some(m => m.arrivesIn), 'nothing on a menu is waiting for weights');
 
     // Both builds share one localStorage, so a choice made in one kitchen is
-    // read in the other. That used to be a hazard — a model offered only in the
-    // backup build could be stored there and then be unselectable here. With one
-    // menu it is simply continuity.
+    // read in the other. For the seven models both offer, that is continuity.
     setSelectedTextModel('falcon3-1b');
     assert.equal(getSelectedTextModel(), 'falcon3-1b', 'offered here, so it sticks');
     // An id on neither menu is refused rather than stored, and refusing it must
@@ -114,14 +130,78 @@ test('both kitchens render the same menu, and the seam between them still works'
     delete globalThis.document;
   }
   assert.equal(getSelectedTextModel(), 'falcon3-1b',
-    'and it survives the trip back to the public page, because that page offers it too now');
+    'and it survives the trip back to the public page, because that page offers it too');
+
+  // Reopening the seam puts the old hazard back, so it is pinned here rather than
+  // rediscovered on a device: the four can be chosen in the test kitchen, and the
+  // public page refuses them and falls back to the default. That loses a
+  // preference, not a working app — which is the trade the seam has always cost.
+  globalThis.document = { documentElement: { dataset: { backup: '1' } } };
+  try {
+    setSelectedTextModel('qwen2.5-3b');
+    assert.equal(getSelectedTextModel(), 'qwen2.5-3b', 'the test kitchen offers it, so it sticks there');
+  } finally {
+    delete globalThis.document;
+  }
+  assert.equal(getSelectedTextModel(), DEFAULT_TEXT_MODEL_ID,
+    'the public page does not, and falls back to the default rather than to a model it has no entry for');
   delete globalThis.localStorage;
   store.clear();
 
-  assert.deepEqual(ALL_OFFERED_TEXT_MODEL_IDS, [...OFFERED_TEXT_MODEL_IDS],
-    'the union is the menu now: the test build offers nothing on top of it');
+  assert.deepEqual(ALL_OFFERED_TEXT_MODEL_IDS, [...TVBR_OFFERED_TEXT_MODEL_IDS],
+    'the union of both menus is the test kitchen\'s, which is the public one plus four');
   assert.equal(new Set(ALL_OFFERED_TEXT_MODEL_IDS).size, ALL_OFFERED_TEXT_MODEL_IDS.length, 'and it has no duplicates');
-  assert.equal(allOfferedTextModels().length, 7);
+  assert.equal(allOfferedTextModels().length, 11);
+});
+
+test('the four the test kitchen grew into price themselves honestly', () => {
+  // None of these sizes could be measured here: this sandbox has no route to
+  // huggingface.co, same as every other arithmetic figure in the table. What is
+  // pinned is not that the numbers are right — the repo tree prices the real
+  // file before anything downloads, and the source report shows the measured
+  // size on the device — but that each one says where it came from, that it was
+  // rounded in the safe direction, and that the figure a visitor reads in the
+  // picker is the figure the fit check weighs.
+  const src = fs.readFileSync('waffle-browser-ai.js', 'utf8');
+  const four = ['minicpm-2b', 'llama3.2-3b', 'qwen2.5-3b', 'gemma2-2b'];
+  const models = four.map(id => TEXT_MODELS.find(m => m.id === id));
+  assert.ok(models.every(Boolean), 'all four are in the table');
+
+  assert.deepEqual(four.filter(id => OFFERED_TEXT_MODEL_IDS.includes(id)), [],
+    'and none of them is on the public menu: four repo paths nobody could check from here are tried in one kitchen first');
+  assert.deepEqual(TVBR_OFFERED_TEXT_MODEL_IDS.slice(-4), four, 'all four are on the test kitchen\'s, cheapest first');
+
+  // Each says which sibling it was scaled from, rather than presenting a
+  // bytes-per-weight rule of thumb as though it were a measurement.
+  assert.match(src, /Scaled from SmolLM2 1\.7B in this table/, 'the 2B MiniCPM names the model it was scaled from');
+  assert.match(src, /Scaled from the Llama 3\.2 1B this table has carried since 1\.2/, 'and so does the 3B Llama');
+  assert.match(src, /881\.6 MB for the 1\.5B's real 1\.78B parameters/, 'the 3B Qwen is scaled from the one measured figure in the table');
+  assert.match(src, /0\.59B at two bytes is/, 'and Gemma is priced from its parts, because a quarter of it is a vocabulary');
+
+  // The direction of the rounding is the part that matters: ggufMB is a ceiling,
+  // so a low figure fails a load that would have worked and tells the visitor to
+  // raise a number they cannot see.
+  assert.match(src, /rounded \*up\*, because ggufMB is a ceiling rather/, 'the block says which way it rounded and why');
+  assert.match(src, /arithmetic, not measurements/, 'and that it could not measure any of them');
+  for (const m of models) assert.ok(m.ggufMB >= 1500, `${m.id} is above the 1.7B the public menu stops at`);
+
+  // The picker and the budget must not disagree. A badge that says ~1.8 GB over
+  // a ggufMB of 1800 is the same number twice; if either is edited alone the
+  // visitor reads one size and the fit check weighs another.
+  for (const m of models) {
+    const gb = `~${String(parseFloat((m.ggufMB / 1000).toFixed(2)))} GB`;
+    assert.ok(m.badge.includes(gb), `${m.id}: the badge says ${gb} (${m.badge})`);
+    assert.ok(m.desc.includes(gb), `${m.id}: and so does the line under it`);
+    assert.ok(m.ggufMB > 400, `${m.id} is over the self-hosting ceiling, so a deploy never ships it inside the site`);
+  }
+  const script = fs.readFileSync('scripts/fetch-model.mjs', 'utf8');
+  assert.match(script, /const MAX_MODEL_MB = 400;/, 'which is the ceiling the pre-cache script selects under');
+
+  // The 1.7B stopped being the biggest thing on every menu, so it says which
+  // menu it is the biggest of instead of claiming a title it lost.
+  const big = TEXT_MODELS.find(m => m.id === 'smollm2-1.7b');
+  assert.match(big.badge, /Biggest on the public menu/, 'it names the menu it still tops');
+  assert.ok(!big.desc.includes('the biggest model here'), 'and no longer claims to be the biggest model, full stop');
 });
 
 test('each model is limited to the quantisations it may be fetched at', () => {
@@ -134,7 +214,11 @@ test('each model is limited to the quantisations it may be fetched at', () => {
     'qwen3.5-0.8b': ['Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
     'falcon3-1b': ['Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
     'qwen2.5-1.5b': ['Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
-    'smollm2-1.7b': ['Q2_K', 'Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K']
+    'smollm2-1.7b': ['Q2_K', 'Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
+    'minicpm-2b': ['Q4_K_M', 'Q5_K_M', 'Q6_K'],
+    'llama3.2-3b': ['Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
+    'qwen2.5-3b': ['Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
+    'gemma2-2b': ['Q4_K_M', 'Q5_K_M', 'Q6_K']
   };
   for (const [id, quants] of Object.entries(ranges)) {
     assert.deepEqual(byId(id).ggufQuants, quants, `${id} carries its range`);
@@ -150,7 +234,11 @@ test('each model is limited to the quantisations it may be fetched at', () => {
     'qwen3.5-0.8b': ['Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
     'falcon3-1b': ['Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
     'qwen2.5-1.5b': ['Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
-    'smollm2-1.7b': ['Q4_K_M', 'Q2_K', 'Q3_K_L', 'Q5_K_M', 'Q6_K']
+    'smollm2-1.7b': ['Q4_K_M', 'Q2_K', 'Q3_K_L', 'Q5_K_M', 'Q6_K'],
+    'minicpm-2b': ['Q4_K_M', 'Q5_K_M', 'Q6_K'],
+    'llama3.2-3b': ['Q4_K_M', 'Q3_K_L', 'Q5_K_M', 'Q6_K'],
+    'qwen2.5-3b': ['Q4_K_M', 'Q3_K_L', 'Q5_K_M', 'Q6_K'],
+    'gemma2-2b': ['Q4_K_M', 'Q5_K_M', 'Q6_K']
   };
 
   // The range is a limit, not a preference with the preset chain behind it: a

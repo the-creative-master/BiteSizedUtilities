@@ -531,6 +531,12 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
   // llama.cpp's WebGPU backend aborts the whole module without shader-f16
   // (ngxson/wllama#241), so WLlama only gets GPU layers when it is safe.
   const wllamaGpuOk = Boolean(diag.wllamaGpuSafe);
+  // gpuOk stays "an adapter exists", which is what the ONNX WebGPU path needs.
+  // The chat's weights, though, go wherever WLlama can put them, and a verified
+  // adapter with no FP16 is a GPU that cannot take them. Reading gpuOk as that
+  // fact is what suppressed the warning below and left a model that could not
+  // fit hanging with nothing on screen to explain it.
+  const gpuHoldsWeights = wllamaGpuOk;
 
   // Build ordered automatic fallback chain preserving the selected model (never swap models unless images require Vision)
   const attempts = [];
@@ -624,10 +630,17 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     }
   }
 
-  if (!fitsOnCpu && !gpuOk && !hasImages) {
+  if (!fitsOnCpu && !gpuHoldsWeights && !hasImages) {
+    // Both numbers, and the reason the second one is not bigger. A GPU the
+    // visitor can see listed in their own device report and still cannot use
+    // is the confusing case, so it is named rather than left to be inferred
+    // from a budget that looks too small for no stated reason.
+    const whyNoGpu = gpuOk
+      ? ', and its GPU cannot take the weights because llama.cpp needs FP16 and this adapter does not have it'
+      : ' without WebGPU';
     onStatus?.({
       state: 'loading',
-      detail: `${cfg.label} is ~${Math.round(estBytes / 1024 ** 2)} MB but this device can only hold ~${Math.round(budgetBytes / 1024 ** 2)} MB without WebGPU — trying a smaller quant…`
+      detail: `${cfg.label} is ~${Math.round(estBytes / 1024 ** 2)} MB but this device can only hold ~${Math.round(budgetBytes / 1024 ** 2)} MB in its WASM heap${whyNoGpu} — trying a smaller quant…`
     });
   }
 
@@ -2228,7 +2241,7 @@ function setRailOpen(open) {
 function buildOverlay() {
   /**
    * The overhauled layout and the chats it keeps are what this test version is
-   * for, so they are the backup kitchen's alone: the public kitchen at 1.2.11
+   * for, so they are the backup kitchen's alone: the public kitchen at 1.2.12
    * keeps its single pane and its single, unsaved conversation. The four models
    * above the 1.7B are the same kind of decision and live on the same flag. Markup and
    * behaviour both read this one flag, so the two cannot disagree about which

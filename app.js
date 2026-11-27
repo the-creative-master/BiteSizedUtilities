@@ -1236,7 +1236,8 @@ function paintDeviceFacts(d) {
       `wasm budget ${gb(d.wasmBudgetBytes || 0)}`,
       d.hasOPFS ? 'OPFS ok' : 'no OPFS (pre-cache unavailable)',
       d.storageQuotaMB ? `storage ${Math.round((d.storageUsageMB || 0) / 1024)} / ${Math.round(d.storageQuotaMB / 1024)} GB used` : null,
-      d.wllamaGpuSafe ? 'llama.cpp WebGPU safe' : 'llama.cpp WebGPU blocked (no FP16) → CPU',
+      d.wllamaGpuSafe ? 'llama.cpp WebGPU safe' : 'llama.cpp WebGPU blocked (this browser exposes no FP16) → CPU',
+      d.adapterFactLine || null,
       d.canThread ? 'multi-thread ok' : 'single-thread (no COOP/COEP on static hosts)',
       settingsImageCaps.hasWebGPU
         ? `image model: WebGPU ok${settingsImageCaps.hasF16 ? ' · fp16' : ''} · ${settingsImageCaps.mode || 'desktop'} build`

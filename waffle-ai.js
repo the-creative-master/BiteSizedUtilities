@@ -636,7 +636,7 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     // is the confusing case, so it is named rather than left to be inferred
     // from a budget that looks too small for no stated reason.
     const whyNoGpu = gpuOk
-      ? ', and its GPU cannot take the weights because llama.cpp needs FP16 and this adapter does not have it'
+      ? ', and its GPU cannot take the weights because llama.cpp needs FP16 and this browser does not expose it through WebGPU'
       : ' without WebGPU';
     onStatus?.({
       state: 'loading',
@@ -923,7 +923,8 @@ function renderDeviceFacts() {
     `wasm budget ${gb(d.wasmBudgetBytes || 0)}`,
     d.hasOPFS ? 'OPFS ok' : 'no OPFS (pre-cache unavailable)',
     d.storageQuotaMB ? `storage ${Math.round((d.storageUsageMB || 0) / 1024)} / ${Math.round(d.storageQuotaMB / 1024)} GB used` : null,
-    d.wllamaGpuSafe ? 'llama.cpp WebGPU safe' : 'llama.cpp WebGPU blocked (no FP16) → CPU',
+    d.wllamaGpuSafe ? 'llama.cpp WebGPU safe' : 'llama.cpp WebGPU blocked (this browser exposes no FP16) → CPU',
+    d.adapterFactLine || null,
     d.canThread ? 'multi-thread ok' : 'single-thread (no COOP/COEP on static hosts)',
     imageCaps.hasWebGPU
       ? `image model: WebGPU ok${imageCaps.hasF16 ? ' · fp16' : ''} · ${imageCaps.mode} build`

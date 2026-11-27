@@ -7,7 +7,13 @@
 //   WASM: SIMD yes, threads no, heap budget ~2048 MB
 //   llama.cpp WebGPU blocked (no FP16) -> CPU
 //
-// A 2400 MB model was picked, nothing was said, and it hung. Two of those lines
+// A 2400 MB model was picked, nothing was said, and it hung.
+//
+// Both numbers in that quote are the report exactly as it printed then. The
+// budget reads 2.6 GB on that device now, and the bare "no FP16" is gone: the
+// silicon does FP16, and what was measured is that this browser does not expose
+// it through WebGPU. tests/adapter-facts.test.js holds that wording and the
+// adapter facts that go with it. Two of those lines
 // contradict each other and the code believed both: the adapter exists, so the
 // budget was computed as though the weights would live in GPU memory and the
 // heap only had to hold scratch; and the adapter has no shader-f16, so
@@ -108,8 +114,8 @@ test('the warning fires on the device that needed it, and names both numbers', (
     'the warning is gated on the GPU it can use');
   assert.ok(!/if \(!fitsOnCpu && !gpuOk && !hasImages\)/.test(aiSrc),
     'and not on the adapter that merely exists — that suppression was the silent hang');
-  assert.match(aiSrc, /llama\.cpp needs FP16 and this adapter does not have it/,
-    'a GPU the visitor can see in their own device report and still cannot use is named');
+  assert.match(aiSrc, /llama\.cpp needs FP16 and this browser does not expose it through WebGPU/,
+    'attributed to the browser, which is the layer that was actually measured');
   // Both numbers appear *before* the phrase that names the heap, so the window
   // has to start upstream of it — and indexOf takes a start, because "trying a
   // smaller quant" is the kind of phrase that appears more than once in a file.

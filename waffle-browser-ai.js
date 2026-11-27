@@ -926,6 +926,8 @@ export async function detectDeviceDiagnostics() {
   let hasWebGPU = false;
   let hasF16 = false;
   let adapterName = '';
+  let adapterFeatures = [];
+  let adapterLimits = null;
 
   if (typeof navigator !== 'undefined' && navigator.gpu) {
     try {
@@ -940,6 +942,24 @@ export async function detectDeviceDiagnostics() {
         adapterName = info.description
           || [info.architecture, info.vendor].filter(Boolean).join(' ')
           || 'WebGPU Adapter';
+        // One boolean cannot carry this diagnosis. "No shader-f16" is equally
+        // consistent with a driver that has FP16 and a browser that never
+        // surfaced it, and with a translated or software adapter that has
+        // nothing at all " and those two have opposite answers. The full
+        // feature set, and the limits that say whether this is real hardware,
+        // are what tell them apart, so they are recorded instead of being
+        // summarised into the one bit that started the argument.
+        try { adapterFeatures = [...(adapter.features || [])].sort(); } catch { adapterFeatures = []; }
+        try {
+          const L = adapter.limits || {};
+          adapterLimits = {
+            maxBufferSize: L.maxBufferSize ?? null,
+            maxStorageBufferBindingSize: L.maxStorageBufferBindingSize ?? null,
+            maxComputeWorkgroupSizeX: L.maxComputeWorkgroupSizeX ?? null,
+            maxBindGroups: L.maxBindGroups ?? null,
+            maxTextureDimension2D: L.maxTextureDimension2D ?? null
+          };
+        } catch { adapterLimits = null; }
       }
     } catch {}
   }
@@ -1036,7 +1056,7 @@ export async function detectDeviceDiagnostics() {
     || (deviceMemoryGB !== null && deviceMemoryGB < 4);
 
   let summaryLabel = hasWebGPU
-    ? `WebGPU Ready${hasF16 ? ' (FP16)' : ' · no FP16 → CPU offload'}`
+    ? `WebGPU Ready${hasF16 ? ' (FP16 exposed)' : ' · this browser exposes no FP16 → CPU offload'}`
     : 'WebGPU Unavailable — CPU WASM Fallback';
   if (isOldIOS) summaryLabel = `iOS ${iosMajor} (< iOS 26) — WebGPU/Memory Risk`;
   else if (gpuTrustLevel === 'suspect') {
@@ -1053,19 +1073,45 @@ export async function detectDeviceDiagnostics() {
     ? `You told the kitchen this is ${OS_CHOICES.find(c => c.id === declaredOS)?.label || declaredOS}.`
     : '';
   const platformLabel = [platformLabelFor(platform), declaredNote].filter(Boolean).join(' — ');
+  const fmtSize = n => n === null || n === undefined ? '?'
+    : n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB`
+    : `${Math.round(n / 1024 ** 2)} MB`;
   const deviceNote = [
     platformLabel,
     hasWebGPU
-      ? `WebGPU adapter: ${adapterName || 'present'} (${gpuTrustLevel}${hasF16 ? ', FP16' : ', no FP16 → CPU offload'})${gpuTrustLevel === 'suspect' && gpuPreferred ? ' — unverified, but this device tries the GPU first' : ''}`
+      ? `WebGPU adapter: ${adapterName || 'present'} (${gpuTrustLevel}${hasF16 ? ', FP16 exposed' : ', no FP16 exposed → CPU offload'})${gpuTrustLevel === 'suspect' && gpuPreferred ? ' — unverified, but this device tries the GPU first' : ''}`
       : 'WebGPU: no adapter',
+    hasWebGPU && adapterFeatures.length
+      ? `WebGPU features (${adapterFeatures.length}): ${adapterFeatures.join(', ')}`
+      : hasWebGPU ? 'WebGPU features: none reported' : null,
+    hasWebGPU && adapterLimits
+      ? `WebGPU limits: maxBufferSize ${fmtSize(adapterLimits.maxBufferSize)}, maxStorageBufferBindingSize ${fmtSize(adapterLimits.maxStorageBufferBindingSize)}, workgroup X ${adapterLimits.maxComputeWorkgroupSizeX ?? '?'}, bind groups ${adapterLimits.maxBindGroups ?? '?'}`
+      : null,
+    // The distinction that decides whether this is worth chasing. Saying only
+    // "no FP16" reads as a verdict on the silicon, and a visitor who knows
+    // their GPU does FP16 has nowhere to go with it.
+    hasWebGPU && !hasF16
+      ? `FP16: not exposed through WebGPU here. That is a fact about this browser, not about the GPU \u2014 a driver can support FP16 (Vulkan shaderFloat16, OpenCL cl_khr_fp16) and Dawn still not surface it, which is what happens when WebGPU runs on a GLES/ANGLE or translated backend instead of native Vulkan. A bare feature list with small limits points at a translated or software adapter; a full list missing only shader-f16 points at a browser decision. chrome://gpu names the backend.`
+      : null,
     `NPU: ${npuNote}`,
     `WASM: ${hasWasmSimd ? 'SIMD yes' : 'SIMD no'}, threads ${canThread ? 'yes' : 'no'}, heap budget ~${Math.round(wasmBudgetBytes / 1024 ** 2)} MB, on-device storage ${hasOPFS ? 'yes' : 'no'}`
   ].filter(Boolean).join('\n');
+
+  // One compact line, formatted here rather than in each of the two places that
+  // print it. The device report is duplicated across Settings and the AI panel,
+  // and duplicated wording is how the two came to disagree about what the heap
+  // budget meant in the first place.
+  const adapterFactLine = hasWebGPU
+    ? `WebGPU: ${adapterFeatures.length} feature${adapterFeatures.length === 1 ? '' : 's'}${hasF16 ? ' incl. FP16' : ', no FP16'}, buffer ${fmtSize(adapterLimits?.maxBufferSize)}, storage buffer ${fmtSize(adapterLimits?.maxStorageBufferBindingSize)}`
+    : null;
 
   cachedDiag = {
     hasWebGPU,
     hasF16,
     adapterName,
+    adapterFeatures,
+    adapterLimits,
+    adapterFactLine,
     platform,
     platformLabel,
     deviceNote,

@@ -17,12 +17,12 @@ import { isBackupBuild } from './build-mode.js';
  *                     1.1, and the three 1.2 ones after 1.2.
  *                TVBR means "Test Version BEfore Release": built toward a
  *                     release that has not shipped yet. 1.3 TVBR 4 is open while
- *                     the public kitchen is still on 1.2.11, because 1.3 does
+ *                     the public kitchen is still on 1.2.12, because 1.3 does
  *                     not exist yet and this is what it is being tried on.
  *
  *              The counter resets when the release it belongs to ships, and
  *              nothing about it is mentioned on the public page — there it is
- *              simply 1.2.11. Each entry keeps the label that says where it sat,
+ *              simply 1.2.12. Each entry keeps the label that says where it sat,
  *              so the six below read TVAR and are not renamed to agree with the
  *              one above them. The list itself is named for the label the open
  *              build carries, and it holds both kinds.
@@ -32,7 +32,7 @@ import { isBackupBuild } from './build-mode.js';
  * visitors on GitHub Pages never see repo files, and the release notes belong
  * where the kitchen is.
  */
-export const APP_VERSION = '1.2.11';
+export const APP_VERSION = '1.2.12';
 
 /**
  * How many test builds of the open cycle there have been. Reset to 0 when that
@@ -45,20 +45,25 @@ export const TVBR = 4;
  * The release the open test build comes *before*.
  *
  * Its own constant rather than APP_VERSION, because the two are not the same
- * string and cannot be: 1.2.11 is what the public kitchen reports, while the
+ * string and cannot be: 1.2.12 is what the public kitchen reports, while the
  * backup kitchen is testing toward 1.3, which has not shipped. Deriving the
- * extended label from APP_VERSION would have announced "1.2.11 TVBR 1" — a
+ * extended label from APP_VERSION would have announced "1.2.12 TVBR 1" — a
  * build that has never existed — and renumbered the entries that document the
  * ones that have.
  *
  * A public release that ships *part* of an open cycle does not close it. That is
- * not a hypothetical any more, it has happened twice: 1.2.10 carried the star
+ * not a hypothetical any more, it has happened three times: 1.2.10 carried the star
  * utilities and nothing else of 1.3 TVBR 3, and 1.2.11 carries five new
  * utilities, a file splitter and a cheaper chat out of 1.3 TVBR 4 while leaving
- * the four new models in the kitchen they are being tried in. Both moved the
- * public version and left this cycle where it was, so the counter counts on —
- * 3, then 4 — rather than resetting, and the test build is still before the
- * release it is named for.
+ * the four new models in the kitchen they are being tried in.
+ *
+ *              1.2.12 is the third, and a different shape again: it carries
+ *              nothing out of a test build at all. A runtime upgrade and a fit
+ *              check are not test-only content — both builds have always shared
+ *              one WASM binary and one budget — so there was nowhere to try them
+ *              first. All three moved the public version and left this cycle
+ *              where it was, so the counter counts on rather than resetting: 3,
+ *              then 4, then 4 again while 1.3 still has not shipped.
  */
 export const TVBR_CYCLE = '1.3';
 
@@ -610,6 +615,53 @@ export const TVBR_LOG = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: '1.2.12',
+    date: 'November 27, 2026',
+    title: 'Chat runs about twice as fast on a CPU, an interrupted download now continues instead of restarting, and the device report was budgeting a heap that did not exist',
+    groups: [
+      {
+        label: '\u{1F4AC} The chat runtime moved to Wllama 4, and the speed is not a rounding error',
+        items: [
+          'Generation is 2.1 to 2.5 times faster and prompt processing 2.4 to 2.8 times faster on Chrome’s CPU path, on the runtime’s own benchmarks against the version this kitchen was on. Firefox gains a little less, Safari less again.',
+          'The gain comes from two things that were simply not turned on: llama.cpp’s SIMD and relaxed-SIMD kernels, and a 32-bit memory build in place of Memory64. Nothing about how a reply is produced changed, which is why the whole upgrade needed no code change at all.',
+          'It matters most on the devices that need it most. A phone or a tablet with no usable GPU runs every token through one WASM thread, so the CPU path is not a fallback there — it is the product.',
+          'What it does not do is add threads. A static host sends no COOP/COEP headers, so SharedArrayBuffer is unavailable and the runtime stays single-threaded however many cores the device has. That trade was made deliberately: those headers would break every embedded game and every cross-origin asset in the kitchen.',
+          'Speculative decoding arrived in the same release and is deliberately left off, because on a CPU it is usually slower — and a CPU is the only place most visitors are running this.'
+        ]
+      },
+      {
+        label: '\u{1F4E5} A download that gets interrupted now continues instead of starting again',
+        items: [
+          'A model file is a few hundred megabytes at the smallest and a couple of gigabytes at the largest, fetched over a phone radio by a tab the operating system is free to suspend. Losing that download near the end used to mean losing all of it.',
+          'Progress is written every 256 MB as the file arrives, and an interrupted fetch continues from the last byte written rather than from zero, wherever the server and the storage both honour a range request. Five attempts in a row that produce no new bytes is what finally gives up.',
+          'A file of 64 MB or more also arrives over several connections at once instead of one, which is the difference between a model taking four minutes and taking ninety seconds on a link that would otherwise idle between chunks.',
+          'Loading a model that is already in on-device storage is about 2.8 times faster as well: the cache is read through a synchronous access handle straight into the runtime’s memory instead of being copied through the page first.',
+          'None of this makes a first download small. It makes a second attempt cheap, which on a device that suspends tabs is the part that decides whether a model ever arrives at all.'
+        ]
+      },
+      {
+        label: '\u{1F9EE} The device report was budgeting a heap that did not exist',
+        items: [
+          'A real report from a real tablet said two things at once: that its GPU was verified, and that the chat runtime could not use it because the adapter has no FP16. The kitchen believed the first and ignored the second when it worked out how much memory a model could have.',
+          'With a GPU present it budgeted 2 GB, on the reasoning that the weights would live in video memory and the heap only had to hold scratch. On that device the weights were never going to live in video memory, so the heap had to hold every one of them — and the budget described a machine that did not exist.',
+          'The same confusion silenced the warning. Every guard that meant “unless the GPU can take it” read “an adapter exists”, so a model too large for the heap was attempted anyway with nothing on screen to say why. That is a hang with no explanation, which is the worst of the available outcomes.',
+          'Both now key on the fact that was actually established: whether the runtime that will run the model can use the GPU. On the device that reported this, the heap budget moves from 2048 MB to 2662 MB — 614 MB of room an 8 GB machine was being told it did not have.',
+          'The fix is not “make the number bigger”, and it does not only move it up. Treat the same device as a memory-tight phone and the budget becomes 1843 MB rather than 2048, because a tab the system is free to reap gets the conservative figure it should always have had. What changes in both directions is the ending: a model too large for the heap is refused in a sentence that names both numbers and the GPU that cannot help, instead of being attempted until the bar stops moving.',
+          'No model on the public menu is near either figure, so nothing a visitor can pick today behaves differently because of this. What changes is that the number in the device report is the number the kitchen actually uses, which is the difference between a diagnostic and a decoration.'
+        ]
+      },
+      {
+        label: '\u{1F6AB} What did not change',
+        items: [
+          'Still 120 utilities across eight cupboards, all eight fifteen deep, and the games cabinet at 51. Nothing was added, moved or renamed.',
+          'A GPU without FP16 still runs chat on the CPU. The runtime’s WebGPU backend requires that feature and nothing here changes it, so the gate that sends such a device to the CPU was always correct — it was only ever applied to the wrong number.',
+          'Image generation is untouched: its engine, its progress reporting, the screen lock it holds, and the way an interrupted run is remembered and offered back are all exactly as they were.',
+          'Still no accounts, no subscriptions and no uploads. A model is downloaded once to the device and runs there, and nothing typed into the chat leaves it.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.2.11',
     date: 'November 25, 2026',

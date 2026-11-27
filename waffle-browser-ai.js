@@ -895,8 +895,17 @@ let cachedDiag = null;
 // llama.cpp needs roughly: model weights + KV cache + compute buffers, and the
 // browser tab needs its own room on top of that. Over-committing here is what
 // makes a model "download perfectly" and then die during load/generation.
-export function estimateWasmBudgetBytes({ hasWebGPU, deviceMemoryGB, memoryTightPlatform = false }) {
-  if (hasWebGPU) {
+export function estimateWasmBudgetBytes({ hasWebGPU, gpuHoldsWeights, deviceMemoryGB, memoryTightPlatform = false }) {
+  // "An adapter exists" and "the GPU will hold the weights" are two different
+  // facts, and conflating them is what made a 2400 MB model look like it had no
+  // room on a machine with 8 GB of RAM. llama.cpp's WebGPU backend needs
+  // shader-f16 (ngxson/wllama#241), so an adapter can be verified, correctly
+  // named, and still useless for chat -- while this function returned the
+  // budget for a heap that only ever holds scratch. Callers that genuinely
+  // only know an adapter exists still get that assumption; the diagnostics
+  // below pass the fact they actually established.
+  const onGpu = gpuHoldsWeights ?? Boolean(hasWebGPU);
+  if (onGpu) {
     // Weights live in GPU memory, the wasm heap only holds scratch buffers.
     return 2 * 1024 ** 3;
   }
@@ -1021,7 +1030,7 @@ export async function detectDeviceDiagnostics() {
   // llama.cpp's WebGPU backend hard-aborts the whole module when the adapter
   // lacks shader-f16 (ngxson/wllama#241), so GPU offload is only safe with it.
   const wllamaGpuSafe = Boolean(hasWebGPU && hasF16);
-  const wasmBudgetBytes = estimateWasmBudgetBytes({ hasWebGPU, deviceMemoryGB, memoryTightPlatform });
+  const wasmBudgetBytes = estimateWasmBudgetBytes({ hasWebGPU, gpuHoldsWeights: wllamaGpuSafe, deviceMemoryGB, memoryTightPlatform });
 
   const hasRisk = !hasWebGPU || isOldIOS || gpuTrustLevel === 'suspect' || !hasWasmSimd
     || (deviceMemoryGB !== null && deviceMemoryGB < 4);
@@ -3343,6 +3352,12 @@ export async function streamWllamaChat({
       n_threads: threads,
       n_gpu_layers: gpu ? 99 : 0,
       log_level: 3,
+      // Wllama 4 spreads a model whose CPU part exceeds one wasm instance
+      // (4 GB) across RPC workers, and those need multi-threading, which needs
+      // COOP/COEP -- which a static host does not send. Nothing on this menu is
+      // that big today, so this is a guard rather than a fix: it turns "a
+      // worker that can never start" into a refusal that names the size.
+      ...(diag?.canThread ? {} : { rpc_workers: 0 }),
       useCache: true,
       progressCallback({ loaded, total }) {
         markInferenceBeat();

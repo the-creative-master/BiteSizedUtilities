@@ -117,22 +117,43 @@ test('the app sets the gate from the one build flag, before anything can log', (
     'and before the first instrumented mount, so no line is recorded while the kitchen is still deciding whether it keeps one');
 });
 
-test('the panel is rendered only where the log is kept', () => {
-  const open = appSrc.indexOf('${consoleLogShipped() ? `');
-  assert.ok(open > -1, 'the markup is behind the gate');
-  const close = appSrc.indexOf("` : ''}", open);
-  assert.ok(close > open, 'and the conditional closes');
-  const block = appSrc.slice(open, close);
-  for (const id of ['settings-tel-toggle', 'settings-tel-copy', 'settings-tel-clear', 'settings-tel-log',
-    'On-Screen Console Log']) {
-    assert.ok(block.includes(id), `${id} is inside it`);
+test('every log surface is rendered only where the log is kept', () => {
+  // There are three gated blocks now, not one: the overlay a utility's corner
+  // button opens, the inline panel under the device report, and the button
+  // itself. Taking "the first gate" and asserting on it is how this test came to
+  // be wrong once already, so it collects all of them and asks which surface is
+  // in which.
+  const marker = '${consoleLogShipped() ? `';
+  const gates = [];
+  for (let i = appSrc.indexOf(marker); i > -1; i = appSrc.indexOf(marker, i + 1)) {
+    const close = appSrc.indexOf("` : ''}", i);
+    assert.ok(close > i, 'every gate closes');
+    gates.push(appSrc.slice(i, close));
   }
+  assert.equal(gates.length, 3, `three gated blocks, found ${gates.length}`);
+
+  const overlay = gates.find(g => g.includes('id="console-log-overlay"'));
+  assert.ok(overlay, 'the overlay is gated');
+  for (const id of ['console-log-text', 'console-log-copy', 'console-log-clear', 'console-log-close']) {
+    assert.ok(overlay.includes(id), `${id} is inside the overlay's gate`);
+  }
+
+  const inline = gates.find(g => g.includes('settings-tel-toggle'));
+  assert.ok(inline, 'the inline panel is gated');
+  for (const id of ['settings-tel-copy', 'settings-tel-clear', 'settings-tel-log', 'On-Screen Console Log']) {
+    assert.ok(inline.includes(id), `${id} is inside the inline panel's gate`);
+  }
+
+  const button = gates.find(g => g.includes('data-open-console-log'));
+  assert.ok(button, 'and so is the button that opens the overlay');
+  assert.ok(button.indexOf('data-open-console-log') > -1 && !button.includes('data-fav='),
+    'the gate covers the log button and stops before the heart beside it');
+
   // The device facts are the other half of that popup and they are not part of
-  // this change: removing a log must not remove the report a visitor pastes
-  // when the AI will not start.
-  const deviceFacts = appSrc.indexOf('id="settings-device-detail"');
-  assert.ok(deviceFacts > -1 && deviceFacts < open,
-    'the detected-device facts stay in the popup, outside the gated block');
+  // this change: removing a log must not remove the report a visitor pastes when
+  // the AI will not start.
+  assert.ok(!gates.some(g => g.includes('id="settings-device-detail"')),
+    'the detected-device facts are inside no gate at all');
   assert.match(appSrc, /function paintDeviceFacts\(d\) \{/, 'painted from the diagnostics passed in');
   const paint = appSrc.slice(appSrc.indexOf('function paintDeviceFacts(d) {'));
   assert.ok(!/formatTelemetryLog|telemetryEntries|telemetryCount/.test(paint.slice(0, 2000)),

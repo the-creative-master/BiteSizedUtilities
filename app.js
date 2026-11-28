@@ -256,6 +256,29 @@ app.innerHTML = `
     <!-- The full warning, one tap from every short one. The kitchen used to print
          the 887-character disclaimer in four places at once; it is unchanged here,
          with the detected-device facts and the mobile note beside it. -->
+    <!-- The log, one tap from any utility. 1.3 TVAR 1: the buffer used to live
+         at the bottom of a device-warning popup, which is two dialogs deep from
+         the utility being debugged. Same buffer, same copy header, closer to the
+         thing it describes. Rendered only where the log is kept. -->
+    ${consoleLogShipped() ? `
+    <div class="settings-overlay" id="console-log-overlay" hidden>
+      <div class="settings-card warning-popup-card" role="dialog" aria-modal="true" aria-labelledby="console-log-title" data-no-i18n>
+        <div class="settings-head">
+          <strong id="console-log-title">\u{1F4DF} Console log</strong>
+          <button type="button" class="window-close-x" id="console-log-close" aria-label="Close console log">\u2715</button>
+        </div>
+        <div class="waffle-disclaimer-box">
+          <p class="waffle-device-detail" style="display:block">Every utility mount and every AI turn, as it actually happened. Nothing here is invented: a value nobody could measure prints unknown, and a byte count says whether it was measured or read from content-length. The last 80 lines are kept.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
+            <button type="button" class="gbtn waffle-disclaimer-more" id="console-log-copy">Copy all</button>
+            <button type="button" class="gbtn waffle-disclaimer-more" id="console-log-clear">Clear</button>
+          </div>
+          <pre id="console-log-text" style="max-height:52vh;overflow:auto;white-space:pre-wrap;word-break:break-word;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(0,0,0,.06);border-radius:10px;padding:10px;margin:0"></pre>
+        </div>
+      </div>
+    </div>
+    ` : ''}
+
     <div class="settings-overlay" id="ai-warning-overlay" hidden>
       <div class="settings-card warning-popup-card" role="dialog" aria-modal="true" aria-labelledby="ai-warn-title" data-no-i18n>
         <div class="settings-head">
@@ -747,6 +770,12 @@ function openTool(id) {
               </div>
             </div>
             <div class="window-head-actions">
+              <!-- In the corner of every utility rather than in Settings, because
+                   the thing being debugged is the utility on screen and a log two
+                   dialogs away is a log nobody opens while it is still happening.
+                   Only rendered where the log is kept, so the public kitchen does
+                   not grow a button for a panel that would be empty. -->
+              ${consoleLogShipped() ? `<button type="button" class="gbtn console-log-btn" data-open-console-log aria-label="Show the console log" title="Console log">\u{1F4DF}</button>` : ''}
               <button type="button" class="gbtn favorite-btn ${isFav ? 'is-favorite' : ''}" data-fav="${id}" aria-label="${isFav ? 'Unsave' : 'Save'} ${esc(t.name)}" aria-pressed="${isFav}">
                 <span class="btn-svg">${uiIconSVG('heart')}</span>
               </button>
@@ -807,6 +836,10 @@ function bindActions(root = document) {
 
   root.querySelectorAll('[data-tool]').forEach(b => {
     b.onclick = () => { playSquish(); location.hash = 'tool/' + b.dataset.tool; };
+  });
+
+  root.querySelectorAll('[data-open-console-log]').forEach(b => {
+    b.onclick = e => { e.stopPropagation(); openConsoleLog(); };
   });
 
   root.querySelectorAll('[data-fav]').forEach(b => {
@@ -1264,20 +1297,27 @@ function refreshDeviceFacts(force = false) {
  * outside the page, and a log that can inject markup is a way in.
  */
 function paintTelemetryLog() {
-  const box = $('#settings-tel-log');
-  if (!box) return;
   const text = formatTelemetryLog();
-  box.textContent = text || 'Nothing logged yet. Open any utility, or send Waffle AI a message, and it will appear here.';
+  const empty = 'Nothing logged yet. Open any utility, or send Waffle AI a message, and it will appear here.';
+  // Two surfaces, one buffer: the inline panel under the device report, and the
+  // overlay a utility's corner button opens. Two painters for one log is two
+  // chances for them to disagree about what the last 80 lines are.
+  const inline = $('#settings-tel-log');
+  for (const box of [inline, $('#console-log-text')]) {
+    if (!box) continue;
+    box.textContent = text || empty;
+    if (!box.hidden) box.scrollTop = box.scrollHeight;
+  }
   const btn = $('#settings-tel-toggle');
-  if (btn) btn.textContent = `\u{1F4DF} ${box.hidden ? 'Show' : 'Hide'} the log (${telemetryCount()})`;
-  if (!box.hidden) box.scrollTop = box.scrollHeight;
+  if (btn && inline) btn.textContent = `\u{1F4DF} ${inline.hidden ? 'Show' : 'Hide'} the log (${telemetryCount()})`;
 }
 
 // Subscribed once, at module scope: the Settings markup is re-rendered every
 // time it opens, and subscribing there would add a listener per open.
 subscribeTelemetry(() => {
-  const box = $('#settings-tel-log');
-  if (box && !box.hidden) paintTelemetryLog();
+  const inline = $('#settings-tel-log');
+  const overlay = $('#console-log-overlay');
+  if ((inline && !inline.hidden) || (overlay && !overlay.hidden)) paintTelemetryLog();
 });
 
 function paintDeviceFacts(d) {
@@ -1421,6 +1461,33 @@ $('#settings-ai-warning-open')?.addEventListener('click', openAiWarning);
     }
   });
   $('#settings-tel-clear')?.addEventListener('click', () => { clearTelemetry(); paintTelemetryLog(); });
+
+// The overlay the corner button opens. Same buffer, same copy header, so a log
+// pasted out of either surface says the same thing about itself.
+function openConsoleLog() {
+  playPop(560);
+  const overlay = $('#console-log-overlay');
+  if (!overlay) return;
+  overlay.hidden = false;
+  paintTelemetryLog();
+}
+function closeConsoleLog() {
+  playPop(460);
+  const overlay = $('#console-log-overlay');
+  if (overlay) overlay.hidden = true;
+}
+$('#console-log-close')?.addEventListener('click', closeConsoleLog);
+$('#console-log-copy')?.addEventListener('click', async () => {
+  const body = formatTelemetryLog() || '(empty)';
+  const ok = await copyToClipboard(`BiteSizedUtilities ${appVersionLabel()} \u2014 on-screen log\n${body}`).catch(() => false);
+  const btn = $('#console-log-copy');
+  if (btn) {
+    const was = btn.textContent;
+    btn.textContent = ok ? 'Copied \u2713' : 'Copy failed \u2014 select the text instead';
+    setTimeout(() => { btn.textContent = was; }, 2600);
+  }
+});
+$('#console-log-clear')?.addEventListener('click', () => { clearTelemetry(); paintTelemetryLog(); });
 $('#eng-warn-details')?.addEventListener('click', openAiWarning);
 $('#ai-warn-close')?.addEventListener('click', closeAiWarning);
 $('#ai-warn-ok')?.addEventListener('click', closeAiWarning);

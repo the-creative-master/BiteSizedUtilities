@@ -41,8 +41,11 @@ export const APP_VERSION = '1.3.1';
  */
 // 0 means no test version is open, which is the state right after a release:
 // appVersionLabel() reads it and both kitchens report the release itself. The
-// next test build sets this to 1 and moves TVBR_CYCLE on.
-export const TVBR = 0;
+// next test build sets this to 1. Whether the cycle moves with it depends on
+// whether the release *line* moved, and it did not: 1.3.1 is still the 1.3 line,
+// the same way 1.2.12 was still the 1.2 line while its test builds read
+// 1.2 TVAR 3. So the counter moves and the cycle stays.
+export const TVBR = 1;
 
 /**
  * The release the open test build comes *before*.
@@ -71,12 +74,22 @@ export const TVBR = 0;
 export const TVBR_CYCLE = '1.3';
 
 /**
- * `1.3 TVBR 1` — the extended label, used only while a test version is open.
- * TVBR is in the template rather than derived because the open build is a
- * before-release one; a test build made after its release ships reads TVAR, and
- * this line is the single place that would have to say so.
+ * `1.3 TVAR 1` — the extended label, used only while a test version is open.
+ *
+ * The spelling is in the template rather than derived, and this is the line that
+ * says which one this cycle is. TVBR was a build made *before* the release it
+ * was testing toward; TVAR is a build made *after* a release that has already
+ * shipped, which is what this one is — 1.3.1 went out, and this is the first
+ * build on top of it. Six earlier builds read TVAR for the same reason, and
+ * every entry in TVBR_LOG keeps whichever spelling it actually was: renaming
+ * them would rewrite the history of builds a person can still open.
+ *
+ * The constants are still called TVBR, TVBR_CYCLE and TVBR_LOG. Renaming them
+ * would touch every one of those entries and every test that reads them by
+ * name, to no effect on a single visitor: the only place the spelling reaches
+ * the screen is this template.
  */
-export const APP_VERSION_EXTENDED = `${TVBR_CYCLE} TVBR ${TVBR}`;
+export const APP_VERSION_EXTENDED = `${TVBR_CYCLE} TVAR ${TVBR}`;
 
 /** What the footer of the changelog should call this build. */
 export function appVersionLabel() {
@@ -90,6 +103,43 @@ export function appVersionLabel() {
  * what is known to be rough — that is the whole point of writing them down.
  */
 export const TVBR_LOG = [
+  {
+    version: '1.3 TVAR 1',
+    date: 'November 28, 2026',
+    title: 'The console log stopped being something you go to Settings for',
+    tvbr: true,
+    groups: [
+      {
+        label: '\u{1F4DF} A log button in the corner of every utility',
+        items: [
+          'TVBR 6 gave the log a screen to appear on and then left it at the bottom of a device-warning popup: open Settings, or any of the three AI warnings, then \u{1F4DF} Device details & full warning, then Show the log. Three taps to read what the utility on screen just did \u2014 and the log keeps the last 80 lines, so by the third tap the line worth reading can already be gone.',
+          'So the button moved to where the debugging is. Every utility window has a \u{1F4DF} in its corner row now, beside the heart and the close button, and one tap opens the log over the top of the utility that produced it.',
+          'It is the same buffer, not a second one. Both surfaces read the last 80 lines through a single painter, because two painters for one log is two chances for them to disagree about what the log says.',
+          'The copy carries the same header naming the build, so a log pasted out of the overlay and a log pasted out of Settings say the same thing about themselves. Clearing from either clears the one buffer they share.',
+          'The button takes the heart\u2019s footprint rather than inventing a size of its own. Three buttons of three different heights in one row reads as a mistake rather than as a feature.',
+          'It is rendered only where the log is kept. 1.3.1 made the log a test-kitchen instrument, so the public kitchen does not grow a button for a panel that would always be empty \u2014 a control that does nothing is worse than no control.'
+        ]
+      },
+      {
+        label: '\u{1F500} The first TVAR of this cycle, and what the word means here',
+        items: [
+          'This build reads 1.3 TVAR 1 and not TVBR, and the difference is not cosmetic. TVBR named a build made *before* its release, testing toward it. This is a build made *after* 1.3.1 shipped, which is what TVAR has always meant \u2014 six earlier builds read it.',
+          'Only the label moved. The counter, the cycle and the log are still called TVBR in the source, because renaming them would rewrite every entry documenting a build a person can still open, and those entries keep their own numbers and their own spellings. One template literal is the single place that says TVAR.',
+          'The cycle still reads 1.3, so the label is 1.3 TVAR 1 and not 1.3.1 TVAR 1. The cycle names a release *line*, which is why 1.2.12\u2019s test builds read 1.2 TVAR 3; deriving it from APP_VERSION instead would announce a build that has never existed, the same mistake the constant was made a literal to avoid.'
+        ]
+      },
+      {
+        label: '\u{26A0}\u{FE0F} Known rough edges',
+        items: [
+          'There are now two surfaces for one buffer: the inline panel under the device report, and this overlay. That is deliberate \u2014 the inline one sits beside the device facts it complements and a dozen tests pin it there \u2014 but it is two places to look, and only one of them is a single tap away.',
+          'The overlay has no filter and no search. Eighty lines is small enough to scroll on a tablet and large enough to be tedious on a phone, and the honest answer to \u201cwhich line was the calculator\u201d is still a pasted copy and a find.',
+          'Games & Fun has no button, because it has no lines: those are animation loops on requestAnimationFrame and the log was never wired into them, which is the exclusion 1.3 wrote down rather than an oversight here.',
+          'Nothing here has run in a real browser. The button, the overlay and the shared painter are proven by tests that read the source, which is how every other panel in this kitchen has been proven and is still not the same thing as a thumb pressing it.',
+          'This is a test build, and it is where the log lives now. A visitor on the public site has no log to open and no button to open it with, by design, as of 1.3.1.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.3 TVBR 6',
     date: 'November 28, 2026',

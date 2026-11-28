@@ -32,7 +32,7 @@ import { isBackupBuild } from './build-mode.js';
  * visitors on GitHub Pages never see repo files, and the release notes belong
  * where the kitchen is.
  */
-export const APP_VERSION = '1.3.1';
+export const APP_VERSION = '1.3';
 
 /**
  * How many test builds of the open cycle there have been. Reset to 0 when that
@@ -696,43 +696,28 @@ export const TVBR_LOG = [
 
 export const CHANGELOG = [
   {
-    version: '1.3.1',
+    version: '1.3',
     date: 'November 28, 2026',
-    title: 'The overhauled Waffle AI layout is in the main kitchen: a rail of saved chats instead of one conversation that dies with the tab',
+    title: 'Waffle AI keeps your conversations now, image generation is paused, and the kitchen started reporting what it actually does instead of what it assumes',
     groups: [
       {
-        label: '\u{1F9C7} Waffle AI keeps your conversations now',
+        label: '\u{1F9C7} The overhauled Waffle AI layout: a rail of saved chats',
         items: [
-          'The two-pane layout that the test kitchen has been running is here for everybody. Open Waffle AI and there is a rail of saved chats beside the conversation, holding up to 60 threads, with a count of how many are kept, a New chat button that starts a fresh one instead of destroying the one on screen, and a row per thread that opens it.',
+          'The two-pane panel is here for everybody. Open Waffle AI and there is a rail of saved chats beside the conversation, holding up to 60 threads, with a count of how many are kept, a New chat button that starts a fresh one instead of destroying the one on screen, and a row per thread that opens it.',
           'Threads can be renamed by hand and a hand-made name is never rewritten from the messages. They can be deleted one at a time, which asks first, or all at once. The whole rail can be exported to a file and imported back, so a conversation is not trapped in one browser.',
           'Coming back reopens the last conversation that actually had something said in it \u2014 but only when nothing is on screen, because landing somebody in an older chat in the middle of one they are typing would be worse than not saving at all.',
           'The rail re-reads the store every time the panel opens rather than trusting the list already in memory. Another tab may have imported a file, and a rail that only ever shows what this tab wrote is a rail that lies by omission.',
-          'Everything stays on this device. The store is IndexedDB with a localStorage fallback and a memory fallback behind that, and the pill in the rail names which one the browser actually allowed rather than the one that was hoped for. Nothing is uploaded anywhere.'
+          'Everything stays on this device. The store is IndexedDB with a localStorage fallback and a memory fallback behind that, and the pill in the rail names which one the browser actually allowed rather than the one that was hoped for. Nothing is uploaded anywhere.',
+          'It is one function. keepsChatHistory() is read by both the markup and the store, which is what stops the two disagreeing \u2014 a rail that renders with no store behind it, or a store writing chats nobody can open, would each be worse than neither.'
         ]
       },
       {
         label: '\u{1F500} What did not come with it',
         items: [
-          'The four models above 1.7B are still only in the test kitchen. The layout and the model menu read the same build flag through two different functions, and only one of them moved: those models have repository paths that have not been checked from anywhere that could reach Hugging Face, so bringing the rail to everybody must not also ask everybody to download them.',
-          'A test asserts exactly that, by rendering the public panel and checking none of the four appear in it. It is the kind of thing that is easy to break by unifying two flags that look like one decision.',
-          'Image generation is still paused, exactly as 1.3 left it, and chat AI is still open.'
+          'The four models above 1.7B are not on the public menu. The layout and the model menu read the same build flag through two different functions, and only one of them moved: those models have repository paths that have not been checked from anywhere that could reach Hugging Face, so nobody should be asked to download them yet.',
+          'A test renders the public panel and asserts none of the four appear in it, because unifying two flags that look like one decision is exactly how that would leak.'
         ]
       },
-      {
-        label: '\u{1F527} How small the change was, and why that is the point',
-        items: [
-          'One function. The layout and the store both read keepsChatHistory(), and it used to return whether this was the test build. Markup and behaviour reading one flag is what stops the two disagreeing \u2014 a rail that renders with no store behind it, or a store writing chats nobody can open, would each be worse than neither.',
-          'Two tests had to be inverted rather than updated, because they asserted the public kitchen had no rail and wrote no conversation to storage. That was the old decision, correctly pinned; the decision changed, so the pins changed with it.',
-          'This release is a follow-up to 1.3 rather than part of it. 1.3 shipped without the layout, and rewriting a published release to say otherwise would have been the dishonest option.'
-        ]
-      }
-    ]
-  },
-  {
-    version: '1.3',
-    date: 'November 28, 2026',
-    title: 'Image generation is paused, and the kitchen started reporting what it actually does instead of what it assumes',
-    groups: [
       {
         label: '\u{1F3A8} The honest update: image generation is paused',
         items: [

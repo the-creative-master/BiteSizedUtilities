@@ -24,8 +24,8 @@ function pageWith(dataset) {
 
 test('the public kitchen reports a plain release version and knows nothing about TVBR', () => {
   pageWith({});
-  assert.equal(APP_VERSION, '1.3.1');
-  assert.equal(appVersionLabel(), '1.3.1', 'index.html says 1.3.1 and nothing else');
+  assert.equal(APP_VERSION, '1.3');
+  assert.equal(appVersionLabel(), '1.3', 'index.html says 1.3 and nothing else');
   assert.equal(isBackupBuild(), false);
   assert.equal(isPublicBuild(), true);
   // Both spellings: the label is TVBR now, but six shipped builds read TVAR, and
@@ -68,8 +68,8 @@ test('the backup kitchen reports the test build it is, not the release beside it
   // this moment, and its consequence is that both kitchens report the release:
   // there is nothing newer to be a test version of yet.
   assert.equal(TVBR, 0, 'no test version is open, because the release just shipped');
-  assert.equal(APP_VERSION, '1.3.1', 'and that release is 1.3.1');
-  assert.equal(appVersionLabel(), '1.3.1', 'so backup.html reports the release too, not a stale TVBR label');
+  assert.equal(APP_VERSION, '1.3', 'and that release is 1.3');
+  assert.equal(appVersionLabel(), '1.3', 'so backup.html reports the release too, not a stale TVBR label');
   assert.equal(isBackupBuild(), true);
   assert.equal(isPublicBuild(), false);
 

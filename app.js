@@ -12,7 +12,8 @@ import { mountGames } from './games.js';
 import { openWaffleAI, warmupWaffleAI, isWaffleAiLocked, WAFFLE_AI_LOCK_MESSAGE } from './waffle-ai.js';
 import { isBackupBuild } from './build-mode.js';
 import {
-  traceToolMount, formatTelemetryLog, telemetryCount, clearTelemetry, subscribeTelemetry
+  traceToolMount, formatTelemetryLog, telemetryCount, clearTelemetry, subscribeTelemetry,
+  setConsoleLogShipped, consoleLogShipped
 } from './waffle-telemetry.js';
 import { openChangelog, appVersionLabel } from './changelog.js';
 import { APP_LANGUAGES, getAppLanguage, setAppLanguage, initAppI18n } from './i18n.js';
@@ -117,6 +118,13 @@ const ALL_CUPBOARDS = [
 // backup.html asks for the extras, which are spliced in beside the tool each one
 // is an upgrade of.
 const BACKUP_BUILD = isBackupBuild();
+
+// The console log is a test-kitchen instrument as of 1.3.1. It is switched off
+// here rather than at each of the hundred-odd call sites, because a gate spread
+// across the instrumentation is a gate that gets missed somewhere — and the
+// module's own default is `on`, so the only thing standing between a public
+// kitchen and a per-mount allocation is this line running first.
+setConsoleLogShipped(BACKUP_BUILD);
 const TOOLS = resolveTools(BACKUP_BUILD);
 
 const app = $('#app');
@@ -260,6 +268,10 @@ app.innerHTML = `
             <span class="waffle-device-pill is-risk" id="ai-warn-device-pill">Checking WebGPU…</span>
           </div>
           <p class="waffle-device-detail" id="settings-device-detail" hidden></p>
+          <!-- The log itself only exists where the log is kept. Rendering a
+               panel with a buffer that is never written to would be a control
+               that does nothing, which is worse than no control. -->
+          ${consoleLogShipped() ? `
           <div class="settings-sub-label">On-Screen Console Log</div>
           <p class="waffle-device-detail" style="display:block">Every utility and every AI turn writes here as well as to the browser console, because a tablet has no console to open. Nothing is invented: these are the same values, kept in a bounded buffer of the last 80 lines.</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
@@ -268,6 +280,7 @@ app.innerHTML = `
             <button type="button" class="gbtn waffle-disclaimer-more" id="settings-tel-clear">Clear</button>
           </div>
           <pre id="settings-tel-log" hidden style="max-height:280px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(0,0,0,.06);border-radius:10px;padding:10px;margin:0"></pre>
+          ` : ''}
           <p class="waffle-disclaimer-copy waffle-disclaimer-full">${esc(AI_DISCLAIMER_TEXT)}</p>
           <p class="waffle-disclaimer-copy">⚠ iPhone / Mobile Warning: Devices below iOS 26 or without WebGPU (~1 in 4 phones) may crash or run slowly with local AI models.</p>
         </div>

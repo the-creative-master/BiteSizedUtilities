@@ -578,14 +578,17 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     if (dev === 'wasm' && !fitsOnCpu && !gpuOk) return;
     attempts.push({ kind: 'browser', id: m.id, dev, label: m.label });
   };
-  const pushWllama = (webgpu, m = cfg) => {
+  const pushWllama = (webgpu, m = cfg, vision = false) => {
     if (webgpu && !wllamaGpuOk) return;
     // Never invent a filename: a guessed GGUF name would quietly run a
     // different model than the one the user picked.
     if (!m.hfGgufRepo && !m.ggufFile) return;
     // ggufQuants travels with the attempt: the range is a property of the model,
     // and the loader that resolves the file is three modules away from the table.
-    attempts.push({ kind: 'wllama', gguf: m.ggufFile, hfRepo: m.hfGgufRepo, hfQuant: m.hfGgufQuant, ggufQuants: m.ggufQuants || null, webgpu, label: m.label });
+    // mmprojFile travels with the attempt for the same reason ggufQuants does:
+    // the loader that needs it is three modules away from the table, and a
+    // projector name reconstructed at the call site is a guess about a file.
+    attempts.push({ kind: 'wllama', gguf: m.ggufFile, hfRepo: m.hfGgufRepo, hfQuant: m.hfGgufQuant, ggufQuants: m.ggufQuants || null, mmprojFile: m.mmprojFile || null, webgpu, label: m.label, vision });
   };
   const pushServer = (id = cfg.kind === 'server' ? cfg.id : SERVER_FALLBACK_ID) => {
     attempts.push({ kind: 'server', id, label: cfg.label });
@@ -617,11 +620,27 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
   };
 
   if (hasImages) {
-    // Images MUST go to multimodal Vision (Qwen 3.5 0.8B) — never fall back to blind text-only models
-    if (diag.webnnUsable) attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'webnn-npu', vision: true });
-    if (gpuOk && diag.gpuPreferred !== false) attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'webgpu', vision: true });
-    attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'wasm', vision: true });
-    if (gpuOk && diag.gpuPreferred === false) attempts.push({ kind: 'browser', id: 'qwen3.5-0.8b', dev: 'webgpu', vision: true });
+    // Images MUST go to a model that can actually see — never fall back to blind
+    // text-only models. There are two ways to see, and 1.3.1 tries the newer one
+    // first: MiniCPM-V 4.6 carries its own projector and was built for phones,
+    // so it goes through WLlama; Qwen 3.5 0.8B stays behind it as the
+    // transformers.js path that has been working since it was added.
+    //
+    // The projector model is *found*, not named: the one entry in the table that
+    // declares an mmprojFile is the one that can see. A second list of "which
+    // model is the vision model" is a second chance for the routing and the
+    // table to disagree, and a photo sent to a model that cannot see it produces
+    // a fluent description of nothing.
+    const projectorModel = TEXT_MODELS.find(m => m.mmprojFile && m.hfGgufRepo);
+    if (projectorModel) {
+      pushWllama(true, projectorModel, true);
+      pushWllama(false, projectorModel, true);
+    }
+    const onnxVisionId = 'qwen3.5-0.8b';
+    if (diag.webnnUsable) attempts.push({ kind: 'browser', id: onnxVisionId, dev: 'webnn-npu', vision: true });
+    if (gpuOk && diag.gpuPreferred !== false) attempts.push({ kind: 'browser', id: onnxVisionId, dev: 'webgpu', vision: true });
+    attempts.push({ kind: 'browser', id: onnxVisionId, dev: 'wasm', vision: true });
+    if (gpuOk && diag.gpuPreferred === false) attempts.push({ kind: 'browser', id: onnxVisionId, dev: 'webgpu', vision: true });
   } else if (mode === 'server') {
     if (canTryServer) pushServer(cfg.kind === 'server' ? cfg.id : SERVER_FALLBACK_ID);
     pushBrowserChain();
@@ -713,7 +732,7 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
           return streamServerChat({ modelId: step.id, messages: msgList, systemPrompt, maxTokens, temperature, signal, onStatus: beatStatus, onToken: beatToken });
         }
         if (step.kind === 'wllama') {
-          return streamWllamaChat({ ggufFile: step.gguf, hfRepo: step.hfRepo, hfQuant: step.hfQuant, ggufQuants: step.ggufQuants, messages: msgList, systemPrompt, maxTokens, temperature, useWebGPU: step.webgpu, signal, onStatus: beatStatus, onToken: beatToken });
+          return streamWllamaChat({ ggufFile: step.gguf, hfRepo: step.hfRepo, hfQuant: step.hfQuant, ggufQuants: step.ggufQuants, mmprojFile: step.mmprojFile || null, imageUrls: step.vision ? imageUrls : [], messages: msgList, systemPrompt, maxTokens, temperature, useWebGPU: step.webgpu, signal, onStatus: beatStatus, onToken: beatToken });
         }
         return streamBrowserChat({ modelId: step.id, messages: msgList, imageUrls: step.vision ? imageUrls : [], systemPrompt, maxTokens, temperature, preferredDevice: step.dev, signal, onStatus: beatStatus, onToken: beatToken });
       }, { kind: step.kind, signal });
@@ -728,7 +747,7 @@ export async function streamWaffleChat({ modelId, messages: msgList, imageUrls =
     }
   }
   if (hasImages) {
-    throw new Error(`Image vision requires Qwen 3.5 0.8B Vision in the browser (${failures.at(-1)?.message || 'vision model unavailable'}). Text-only fallback is disabled for images so the AI won’t guess.`);
+    throw new Error(`Image vision needs MiniCPM-V 4.6 with its projector, or Qwen 3.5 0.8B Vision in the browser, and neither could run (${failures.at(-1)?.message || 'vision model unavailable'}). Text-only fallback is disabled for images so the AI won’t guess.`);
   }
 
   // Lead with the *cause*. A chain where all six runtimes died with the same

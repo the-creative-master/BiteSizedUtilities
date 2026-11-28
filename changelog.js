@@ -32,7 +32,7 @@ import { isBackupBuild } from './build-mode.js';
  * visitors on GitHub Pages never see repo files, and the release notes belong
  * where the kitchen is.
  */
-export const APP_VERSION = '1.3';
+export const APP_VERSION = '1.3.1';
 
 /**
  * How many test builds of the open cycle there have been. Reset to 0 when that
@@ -695,6 +695,58 @@ export const TVBR_LOG = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: '1.3.1',
+    date: 'November 28, 2026',
+    title: 'MiniCPM-V 4.6 is the recommended model and can actually see, SmolLM3 3B joins the menu, and the console log went back to being a test-kitchen instrument',
+    groups: [
+      {
+        label: '\u{1F9E0} The model menu changed at both ends',
+        items: [
+          'The public menu is eight models now, and it still reads cheapest download first \u2014 which is the only order anybody reads a list of models in on a tablet.',
+          'MiniCPM-V 4.6 1.3B is the recommended one and its badge says so. OpenBMB built it for phones \u2014 iOS, Android and HarmonyOS \u2014 out of a SigLIP2-400M vision encoder over a Qwen 3.5 0.8B language model. Apache 2.0, and it reads one image, several images or video.',
+          'SmolLM3 3B joins it, imatrix-quantised from HuggingFaceTB\u2019s original. It is the heaviest thing on the public menu: from ~1.92 GB at Q4_K_M, and ~2.53 GB if its range is allowed to climb to Q6_K.',
+          'Qwen 3.5 0.8B comes off the menu. It is not deleted \u2014 the table keeps every model it has ever had, because CI, the pre-cache budget, the source reports and a visitor\u2019s stored preference all read it by id. Its badge says what it is now: off the menu, still the ONNX vision engine.',
+          'Both new entries carry repository paths and file sizes read off the repositories themselves rather than scaled from a sibling in the table. That is the bar the four models above 1.7B are still held behind, and these two clear it: openbmb/MiniCPM-V-4.6-gguf and bartowski/HuggingFaceTB_SmolLM3-3B-GGUF both exist, and both publish the quant named here.',
+          'Adding them falsified two claims that were not code. The 1.7B\u2019s badge said "Biggest on the public menu", which a 3B makes false, and a superlative the picker repeats on every open outlives the edit that broke it \u2014 so no badge on the menu claims one now, and a test says so. The test kitchen\u2019s menu stopped being writable as "the public list, then the four" for the same reason: a 3B at 2.53 GB outweighs every model held back for testing, so appending them would have buried a 1.5 GB download under a heavier one. It is written out in cost order instead.'
+        ]
+      },
+      {
+        label: '\u{1F4F7} Vision now carries its projector',
+        items: [
+          'A vision model is only a vision model if the projector travels with it. MiniCPM-V\u2019s eyes are a second file \u2014 mmproj-model-f16.gguf, 1.11 GB \u2014 and WLlama loads it beside the language model, so the entry names it and the loader passes it.',
+          'The projector is fetched only for a turn that has a photo in it. Loading it for a text turn would cost 1.11 GB twice: once in download, again in heap.',
+          'A model asked about a photo it was never given now refuses instead of answering. Describing an image the model cannot see produces fluent nonsense, and the caller still has a real vision path left to fall through to.',
+          'Photos attach to the turn being answered rather than to an older one, and they travel as bytes: the picker hands over data: and blob: URLs, so reading one is a local decode rather than a download. A photo that cannot be read is an error naming which one, not a turn that quietly loses it.',
+          'Qwen 3.5 0.8B stays in the chain behind MiniCPM-V, as the transformers.js path that has been working since it was added. A projector that will not load is not the end of attaching a photo.',
+          'The budget counts both files. Pricing a vision model as its language file alone would under-state what a device has to hold by 1.11 GB, which is most of a phone\u2019s wasm budget \u2014 so the entry says 1.64 GB, and the badge and the line under it say the same number the fit check weighs.',
+          'A resolver picking the smallest allowed quant out of a repository could have loaded the projector and called it a model, since both files end in .gguf and sit side by side. The candidate filter already excluded anything named mmproj; a test pins that now, because it is the only thing between a vision repo and a 1.11 GB clip encoder being served as a chat model.'
+        ]
+      },
+      {
+        label: '\u{1F4DF} The console log is a test-kitchen instrument again',
+        items: [
+          'In the build that gets tried it is exactly what 1.3 made it. In the public kitchen nothing is recorded, nothing is printed, and no panel is rendered over a buffer nothing writes to.',
+          'It earned its keep and this is not a retraction: the log is how a reasoning model discarding its own thinking, and a browser that stopped exposing a WebGPU adapter, were both found. But a shipping kitchen does not need to keep paying for it on every visitor\u2019s device \u2014 an object allocated per utility mount and per AI turn, on a page whose job is a calculator.',
+          'The device report is not part of this and did not move. \u{1F4DF} Device details & full warning still shows the cores, the RAM, the wasm budget, OPFS, the storage estimate, whether llama.cpp\u2019s WebGPU is safe, and what the adapter actually reported. It is painted from the diagnostics directly and reads nothing from the log buffer.',
+          'One gate covers the buffer and the console together, because a gate spread across a hundred call sites is a gate that gets missed somewhere. It is set once at boot, from the same build flag the rest of the build uses, before the first instrumented mount can run.',
+          'The module\u2019s own default is on, which looks backwards for a gate that is off in public. It is deliberate: this module is unit-tested in Node, where there is no document and so no build flag to read, and a default of off would silence every test that asserts a line was recorded. The app is the only place that knows which kitchen it is, so the app says so once.',
+          'Turning the gate off empties what the buffer had already collected. A gate that left the old lines behind would hand the next reader a log from a kitchen that does not have one.'
+        ]
+      },
+      {
+        label: '\u{26A0}\u{FE0F} Known rough edges',
+        items: [
+          'Nothing here has run in a real browser. The projector path is new code against a runtime API that does exist \u2014 mmprojUrl on the load, and image bytes beside text in a chat completion \u2014 and it is proven by tests that read the source and the table, not by a photograph being described on a device.',
+          'MiniCPM-V 4.6\u2019s language model is Qwen 3.5 0.8B, and the stream reader still only takes delta.content. If that model thinks before it answers it hits the bug Qwen3-0.6B did: chunks counted, characters not, and a time-to-first-token that is really time spent thinking. That is known and unfixed, and it now sits on the recommended model, which is a worse place for it than it was.',
+          'The projector is fetched from Hugging Face even when the language model is served from this site. A pre-cached same-origin copy of the mmproj is not wired, so an offline device gets the model and not its eyes.',
+          'Qwen 3.5 0.8B is no longer pre-cached: the download script walks the menus, and it is on neither. Its ONNX weights were always fetched at run time, so the photo fallback is unaffected \u2014 but a GGUF copy of it will not be waiting on a device any more.',
+          'SmolLM3 3B is up to 2.53 GB, on a device whose measured wasm budget was 1843 MB. The fit check says so and loads anyway, which is the honest behaviour and still a slow one.',
+          'Image generation is still paused, for the reason 1.3 gave: the engine needs WebGPU, and a browser that stopped exposing an adapter has nothing for it to run on. It is one function, and bringing it back is one line.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.3',
     date: 'November 28, 2026',

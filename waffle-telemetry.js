@@ -27,6 +27,40 @@
 
 let enabled = true;
 
+/* ------------------------------------------------------------------ *
+ * Whether this kitchen ships the console log at all
+ *
+ * 1.3 put the log in both kitchens on purpose: the device that needed
+ * diagnosing was a visitor's tablet, and a diagnostic that only exists
+ * in the build a developer opens cannot hear from the devices that
+ * break. 1.3.1 takes it back out of the public one. The log earned its
+ * keep -- it is how the reasoning-model bug and the missing WebGPU
+ * adapter were found -- and a shipping kitchen does not need to keep
+ * paying for it on every visitor's device: an object allocated per
+ * utility mount and per AI turn, on a page whose job is a calculator.
+ *
+ * So it is a test-kitchen instrument now, and the test kitchen is where
+ * a build gets tried before everybody is asked to run it.
+ *
+ * The default is `true`, which looks backwards for a gate that is off
+ * in the public kitchen. It is not: this module is unit-tested in Node,
+ * where there is no `document` and so no build flag to read, and a
+ * default of `false` would silence every test that asserts a line was
+ * recorded. The app is the only place that knows which kitchen it is,
+ * so the app says so once at boot and the module obeys.
+ * ------------------------------------------------------------------ */
+let shipped = true;
+
+/** Whether this kitchen keeps the console log. Set once, at boot, by the app. */
+export function setConsoleLogShipped(v) {
+  shipped = Boolean(v);
+  if (!shipped) { entries.length = 0; }
+  return shipped;
+}
+
+/** Read the gate: what the panel markup and the log button are built from. */
+export function consoleLogShipped() { return shipped; }
+
 /** Turn telemetry off without a rebuild. Exposed for a console kill switch. */
 export function setTelemetryEnabled(v) {
   enabled = Boolean(v);
@@ -52,6 +86,10 @@ const entries = [];
 const listeners = new Set();
 
 function record(level, scope, event, facts) {
+  // One gate for both the buffer and the console, so a kitchen that does not
+  // ship the log cannot half-ship it: a panel with nothing in it is worse than
+  // no panel, and a console line nobody can read on a tablet is just cost.
+  if (!shipped) return;
   try {
     entries.push({ t: Date.now(), level, scope, event, facts: facts && typeof facts === 'object' ? facts : null });
     // Bounded, oldest first out. A log that grows without limit on a device
@@ -127,7 +165,7 @@ export function elapsedMs(from) {
  */
 export function telLog(scope, event, facts = null) {
   record('log', scope, event, facts);
-  if (!enabled) return;
+  if (!shipped || !enabled) return;
   try {
     const tag = `[waffle:${scope}]`;
     if (facts && typeof facts === 'object') console.log(tag, event, facts);
@@ -137,7 +175,7 @@ export function telLog(scope, event, facts = null) {
 
 export function telWarn(scope, event, facts = null) {
   record('warn', scope, event, facts);
-  if (!enabled) return;
+  if (!shipped || !enabled) return;
   try {
     const tag = `[waffle:${scope}]`;
     if (facts && typeof facts === 'object') console.warn(tag, event, facts);

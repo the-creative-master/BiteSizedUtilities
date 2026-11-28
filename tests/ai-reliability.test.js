@@ -242,7 +242,14 @@ test('the context fitting is actually wired into both runtimes', () => {
   assert.ok(!src.includes('messages.slice(-8)'), 'no path still counts messages instead of tokens');
   assert.match(src, /n_ctx: gpu \? WLAMA_CTX_GPU : WLAMA_CTX_CPU/, 'WLlama sizes its window from the constants');
   assert.match(src, /max_tokens: effectiveMaxTokens/, 'and shrinks the reply rather than overflowing');
-  assert.match(src, /for \(const m of fitted\.messages\)/, 'WLlama sends the fitted conversation');
+  // The loop is indexed rather than for..of as of 1.3.1, because a photo belongs
+  // to the last user message and "last" needs a position. What is pinned here is
+  // unchanged and is the point of the test: WLlama sends the *fitted*
+  // conversation, not the one it was handed.
+  assert.match(src, /const fittedMsgs = fitted\.messages;/, 'WLlama sends the fitted conversation');
+  assert.match(src, /for \(let i = 0; i < fittedMsgs\.length; i\+\+\)/,
+    'iterated by position, so an attached photo lands on the turn being answered');
+  assert.ok(!/for \(const m of messages\)/.test(src), 'and never the raw message list');
   assert.match(src, /promptBudget: ONNX_PROMPT_BUDGET/, 'the ONNX path fits too');
 });
 

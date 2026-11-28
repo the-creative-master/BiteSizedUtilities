@@ -202,15 +202,28 @@ test('Waffle AI chatbot, streaming code boxes, DOCX creation/parsing, single Waf
   const browserAiSrc = fs.readFileSync('waffle-browser-ai.js', 'utf8');
   assert.ok(browserAiSrc.includes('Qwen3_5ForCausalLM') && browserAiSrc.includes('decoder_model_merged'), 'Qwen 3.5 0.8B uses Qwen3_5ForCausalLM with split ONNX dtype');
   assert.ok(TEXT_MODELS.some(m => m.id === 'qwen2.5-coder-1.5b'), 'Qwen 2.5 Coder 1.5B available');
+  // GGUF-only on purpose: no ONNX build exists to point at, and a guessed repo
+  // costs a failed attempt on the device before the runtime that would have
+  // worked gets its turn. falcon3-1b set the precedent; 1.3.1 adds two more,
+  // both with repositories read rather than reconstructed.
+  const GGUF_ONLY = new Set(['falcon3-1b', 'minicpm-v-4.6', 'smollm3-3b']);
   for (const m of TEXT_MODELS) {
-    // Two exceptions, both deliberate and both documented where they are written:
-    //   falcon3-1b is GGUF-only, because no ONNX repo for it could be verified
-    //     from here and a guessed one costs a failed attempt on the device before
-    //     the runtime that would have worked gets its turn;
-    //   granite-code-0.5b is reserved for CodeHub's diagnostics and its weights
-    //     have not arrived, so it names no source at all rather than a wrong one.
-    if (m.id === 'falcon3-1b') {
-      assert.ok(!m.hfId && m.hfGgufRepo && m.ggufFile, 'Falcon 3 1B is GGUF-only on purpose');
+    // Three kinds of exception, all deliberate and all documented where they are
+    // written: the GGUF-only models above; and granite-code-0.5b, reserved for
+    // CodeHub's diagnostics, whose weights have not arrived and which therefore
+    // names no source at all rather than a wrong one.
+    if (GGUF_ONLY.has(m.id)) {
+      assert.ok(!m.hfId && m.hfGgufRepo && m.ggufFile, `${m.id} is GGUF-only on purpose`);
+      if (m.id === 'minicpm-v-4.6') {
+        assert.equal(m.mmprojFile, 'mmproj-model-f16.gguf',
+          'and the vision model names the projector it cannot see without');
+        assert.equal(m.hfGgufRepo, 'openbmb/MiniCPM-V-4.6-gguf', 'from the maker, not a mirror');
+        assert.ok(m.mmprojMB > 0 && m.ggufMB > m.mmprojMB,
+          'its budget counts the projector: a vision model priced as its language file alone under-states what the device has to hold');
+      }
+      if (m.id === 'smollm3-3b') {
+        assert.equal(m.hfGgufRepo, 'bartowski/HuggingFaceTB_SmolLM3-3B-GGUF', 'imatrix quants of the HuggingFaceTB original');
+      }
       continue;
     }
     if (m.arrivesIn) {

@@ -307,8 +307,8 @@ test('Lorem Ipsum is gone, and the cupboard is the same size without it', () => 
 test('the public notes describe the naming, and the two names the tool refuses to make', () => {
   // 1.2.12 landed above this entry; the note is history now, so it is found by
   // position one down and still checked against the present.
-  assert.equal(CHANGELOG[2].version, '1.2.11');
-  const text = CHANGELOG[2].groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
+  assert.equal(CHANGELOG[3].version, '1.2.11');
+  const text = CHANGELOG[3].groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
 
   assert.match(text, /notes\.part01\.txt/, 'the notes give the real name, not a description of it');
   assert.match(text, /Extension last/i, 'and say which end the extension is on');

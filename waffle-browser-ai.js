@@ -121,7 +121,10 @@ export const TEXT_MODELS = [
   {
     id: 'smollm2-1.7b',
     label: 'SmolLM2 1.7B',
-    badge: 'Biggest on the public menu · ~1 GB, from ~560 MB',
+    // Was "Biggest on the public menu" until 1.3.1 put a 3B and a 1.3B vision
+    // model above it. A superlative that outlives the thing it describes is a
+    // lie the picker repeats on every open, so it goes.
+    badge: 'Browser · ~1 GB, from ~560 MB',
     kind: 'browser',
     // Repo paths written down without being able to check them: this sandbox has
     // no route to huggingface.co. If one is wrong the source report says
@@ -179,7 +182,10 @@ export const TEXT_MODELS = [
   {
     id: 'qwen3.5-0.8b',
     label: 'Qwen 3.5 0.8B',
-    badge: 'Browser · Vision + Chat',
+    // Off the public menu in 1.3.1, but not out of the table and not out of the
+    // kitchen: it is still the transformers.js vision path, and photo
+    // attachments still fall back to it when the projector path cannot run.
+    badge: 'Off the menu · still the ONNX vision engine',
     kind: 'browser',
     loader: 'qwen3_5',
     hfId: 'onnx-community/Qwen3.5-0.8B-ONNX',
@@ -190,7 +196,7 @@ export const TEXT_MODELS = [
     ggufQuants: ['Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
     ggufFile: 'qwen3.5-0.8b.gguf',
     ggufMB: 400,
-    desc: 'Qwen 3.5 0.8B multimodal & chat in-browser (~400 MB Q3_K_L / q4)'
+    desc: 'Qwen 3.5 0.8B multimodal & chat in-browser (~400 MB Q3_K_L / q4). Off the menu in 1.3.1: MiniCPM-V 4.6 took the vision slot. Still readable by id, still priced by the pre-cache budget, and still what a stored preference resolves to.'
   },
   {
     id: 'falcon3-1b',
@@ -377,6 +383,54 @@ export const TEXT_MODELS = [
     // rather than leaving somebody to discover it mid-download.
     ggufMB: 2400,
     desc: 'Gemma 2 2B (~2.4 GB at Q4_K_M) — the heaviest file here, because a quarter of a 2B model is its 256,000-word vocabulary'
+  },
+  {
+    id: 'minicpm-v-4.6',
+    label: 'MiniCPM-V 4.6 1.3B',
+    badge: 'Recommended · Vision + Chat · ~1.64 GB with its projector',
+    kind: 'browser',
+    // No hfId on purpose, and for a different reason than Falcon 3: there is no
+    // ONNX build of this one to point at. Its vision therefore goes through
+    // WLlama's projector path instead of transformers.js, which is why the entry
+    // carries an mmprojFile and nothing else here does.
+    hfGgufRepo: 'openbmb/MiniCPM-V-4.6-gguf',
+    hfGgufQuant: 'Q4_K_M',
+    // One quant, deliberately. The repo publishes up to Q8_0 and F16, but the
+    // projector beside it is 1.11 GB of f16 weights that no quant choice
+    // shrinks, so what a phone has to hold is the *total* — and 1.64 GB is
+    // already the largest single download on the public menu. Offering Q6_K here
+    // would add 100 MB to that total for a difference nobody would see, and it
+    // would make ggufMB a range instead of a number the badge can state.
+    ggufQuants: ['Q4_K_M'],
+    ggufFile: 'minicpm-v-4.6.gguf',
+    // The projector is not an optional extra. Without it this model cannot see,
+    // and a vision model that cannot see is a 529 MB chat model wearing a
+    // misleading name — so both halves are budgeted, and both were read off the
+    // repo's own tree rather than estimated: MiniCPM-V-4_6-Q4_K_M.gguf at 529 MB
+    // and mmproj-model-f16.gguf at 1.11 GB.
+    mmprojFile: 'mmproj-model-f16.gguf',
+    mmprojMB: 1110,
+    ggufMB: 1639,
+    desc: 'OpenBMB\'s 1.3B vision model — SigLIP2-400M over a Qwen 3.5 0.8B — built for phones: iOS, Android and HarmonyOS. ~1.64 GB in total: 529 MB of Q4_K_M plus the 1.11 GB f16 projector it needs to see. Apache 2.0.'
+  },
+  {
+    id: 'smollm3-3b',
+    label: 'SmolLM3 3B',
+    badge: 'Browser · 3B · up to ~2.53 GB, from ~1.92 GB',
+    kind: 'browser',
+    // No hfId: GGUF only, like Falcon 3 1B.
+    hfGgufRepo: 'bartowski/HuggingFaceTB_SmolLM3-3B-GGUF',
+    hfGgufQuant: 'Q4_K_M',
+    // 4-bit and up. Below that a 3B starts losing the reason to download a 3B.
+    ggufQuants: ['Q4_K_M', 'Q5_K_M', 'Q6_K'],
+    ggufFile: 'smollm3-3b.gguf',
+    // Read off the repo tree, not scaled from a neighbour: Q4_K_M 1.92 GB,
+    // Q5_K_M 2.21 GB, Q6_K 2.53 GB. ggufMB is the ceiling the fit check budgets
+    // against, so it carries the largest quant this entry allows (Q6_K) rather
+    // than the one it asks for first — under-stating it would tell a device that
+    // a file fits and then hand it one that does not.
+    ggufMB: 2530,
+    desc: 'HuggingFaceTB\'s SmolLM3 at 3B, imatrix-quantised. The heaviest model on the public menu: from ~1.92 GB at Q4_K_M, and ~2.53 GB if the range is allowed to climb to Q6_K.'
   }
 ];
 
@@ -396,9 +450,28 @@ export const TEXT_MODELS = [
  * an entry breaks them for no benefit. So the menu lives here, and every list
  * the UI renders — and every preference it honours — goes through it.
  */
+/**
+ * 1.3.1 changes three things here at once, and the order is not a preference:
+ * the test below asserts this list is ascending by `ggufMB`, because on a tablet
+ * download cost is the only order a model list gets read in.
+ *
+ * Qwen 3.5 0.8B comes off. It stays in the table — it is still the ONNX vision
+ * engine and still what a stored preference resolves to — it is just no longer
+ * something the picker offers as a chat model.
+ *
+ * MiniCPM-V 4.6 and SmolLM3 3B go on, both with repo paths and file sizes read
+ * off the repositories themselves rather than carried over from a table. That is
+ * the bar the four models above 1.7B are still held behind, and these two clear
+ * it: `openbmb/MiniCPM-V-4.6-gguf` and `bartowski/HuggingFaceTB_SmolLM3-3B-GGUF`
+ * both exist and both publish the quant named here.
+ *
+ * MiniCPM-V 4.6 is the recommended one, and the badge says so. It is not first
+ * in the list, because it is not the cheapest, and reordering by recommendation
+ * instead of by cost would break the one thing a menu on a phone is for.
+ */
 export const OFFERED_TEXT_MODEL_IDS = [
-  'qwen2.5-0.5b', 'qwen3-0.6b', 'qwen3.5-0.8b', 'falcon3-1b',
-  'smollm2-360m', 'qwen2.5-1.5b', 'smollm2-1.7b'
+  'qwen2.5-0.5b', 'qwen3-0.6b', 'falcon3-1b', 'smollm2-360m',
+  'qwen2.5-1.5b', 'smollm2-1.7b', 'minicpm-v-4.6', 'smollm3-3b'
 ];
 
 /**
@@ -418,12 +491,27 @@ export const OFFERED_TEXT_MODEL_IDS = [
  * ever had — deleting entries breaks CI, the source reports, and the stored
  * preference of any visitor who chose one.
  */
+// Written out in cost order rather than spread from the public menu, because
+// 1.3.1 broke the assumption that made the spread work. It used to be "the
+// public list, then the four test-only models", and that read cheapest-first
+// only while all four were heavier than everything above them. The public menu
+// now carries a 3B at 2.53 GB, which outweighs every model held back for
+// testing — so appending them would have put a 1.5 GB download below a 2.53 GB
+// one, in the one order a phone reads a model list in. Interleaving by size is
+// the same rule the public menu follows, just no longer expressible as a spread.
 export const TVBR_OFFERED_TEXT_MODEL_IDS = [
-  ...OFFERED_TEXT_MODEL_IDS,
-  // Cheapest download first, like the public list: on a tablet that is the only
-  // order anybody reads a model list in, and all four of these are heavier than
-  // anything above them.
-  'minicpm-2b', 'llama3.2-3b', 'qwen2.5-3b', 'gemma2-2b'
+  'qwen2.5-0.5b',   //  320 MB
+  'qwen3-0.6b',     //  385 MB
+  'falcon3-1b',     //  460 MB
+  'smollm2-360m',   //  720 MB
+  'qwen2.5-1.5b',   //  882 MB
+  'smollm2-1.7b',   // 1050 MB
+  'minicpm-2b',     // 1500 MB  test kitchen only
+  'minicpm-v-4.6',  // 1639 MB
+  'llama3.2-3b',    // 1800 MB  test kitchen only
+  'qwen2.5-3b',     // 1850 MB  test kitchen only
+  'gemma2-2b',      // 2400 MB  test kitchen only
+  'smollm3-3b'      // 2530 MB
 ];
 
 /** The menu this page renders: the test build's in the backup kitchen, the release's everywhere else. */
@@ -438,8 +526,14 @@ export function offeredModelIds() {
  * fetching from Hugging Face on the one device it exists to be tested on.
  */
 export const ALL_OFFERED_TEXT_MODEL_IDS = [
-  ...OFFERED_TEXT_MODEL_IDS,
-  ...TVBR_OFFERED_TEXT_MODEL_IDS.filter(id => !OFFERED_TEXT_MODEL_IDS.includes(id))
+  // Led by the test kitchen's list rather than the public one, so the union keeps
+  // the public menu's cost order instead of putting every public model ahead of
+  // every test-only one. It used to be public-first, which read cheapest-first
+  // only while the four held back were also the four heaviest; a 3B on the
+  // public menu ended that. The tail is there for the day a model is public and
+  // not testable — today it is empty, and a test says so.
+  ...TVBR_OFFERED_TEXT_MODEL_IDS,
+  ...OFFERED_TEXT_MODEL_IDS.filter(id => !TVBR_OFFERED_TEXT_MODEL_IDS.includes(id))
 ];
 
 /**
@@ -3322,6 +3416,8 @@ export async function streamWllamaChat({
   hfRepo = null,
   hfQuant = null,
   ggufQuants = null,
+  mmprojFile = null,
+  imageUrls = [],
   messages,
   systemPrompt,
   maxTokens = 380,
@@ -3398,7 +3494,23 @@ export async function streamWllamaChat({
     const threads = diag?.canThread
       ? Math.max(1, Math.min(4, Math.floor((diag.cores || 2) / 2)))
       : 1;
+    // Vision on this path is a projector file, not a different model class.
+    // WLlama loads the language model and an mmproj side by side, and the chat
+    // call then takes image bytes next to the text.
+    const wantsVision = Array.isArray(imageUrls) && imageUrls.length > 0;
+    // Never guess a projector name and never fetch one for a text turn: it is
+    // 1.11 GB of weights a chat with no photo in it would pay for twice, once in
+    // download and again in heap.
+    const mmprojUrl = wantsVision && mmprojFile && hfRepo ? ggufUrlFor(hfRepo, mmprojFile) : null;
+    if (wantsVision && !mmprojUrl) {
+      // Refuse rather than run blind. Answering a question about a photo with a
+      // model that was never given the photo produces fluent nonsense, and the
+      // caller has a real vision path left to fall through to.
+      throw new Error(`This model cannot see: no projector configured${mmprojFile ? '' : ' for it'}${hfRepo ? '' : ' and no source repo'}.`);
+    }
+
     const loadParams = {
+      ...(mmprojUrl ? { mmprojUrl } : {}),
       // A smaller context keeps the KV cache affordable when everything has
       // to live in one single-threaded WASM heap.
       n_ctx: gpu ? WLAMA_CTX_GPU : WLAMA_CTX_CPU,
@@ -3585,11 +3697,45 @@ export async function streamWllamaChat({
     detail: `WLlama (${useGpu ? 'WebGPU' : 'CPU WASM'})`
   });
 
+  // Images travel as bytes on this path. The URLs are data: or blob: URLs from
+  // the picker, so reading one is a local decode rather than a download — but it
+  // can still fail, and a turn that silently loses the photo would answer as
+  // though it had seen it.
+  let imageBytes = [];
+  if (mmprojUrl) {
+    imageBytes = await Promise.all(imageUrls.map(async (u, i) => {
+      try {
+        const r = await fetch(u);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return await r.arrayBuffer();
+      } catch (err) {
+        if (err?.name === 'AbortError' || signal?.aborted) throw err;
+        throw new Error(`Could not read attached image ${i + 1}: ${err?.message || err}`);
+      }
+    }));
+    onStatus?.({ state: 'loading', detail: `Reading ${imageBytes.length} attached image${imageBytes.length === 1 ? '' : 's'} for the projector…` });
+  }
+
   const chat = [];
   if (fitted.systemPrompt) chat.push({ role: 'system', content: fitted.systemPrompt });
   // Already role-checked and token-fitted above.
-  for (const m of fitted.messages) {
-    chat.push({ role: m.role, content: m.content });
+  const fittedMsgs = fitted.messages;
+  for (let i = 0; i < fittedMsgs.length; i++) {
+    const m = fittedMsgs[i];
+    // The photos belong to the turn being answered, which is the last user
+    // message — attaching them to an older one would ask the model about an
+    // image the visitor has already moved on from.
+    if (imageBytes.length && i === fittedMsgs.length - 1 && m.role === 'user') {
+      chat.push({
+        role: 'user',
+        content: [
+          ...imageBytes.map(data => ({ type: 'image', data })),
+          { type: 'text', text: m.content }
+        ]
+      });
+    } else {
+      chat.push({ role: m.role, content: m.content });
+    }
   }
 
   let acc = '';

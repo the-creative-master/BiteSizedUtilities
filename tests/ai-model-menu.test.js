@@ -31,10 +31,12 @@ function shimStorage() {
   return store;
 }
 
-test('the menu is the seven models Waffle AI offers, cheapest download first', () => {
+test('the menu is the eight models Waffle AI offers, cheapest download first', () => {
+  // 1.3.1 changes three entries at once: Qwen 3.5 0.8B comes off (it stays in
+  // the table as the ONNX vision engine), MiniCPM-V 4.6 and SmolLM3 3B go on.
   assert.deepEqual(OFFERED_TEXT_MODEL_IDS, [
-    'qwen2.5-0.5b', 'qwen3-0.6b', 'qwen3.5-0.8b', 'falcon3-1b',
-    'smollm2-360m', 'qwen2.5-1.5b', 'smollm2-1.7b'
+    'qwen2.5-0.5b', 'qwen3-0.6b', 'falcon3-1b', 'smollm2-360m',
+    'qwen2.5-1.5b', 'smollm2-1.7b', 'minicpm-v-4.6', 'smollm3-3b'
   ]);
   assert.deepEqual(offeredTextModels().map(m => m.id), OFFERED_TEXT_MODEL_IDS);
   // 1.2.6 put every model in the normal kitchen and ordered the menu by what a
@@ -56,10 +58,17 @@ test('the table keeps the models the menu stopped offering', () => {
   const gone = TEXT_MODELS.filter(m => !OFFERED_TEXT_MODEL_IDS.includes(m.id)).map(m => m.id).sort();
   assert.deepEqual(gone, [
     'deepseek-r1-1.5b', 'gemma2-2b', 'granite-code-0.5b', 'llama3.2-1b', 'llama3.2-3b',
-    'minicpm-2b', 'qwen2.5-3b', 'qwen2.5-coder-1.5b', 'smollm2-135m'
-  ], 'off the public menu, and still readable by id');
-  assert.equal(TEXT_MODELS.length, 16,
-    'the ten 1.2 shipped, plus Falcon 3 1B, the reserved Granite, and the four the test kitchen grew into');
+    'minicpm-2b', 'qwen2.5-0.8b-placeholder', 'qwen2.5-3b', 'qwen2.5-coder-1.5b', 'qwen3.5-0.8b', 'smollm2-135m'
+  ].filter(x => !x.includes('placeholder')), 'off the public menu, and still readable by id');
+  assert.equal(TEXT_MODELS.length, 18,
+    'the ten 1.2 shipped, plus Falcon 3 1B, the reserved Granite, the four the test kitchen grew into, and the two 1.3.1 added');
+  // Coming off a menu is not coming out of the table, and 1.3.1 is the clearest
+  // case yet: the model that left is still loadable, still routes photos, and is
+  // still what a visitor's stored preference resolves to.
+  const leftTheMenu = TEXT_MODELS.find(m => m.id === 'qwen3.5-0.8b');
+  assert.ok(leftTheMenu, 'Qwen 3.5 0.8B is still in the table');
+  assert.match(leftTheMenu.badge, /Off the menu/, 'and says so where a picker would have shown it');
+  assert.match(leftTheMenu.badge, /vision engine/i, 'including what it is still for');
   // SmolLM2 135M is the one 1.2.6 retired: SmolLM2 360M took its place. A
   // visitor who chose it before has it in localStorage, and the source reports
   // still price it by id, so it stays in the table and comes off the menu.
@@ -75,8 +84,15 @@ test('the table keeps the models the menu stopped offering', () => {
   // that are on neither is reserved for CodeHub's error diagnostics and its
   // weights have not arrived: it must not be pickable and must not be
   // downloadable, and both fall out of it being on neither list.
+  // "On no menu" and "not used" are different things, and 1.3.1 is the first
+  // time the list has to say so: Qwen 3.5 0.8B is pickable nowhere, and the
+  // kitchen still routes every attached photo to it when the projector path
+  // cannot run. The other five are genuinely dormant.
   const reserved = TEXT_MODELS.filter(m => !ALL_OFFERED_TEXT_MODEL_IDS.includes(m.id)).map(m => m.id).sort();
   assert.deepEqual(reserved, [
+    'deepseek-r1-1.5b', 'granite-code-0.5b', 'llama3.2-1b', 'qwen2.5-0.8b', 'qwen2.5-coder-1.5b', 'qwen3.5-0.8b', 'smollm2-135m'
+  ].filter(x => x !== 'qwen2.5-0.8b'), 'on neither menu');
+  assert.deepEqual(reserved.filter(x => x !== 'qwen3.5-0.8b'), [
     'deepseek-r1-1.5b', 'granite-code-0.5b', 'llama3.2-1b', 'qwen2.5-coder-1.5b', 'smollm2-135m'
   ], 'on no menu at all, in either kitchen');
   assert.deepEqual(gone.filter(id => !reserved.includes(id)).sort(), [
@@ -101,14 +117,22 @@ test('the two kitchens offer different menus again, and the seam between them st
   globalThis.document = { documentElement: { dataset: { backup: '1' } } };
   try {
     assert.equal(offeredModelIds(), TVBR_OFFERED_TEXT_MODEL_IDS, 'the backup build reads its own constant');
+    // No longer expressible as "the public list, then the four": 1.3.1 put a
+    // 3B on the public menu that outweighs every model held back for testing,
+    // so appending them would have buried a 1.5 GB download under a 2.53 GB one.
     assert.deepEqual(TVBR_OFFERED_TEXT_MODEL_IDS, [
-      ...OFFERED_TEXT_MODEL_IDS, 'minicpm-2b', 'llama3.2-3b', 'qwen2.5-3b', 'gemma2-2b'
-    ], 'the test kitchen is the public menu plus the four new ones, in that order');
+      'qwen2.5-0.5b', 'qwen3-0.6b', 'falcon3-1b', 'smollm2-360m',
+      'qwen2.5-1.5b', 'smollm2-1.7b',
+      'minicpm-2b', 'minicpm-v-4.6', 'llama3.2-3b', 'qwen2.5-3b', 'gemma2-2b', 'smollm3-3b'
+    ], 'the test kitchen is the public menu plus the four, interleaved by cost');
     const tvbrLadder = offeredTextModels().map(m => m.ggufMB);
     assert.deepEqual(tvbrLadder, [...tvbrLadder].sort((a, b) => a - b),
-      'and its ladder is still cheapest download first, the four new ones on top');
-    assert.ok(tvbrLadder.every((mb, i) => i < OFFERED_TEXT_MODEL_IDS.length || mb > 1050),
-      'every one of the four is heavier than the 1.7B the public menu stops at');
+      'and its ladder is still cheapest download first, all twelve of them');
+    const four = TVBR_OFFERED_TEXT_MODEL_IDS.filter(id => !OFFERED_TEXT_MODEL_IDS.includes(id));
+    assert.deepEqual(four, ['minicpm-2b', 'llama3.2-3b', 'qwen2.5-3b', 'gemma2-2b'],
+      'the four held back are the same four, wherever the cost order puts them');
+    assert.ok(four.every(id => TEXT_MODELS.find(m => m.id === id).ggufMB > 1050),
+      'and every one of them is heavier than the 1.7B the public menu used to stop at');
     assert.ok(TVBR_OFFERED_TEXT_MODEL_IDS !== OFFERED_TEXT_MODEL_IDS,
       'as two separate lists, not one alias: a model tested in the second kitchen must not appear in the first');
     assert.deepEqual(offeredTextModels().map(m => m.id), TVBR_OFFERED_TEXT_MODEL_IDS, 'and the menu renders in that order');
@@ -149,9 +173,13 @@ test('the two kitchens offer different menus again, and the seam between them st
   store.clear();
 
   assert.deepEqual(ALL_OFFERED_TEXT_MODEL_IDS, [...TVBR_OFFERED_TEXT_MODEL_IDS],
-    'the union of both menus is the test kitchen\'s, which is the public one plus four');
+    'the union of both menus is the test kitchen\'s: the public eight plus the four held back');
   assert.equal(new Set(ALL_OFFERED_TEXT_MODEL_IDS).size, ALL_OFFERED_TEXT_MODEL_IDS.length, 'and it has no duplicates');
-  assert.equal(allOfferedTextModels().length, 11);
+  assert.equal(allOfferedTextModels().length, 12);
+  // The invariant the cost-ordered rewrite could have quietly broken: a model
+  // must be tryable in the test kitchen before it is served in the public one.
+  assert.ok(OFFERED_TEXT_MODEL_IDS.every(id => TVBR_OFFERED_TEXT_MODEL_IDS.includes(id)),
+    'everything the public kitchen serves, the test kitchen can serve too');
 });
 
 test('the four the test kitchen grew into price themselves honestly', () => {
@@ -169,7 +197,12 @@ test('the four the test kitchen grew into price themselves honestly', () => {
 
   assert.deepEqual(four.filter(id => OFFERED_TEXT_MODEL_IDS.includes(id)), [],
     'and none of them is on the public menu: four repo paths nobody could check from here are tried in one kitchen first');
-  assert.deepEqual(TVBR_OFFERED_TEXT_MODEL_IDS.slice(-4), four, 'all four are on the test kitchen\'s, cheapest first');
+  // A set membership, not a position: the test kitchen's menu is cost-ordered
+  // now, and the public menu has a 3B heavier than all four, so "the last four
+  // entries" is no longer the same statement as "the four held back".
+  assert.deepEqual(
+    TVBR_OFFERED_TEXT_MODEL_IDS.filter(id => !OFFERED_TEXT_MODEL_IDS.includes(id)), four,
+    'all four are on the test kitchen\'s, and only those four');
 
   // Each says which sibling it was scaled from, rather than presenting a
   // bytes-per-weight rule of thumb as though it were a measurement.
@@ -197,11 +230,20 @@ test('the four the test kitchen grew into price themselves honestly', () => {
   const script = fs.readFileSync('scripts/fetch-model.mjs', 'utf8');
   assert.match(script, /const MAX_MODEL_MB = 400;/, 'which is the ceiling the pre-cache script selects under');
 
-  // The 1.7B stopped being the biggest thing on every menu, so it says which
-  // menu it is the biggest of instead of claiming a title it lost.
+  // The 1.7B stopped being the biggest thing on any menu in 1.3.1, when a 3B
+  // and a 1.3B vision model joined it. Its badge used to claim the title; a
+  // superlative the picker repeats on every open is a lie that outlives the
+  // edit that made it false, so nothing on a menu claims one now.
   const big = TEXT_MODELS.find(m => m.id === 'smollm2-1.7b');
-  assert.match(big.badge, /Biggest on the public menu/, 'it names the menu it still tops');
+  assert.ok(!/biggest/i.test(big.badge), 'the 1.7B no longer claims a title it lost');
   assert.ok(!big.desc.includes('the biggest model here'), 'and no longer claims to be the biggest model, full stop');
+  for (const m of offeredTextModels()) {
+    assert.ok(!/biggest/i.test(m.badge), `${m.id}: no badge on the menu claims to be the biggest`);
+  }
+  const heaviest = offeredTextModels().reduce((a, b) => (b.ggufMB > a.ggufMB ? b : a));
+  assert.equal(heaviest.id, 'smollm3-3b', 'the 3B is what actually tops the public menu');
+  assert.ok(heaviest.badge.includes('~2.53 GB') && heaviest.badge.includes('~1.92 GB'),
+    'and its badge states the ceiling it is budgeted at and the quant it starts from');
 });
 
 test('each model is limited to the quantisations it may be fetched at', () => {
@@ -218,6 +260,8 @@ test('each model is limited to the quantisations it may be fetched at', () => {
     'minicpm-2b': ['Q4_K_M', 'Q5_K_M', 'Q6_K'],
     'llama3.2-3b': ['Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
     'qwen2.5-3b': ['Q3_K_L', 'Q4_K_M', 'Q5_K_M', 'Q6_K'],
+    'minicpm-v-4.6': ['Q4_K_M'],
+    'smollm3-3b': ['Q4_K_M', 'Q5_K_M', 'Q6_K'],
     'gemma2-2b': ['Q4_K_M', 'Q5_K_M', 'Q6_K']
   };
   for (const [id, quants] of Object.entries(ranges)) {
@@ -238,6 +282,8 @@ test('each model is limited to the quantisations it may be fetched at', () => {
     'minicpm-2b': ['Q4_K_M', 'Q5_K_M', 'Q6_K'],
     'llama3.2-3b': ['Q4_K_M', 'Q3_K_L', 'Q5_K_M', 'Q6_K'],
     'qwen2.5-3b': ['Q4_K_M', 'Q3_K_L', 'Q5_K_M', 'Q6_K'],
+    'minicpm-v-4.6': ['Q4_K_M'],
+    'smollm3-3b': ['Q4_K_M', 'Q5_K_M', 'Q6_K'],
     'gemma2-2b': ['Q4_K_M', 'Q5_K_M', 'Q6_K']
   };
 

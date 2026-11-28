@@ -209,9 +209,9 @@ test('the paused dialog is still dismissible, and counts nothing', () => {
 });
 
 test('the changelog puts 1.3 above 1.2.12 above 1.2.11 above 1.2.10 above 1.2.8 above 1.2.7 above 1.2.6 above 1.2.5 above 1.2.1 above 1.2 above 1.1.1 above 1.1 above 1.0.1 above the original 1.0 release', () => {
-  assert.equal(APP_VERSION, '1.3');
-  assert.equal(CHANGELOG.length, 14, 'every release is documented');
-  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.3', '1.2.12', '1.2.11', '1.2.10', '1.2.8', '1.2.7', '1.2.6', '1.2.5', '1.2.1', '1.2', '1.1.1', '1.1', '1.0.1', '1.0'], 'newest release is listed first');
+  assert.equal(APP_VERSION, '1.3.1');
+  assert.equal(CHANGELOG.length, 15, 'every release is documented');
+  assert.deepEqual(CHANGELOG.map(e => e.version), ['1.3.1', '1.3', '1.2.12', '1.2.11', '1.2.10', '1.2.8', '1.2.7', '1.2.6', '1.2.5', '1.2.1', '1.2', '1.1.1', '1.1', '1.0.1', '1.0'], 'newest release is listed first');
   // There is no 1.2.9: the star utilities were the whole of what that release
   // carried, and a version is not a queue to be filled in.
   assert.ok(!CHANGELOG.some(e => e.version === '1.2.9'), 'and nothing was invented to fill the gap');

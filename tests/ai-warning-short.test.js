@@ -138,7 +138,10 @@ test('Settings and the English cupboard show the short line and open the same po
     'while the one sentence that is actually about English tools stayed');
   assert.match(english, /id="eng-warn-details"/, 'and it can open the details too');
 
-  const popup = sliceFrom(appSrc, 'id="ai-warning-overlay"', 2000);
+  // 2600, not the 2000 this used: the on-screen log block inside this popup is
+  // conditional as of 1.3.1, so the slice has to span the conditional and the
+  // comment explaining it before it reaches the disclaimer text.
+  const popup = sliceFrom(appSrc, 'id="ai-warning-overlay"', 2600);
   assert.match(popup, /\$\{esc\(AI_DISCLAIMER_TEXT\)\}/, 'the popup carries all 887 characters');
   assert.match(popup, /iPhone \/ Mobile Warning/, 'and the mobile note that used to sit in the English popup');
   assert.match(popup, /id="settings-device-detail"/, 'plus the detected-device facts');

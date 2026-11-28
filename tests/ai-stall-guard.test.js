@@ -217,7 +217,11 @@ test('both engines feed the watchdog, and neither reuses a runtime that was walk
     'it is thrown away instead');
   assert.match(wllama, /wllamaDirty = true;[\s\S]{0,200}?if \(err\?\.name === 'AbortError'/,
     'abandoning a stream marks the instance dirty');
-  assert.match(wllama, /wllamaDirty = false;\s*\n\s*return stripModelScaffolding\(acc/, 'a finished reply makes it reusable again');
+  // Not strict adjacency: the turn ledger writes its line between clearing the
+  // flag and returning. What has to hold is the order — a finished reply clears
+  // the flag before the function hands control back, so the next prompt is
+  // allowed to reuse the instance instead of paying for a fresh load.
+  assert.match(wllama, /wllamaDirty = false;[\s\S]{0,160}?return stripModelScaffolding\(acc/, 'a finished reply makes it reusable again');
   assert.match(wllama, /markInferenceToken\(\);/, 'tokens keep the watchdog fed');
   assert.match(wllama, /progressCallback\(\{ loaded, total \}\) \{\s*\n\s*markInferenceBeat\(\);/,
     'and so does download progress');

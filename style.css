@@ -1048,6 +1048,27 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   border-radius: 50%;
 }
 
+/* The console log button sits in the same corner row as the heart and the close
+   button, so it takes the heart's footprint rather than inventing a size: three
+   buttons of three different heights in one row reads as a mistake. It exists
+   only in the build that keeps a log. */
+.console-log-btn {
+  width: 42px;
+  height: 42px;
+  padding: 7px;
+  border-radius: 50%;
+  font-size: 17px;
+  line-height: 1;
+}
+
+#console-log-overlay .settings-card {
+  width: min(720px, 100%);
+}
+
+#console-log-overlay .settings-card pre {
+  overscroll-behavior: contain;
+}
+
 .favorite-btn.is-favorite {
   background: var(--berry);
   box-shadow: 0 4px 0 #c97787;

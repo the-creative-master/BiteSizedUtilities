@@ -35,6 +35,77 @@ export function setTelemetryEnabled(v) {
 
 export function telemetryEnabled() { return enabled; }
 
+/* ------------------------------------------------------------------ *
+ * The on-screen copy
+ *
+ * A console is no use on a device that has no DevTools, which describes the
+ * tablet this kitchen most needs diagnosing on. So every line is also kept in a
+ * bounded buffer that the Settings panel can render and the visitor can copy out
+ * and paste, the same way they paste the device report.
+ *
+ * Recording happens whether or not console output is enabled: silencing the
+ * console is a reasonable thing to want, and it should not blind the panel.
+ * ------------------------------------------------------------------ */
+
+const MAX_ENTRIES = 80;
+const entries = [];
+const listeners = new Set();
+
+function record(level, scope, event, facts) {
+  try {
+    entries.push({ t: Date.now(), level, scope, event, facts: facts && typeof facts === 'object' ? facts : null });
+    // Bounded, oldest first out. A log that grows without limit on a device
+    // with 8 GB and a long chat is how a diagnostic becomes the problem.
+    if (entries.length > MAX_ENTRIES) entries.splice(0, entries.length - MAX_ENTRIES);
+  } catch { return; }
+  for (const fn of [...listeners]) { try { fn(); } catch {} }
+}
+
+export function telemetryEntries() { return entries.slice(); }
+export function telemetryCount() { return entries.length; }
+
+export function clearTelemetry() {
+  entries.length = 0;
+  for (const fn of [...listeners]) { try { fn(); } catch {} }
+}
+
+/** Re-render on every new line. Returns the unsubscribe function. */
+export function subscribeTelemetry(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+/**
+ * One value as text. `null`, `undefined` and `''` all print as `unknown` rather
+ * than as nothing, because on a copied log the difference between "measured as
+ * absent" and "not printed" is exactly the thing being debugged. The empty
+ * string counts as absent on purpose: in this codebase it arrives from `|| ''`
+ * fallbacks such as an adapter that reported no name, so it means "nobody said",
+ * not "the answer was blank".
+ */
+function fmtVal(v) {
+  if (v === null || v === undefined || v === '') return 'unknown';
+  if (typeof v === 'boolean') return v ? 'yes' : 'no';
+  if (Array.isArray(v)) return v.length ? v.join('|') : 'none';
+  if (typeof v === 'object') { try { return JSON.stringify(v); } catch { return 'unserialisable'; } }
+  const s = String(v);
+  return /[\s=]/.test(s) ? JSON.stringify(s) : s;
+}
+
+/** One entry as one line, copy-pasteable and greppable. */
+export function formatEntry(e) {
+  const clock = new Date(e.t).toISOString().slice(11, 23);
+  const facts = e.facts
+    ? ' ' + Object.keys(e.facts).map(k => `${k}=${fmtVal(e.facts[k])}`).join(' ')
+    : '';
+  return `${clock} ${e.level === 'warn' ? 'WARN' : '    '} [waffle:${e.scope}] ${e.event}${facts}`;
+}
+
+/** The whole buffer as text, oldest first, for the copy button. */
+export function formatTelemetryLog() {
+  return entries.map(formatEntry).join('\n');
+}
+
 const stamp = () => {
   try { return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now(); }
   catch { return Date.now(); }
@@ -55,6 +126,7 @@ export function elapsedMs(from) {
  * numbers stay numbers — a stringified 2048 cannot be compared or sorted.
  */
 export function telLog(scope, event, facts = null) {
+  record('log', scope, event, facts);
   if (!enabled) return;
   try {
     const tag = `[waffle:${scope}]`;
@@ -64,6 +136,7 @@ export function telLog(scope, event, facts = null) {
 }
 
 export function telWarn(scope, event, facts = null) {
+  record('warn', scope, event, facts);
   if (!enabled) return;
   try {
     const tag = `[waffle:${scope}]`;

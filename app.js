@@ -11,10 +11,12 @@ import { mountVideo } from './tools-video.js';
 import { mountGames } from './games.js';
 import { openWaffleAI, warmupWaffleAI, isWaffleAiLocked, WAFFLE_AI_LOCK_MESSAGE } from './waffle-ai.js';
 import { isBackupBuild } from './build-mode.js';
-import { traceToolMount } from './waffle-telemetry.js';
-import { openChangelog } from './changelog.js';
+import {
+  traceToolMount, formatTelemetryLog, telemetryCount, clearTelemetry, subscribeTelemetry
+} from './waffle-telemetry.js';
+import { openChangelog, appVersionLabel } from './changelog.js';
 import { APP_LANGUAGES, getAppLanguage, setAppLanguage, initAppI18n } from './i18n.js';
-import { gameSlider } from './ui-kit.js';
+import { gameSlider, copyToClipboard } from './ui-kit.js';
 import {
   TEXT_MODELS,
   offeredTextModels,
@@ -256,6 +258,14 @@ app.innerHTML = `
             <span class="waffle-device-pill is-risk" id="ai-warn-device-pill">Checking WebGPU…</span>
           </div>
           <p class="waffle-device-detail" id="settings-device-detail" hidden></p>
+          <div class="settings-sub-label">On-Screen Console Log</div>
+          <p class="waffle-device-detail" style="display:block">Every utility and every AI turn writes here as well as to the browser console, because a tablet has no console to open. Nothing is invented: these are the same values, kept in a bounded buffer of the last 80 lines.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
+            <button type="button" class="gbtn waffle-disclaimer-more" id="settings-tel-toggle">\u{1F4DF} Show the log</button>
+            <button type="button" class="gbtn waffle-disclaimer-more" id="settings-tel-copy">Copy all</button>
+            <button type="button" class="gbtn waffle-disclaimer-more" id="settings-tel-clear">Clear</button>
+          </div>
+          <pre id="settings-tel-log" hidden style="max-height:280px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(0,0,0,.06);border-radius:10px;padding:10px;margin:0"></pre>
           <p class="waffle-disclaimer-copy waffle-disclaimer-full">${esc(AI_DISCLAIMER_TEXT)}</p>
           <p class="waffle-disclaimer-copy">⚠ iPhone / Mobile Warning: Devices below iOS 26 or without WebGPU (~1 in 4 phones) may crash or run slowly with local AI models.</p>
         </div>
@@ -1228,6 +1238,28 @@ function refreshDeviceFacts(force = false) {
     .catch(() => {});
 }
 
+/**
+ * Render the telemetry buffer into the Settings panel. Text content only, never
+ * innerHTML: these lines carry error messages and adapter names that come from
+ * outside the page, and a log that can inject markup is a way in.
+ */
+function paintTelemetryLog() {
+  const box = $('#settings-tel-log');
+  if (!box) return;
+  const text = formatTelemetryLog();
+  box.textContent = text || 'Nothing logged yet. Open any utility, or send Waffle AI a message, and it will appear here.';
+  const btn = $('#settings-tel-toggle');
+  if (btn) btn.textContent = `\u{1F4DF} ${box.hidden ? 'Show' : 'Hide'} the log (${telemetryCount()})`;
+  if (!box.hidden) box.scrollTop = box.scrollHeight;
+}
+
+// Subscribed once, at module scope: the Settings markup is re-rendered every
+// time it opens, and subscribing there would add a listener per open.
+subscribeTelemetry(() => {
+  const box = $('#settings-tel-log');
+  if (box && !box.hidden) paintTelemetryLog();
+});
+
 function paintDeviceFacts(d) {
   for (const pill of [$('#settings-device-pill'), $('#eng-warn-device-pill'), $('#ai-warn-device-pill')]) {
     if (!pill || !d) continue;
@@ -1350,6 +1382,25 @@ function closeAiWarning() {
   if (overlay) overlay.hidden = true;
 }
 $('#settings-ai-warning-open')?.addEventListener('click', openAiWarning);
+  $('#settings-tel-toggle')?.addEventListener('click', () => {
+    const box = $('#settings-tel-log');
+    if (!box) return;
+    box.hidden = !box.hidden;
+    paintTelemetryLog();
+  });
+  $('#settings-tel-copy')?.addEventListener('click', async () => {
+    // Copied with the header line, so a pasted log says what it is and which
+    // build it came from without the reader having to ask.
+    const body = formatTelemetryLog() || '(empty)';
+    const ok = await copyToClipboard(`BiteSizedUtilities ${appVersionLabel()} \u2014 on-screen log\n${body}`).catch(() => false);
+    const btn = $('#settings-tel-copy');
+    if (btn) {
+      const was = btn.textContent;
+      btn.textContent = ok ? 'Copied \u2713' : 'Copy failed \u2014 select the text instead';
+      setTimeout(() => { btn.textContent = was; }, 2600);
+    }
+  });
+  $('#settings-tel-clear')?.addEventListener('click', () => { clearTelemetry(); paintTelemetryLog(); });
 $('#eng-warn-details')?.addEventListener('click', openAiWarning);
 $('#ai-warn-close')?.addEventListener('click', closeAiWarning);
 $('#ai-warn-ok')?.addEventListener('click', closeAiWarning);

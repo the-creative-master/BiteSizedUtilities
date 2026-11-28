@@ -39,7 +39,7 @@ export const APP_VERSION = '1.2.12';
  * cycle's release ships — and once 1.3 has, a build made on top of it is a test
  * version *after* a release, so it reads 1.3 TVAR 1 rather than TVBR.
  */
-export const TVBR = 5;
+export const TVBR = 6;
 
 /**
  * The release the open test build comes *before*.
@@ -87,6 +87,40 @@ export function appVersionLabel() {
  * what is known to be rough — that is the whole point of writing them down.
  */
 export const TVBR_LOG = [
+  {
+    version: '1.3 TVBR 6',
+    date: 'November 28, 2026',
+    title: 'The console log gets a screen to appear on, because the device that needs it has no console',
+    tvbr: true,
+    groups: [
+      {
+        label: '\u{1F4DF} An on-screen log in Settings, next to the device report',
+        items: [
+          'TVBR 5 put a console line in every utility, and within the hour that turned out to be half a feature: the tablet this kitchen most needs diagnosing on has no DevTools at all. Android and HarmonyOS Chrome ship no console UI, so every one of those lines was being written somewhere nobody could read it.',
+          'So the same lines are now kept in a bounded buffer of the last 80 and rendered in Settings under the device report, with a Copy all button that puts them on the clipboard the way the device report already gets copied. One entry is one line, timestamped, greppable, values as key=value pairs rather than a pretty-printed object that wraps on a narrow screen.',
+          'The copy carries a header naming the build it came from. A pasted log that does not say which version produced it is half as useful, and the reader is by definition not at the machine that made it.',
+          'Recording continues when console output is silenced, because wanting a quiet console is reasonable and should not blind the panel.',
+          'The panel renders text and never markup. These lines carry error messages and adapter names arriving from outside the page, and a log drawn with innerHTML would be a way in.'
+        ]
+      },
+      {
+        label: '\u{1F9EA} The telemetry is tested now, which it was not',
+        items: [
+          'TVBR 5 shipped its telemetry with no tests of its own. It was covered by a syntax check and a successful build, and the mount hook sits in app.js, which cannot be imported in Node or jsdom because it imports a stylesheet \u2014 so that hook had never executed anywhere when it went live.',
+          'It has a test file now: the buffer and its bound, the formatter, what becomes of a value nobody measured, the turn ledger accumulating against the context window, the mount hook reporting a real return value and a real error name, and the panel wiring including that it subscribes once at module scope rather than once per Settings open.',
+          'One bug was found while writing them. The copy button referenced a version-label function that had never been imported into app.js, so it would have thrown the first time anybody tapped it. It is imported now, and the import is asserted rather than assumed.'
+        ]
+      },
+      {
+        label: '\u{1F6A7} Still open',
+        items: [
+          'The Waffle AI freeze after three or four replies is still unfixed and still unconfirmed. What changed is that it can now be read on the device it happens on, instead of only on a machine with a console attached.',
+          'The panel is in both kitchens, which puts a debugging surface on a public site. That is a deliberate trade \u2014 useful to whoever is reporting a bug, harmless to everyone else \u2014 and gating it to the test build is a small change if the trade turns out to be wrong.',
+          'None of this was exercised in a browser, because there is no browser in the sandbox it was written in. The panel is proven by tests that read the source and by the module running in Node, and not yet by a person tapping it.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.3 TVBR 5',
     date: 'November 27, 2026',

@@ -309,7 +309,9 @@ test('the changelog puts 1.2.12 above 1.2.11 above 1.2.10 above 1.2.8 above 1.2.
 
 test('the changelog is reachable from the kitchen header and styled like the rest of the site', () => {
   const appSrc = fs.readFileSync('app.js', 'utf8');
-  assert.match(appSrc, /import \{ openChangelog \} from '\.\/changelog\.js';/);
+  // The specifier list is not pinned exactly, because other imports have since
+  // joined it. What has to hold is that openChangelog comes from changelog.js.
+  assert.match(appSrc, /import \{[^}]*\bopenChangelog\b[^}]*\} from '\.\/changelog\.js';/);
   assert.match(appSrc, /id="changelog-toggle"/, 'a What\u2019s New button sits in the kitchen header');
   assert.match(appSrc, /uiIconSVG\('scroll'\)/, 'the button uses a hand-drawn 2.5D icon');
 

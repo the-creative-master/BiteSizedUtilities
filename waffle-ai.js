@@ -167,6 +167,34 @@ export function isWaffleAiLocked() {
   return false;
 }
 
+/**
+ * Whether this kitchen keeps conversations.
+ *
+ * It used to read `isBackupBuild()`, which gave the public kitchen a single pane
+ * and one unsaved conversation that died with the tab, while the backup kitchen
+ * had the two-pane panel: a rail of saved threads, export and import, and a
+ * conversation you could come back to. That asymmetry was the whole difference
+ * between the two AI surfaces, and it was not a difference anybody outside the
+ * test kitchen could act on.
+ *
+ * One function, read by both the markup and the store, so the two cannot
+ * disagree about which kitchen they are in — a rail that renders with no store
+ * behind it, or a store writing chats nobody can open, would each be worse than
+ * neither. That is the same discipline the image pause and the AI lock use.
+ *
+ * Deliberately *not* the model menu. `offeredModelIds()` in waffle-browser-ai.js
+ * still reads the build flag on its own, so the four models above 1.7B stay in
+ * the test kitchen where their repository paths can be checked before anybody is
+ * asked to download them. Bringing the rail over does not bring them with it,
+ * and a test asserts the two flags did not get merged.
+ *
+ * Everything saved stays on the device: the store is IndexedDB with a
+ * localStorage fallback, and nothing is uploaded anywhere.
+ */
+export function keepsChatHistory() {
+  return true;
+}
+
 /** Thrown by every AI entry point while paused, so callers can tell "locked" apart from "failed". */
 /**
  * Thrown for a model the table reserves but the kitchen cannot fetch yet.
@@ -2025,9 +2053,9 @@ function railWhen(ms) {
  * half a second to appear would feel slower than one that saves.
  */
 async function ensureChatStore() {
-  // The public kitchen has no rail to put chats in, so it opens no storage and
-  // writes nothing: a conversation there lasts exactly as long as the visit.
-  if (!isBackupBuild()) return null;
+  // A kitchen that keeps no chats opens no storage and writes nothing. This one
+  // keeps them, in both builds, so both open the store.
+  if (!keepsChatHistory()) return null;
   if (!chatStore) {
     // openChatStore() answers which backend the browser allowed; the store that
     // reads and writes through it is a second step, and the two are separate so
@@ -2259,15 +2287,20 @@ function setRailOpen(open) {
 
 function buildOverlay() {
   /**
-   * The overhauled layout and the chats it keeps are what this test version is
-   * for, so they are the backup kitchen's alone: the public kitchen at 1.2.12
-   * keeps its single pane and its single, unsaved conversation. The four models
-   * above the 1.7B are the same kind of decision and live on the same flag. Markup and
-   * behaviour both read this one flag, so the two cannot disagree about which
-   * build they are in — a rail that renders without a store behind it, or a
-   * store writing chats nobody can open, would each be worse than neither.
+   * The overhauled layout and the chats it keeps belong to both kitchens now.
+   * They were the test kitchen's alone while the rail was being tried, and 1.3.1
+   * is where trying it stopped being the point.
+   *
+   * The four models above 1.7B are a *different* decision that happens to read
+   * the same build flag, through offeredModelIds() in waffle-browser-ai.js, and
+   * they stayed put: their repository paths have not been checked from anywhere
+   * that could reach Hugging Face, so nobody should be asked to download them
+   * yet. Markup and behaviour both read keepsChatHistory(), so the two cannot
+   * disagree about whether this kitchen keeps chats — a rail that renders
+   * without a store behind it, or a store writing chats nobody can open, would
+   * each be worse than neither.
    */
-  const keepsChats = isBackupBuild();
+  const keepsChats = keepsChatHistory();
 
   const railHtml = keepsChats ? `
       <aside class="waffle-ai-rail" id="waffle-ai-rail" aria-label="Saved chats">

@@ -4,9 +4,9 @@
  * It used to be a gesture — a fast run of taps on Sir Waffle — which is a door
  * anybody can be told about, and anybody can stumble into while bouncing the
  * waffle wall. It is a string now, typed into Waffle AI, and the
- * page it opens is not on the server under its own name: the build ships it as
- * `DONTASKMEWHATTHATIS.txt`, ciphertext inside what looks like somebody's
- * obfuscated build junk, and `dist/backup.html` is deleted. Typing `/backup.html`
+ * page it opens is not on the server under its own name: the build ships it as a
+ * dotfile named after the GitHub Pages Jekyll bypass, ciphertext inside what
+ * reads as deployment plumbing, and `dist/backup.html` is deleted. Typing `/backup.html`
  * into the address bar gets a 404, so there is no URL to try.
  *
  * What happens when the string is typed:

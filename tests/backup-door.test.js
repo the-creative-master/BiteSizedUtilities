@@ -64,7 +64,11 @@ test('the payload round-trips, and reads as junk on the way', () => {
   const encoded = encodePayload(PAGE);
   assert.ok(!encoded.includes('data-backup'), 'the build flag is not in the file');
   assert.ok(!encoded.includes('app-test.js'), 'and neither is anything it would load');
-  assert.match(encoded, /^DONTASKMEWHATTHATIS\.txt/, 'it starts by naming itself');
+  // The header is the disguise, so it has to open by naming the file it pretends
+  // to be — a Pages build note, not a payload with a shouty filename.
+  assert.match(encoded, /^\.nojekyll\.txt/, 'it starts by naming itself');
+  assert.match(encoded, /Jekyll does not/, 'and by sounding like the plumbing it is dressed as');
+  assert.ok(!encoded.includes('DONTASKMEWHATTHATIS'), 'the old name is gone from the file too');
   assert.match(encoded, /var _0x[0-9a-f]+=\["[A-Za-z0-9+/=]+"\];/, 'and looks like obfuscated code, in a .txt');
   assert.equal(decodePayload(encoded), PAGE, 'byte for byte');
 
@@ -193,8 +197,9 @@ test('the door fetches the disguised file, relative to the page', async () => {
   });
   assert.equal(out.ok, true);
   assert.equal(out.via, 'reload', 'the plan, when sessionStorage will hold the page');
-  assert.deepEqual(asked, ['https://the-creative-master.github.io/BiteSizedUtilities/DONTASKMEWHATTHATIS.txt'],
+  assert.deepEqual(asked, ['https://the-creative-master.github.io/BiteSizedUtilities/.nojekyll.txt'],
     'resolved against the document, so a GitHub Pages sub-path works');
+  assert.equal(asked[0].split('/').pop(), BACKUP_DOOR_FILE, 'and it is the one name the cipher defines');
   assert.equal(win.sessionStorage.getItem(BACKUP_DOOR_STASH), PAGE, 'decoded and stashed for the next load');
   assert.equal(win.document.querySelector('#app').textContent, 'public',
     'and this document was left alone — the next one is the kitchen');
@@ -276,8 +281,22 @@ test('nothing in the repository hands out the string or the address', () => {
     assert.ok(!src.includes(passphrase), `${file} does not contain the passphrase`);
     assert.ok(!src.includes(passphrase.replace(/\\(?=[^\w\s])/g, '')), `${file} does not contain it unescaped either`);
   }
-  // The changelog says the door exists and is harder, without saying what it is.
+  // The changelog says the door exists and is harder, without saying what it is
+  // and without saying what it is called. It used to name the file, in an entry
+  // published to a public repository, which is the one place a disguise cannot
+  // survive: anyone who scrolled far enough got the address for free.
   const notes = fs.readFileSync('changelog.js', 'utf8');
-  assert.match(notes, /DONTASKMEWHATTHATIS\.txt/, 'the test build names the file');
+  assert.ok(!notes.includes('DONTASKMEWHATTHATIS'), 'the retired name appears nowhere in it');
+  assert.ok(!notes.includes(BACKUP_DOOR_FILE), 'and neither does the name in use');
+  assert.match(notes, /dotfile named after the GitHub Pages Jekyll bypass/,
+    'it describes the disguise without handing over the filename');
   assert.ok(!/type .*string.*at Waffle AI.*:.*BACKUP/i.test(notes), 'and never prints the string');
+
+  // Same rule for the build, which logs into the public Actions run of every
+  // deploy. The size and the outcome are useful to whoever is watching a build;
+  // the filename is not, and printing it defeated the disguise on every push.
+  const build = fs.readFileSync('vite.config.js', 'utf8');
+  assert.ok(!/backup kitchen[^`]*\$\{BACKUP_DOOR_FILE\}/.test(build),
+    'the build log does not print the name it wrote');
+  assert.match(build, /backup kitchen disguised and written/, 'it still says the step happened');
 });

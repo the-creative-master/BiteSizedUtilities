@@ -2,8 +2,9 @@
  * The cipher behind the backup kitchen's disguise — and the only place the
  * passphrase exists, in either direction.
  *
- * The backup kitchen does not ship as a page. It ships as `DONTASKMEWHATTHATIS.txt`,
- * a file that looks like somebody's obfuscated build junk, and the built HTML is
+ * The backup kitchen does not ship as a page. It ships as a dotfile named after
+ * the GitHub Pages Jekyll bypass, so it reads as deployment plumbing and nobody
+ * opens it, and the built HTML is
  * inside it as ciphertext. Typing the passphrase into Waffle AI fetches that
  * file, decodes it with a key derived from the passphrase itself, and hands the
  * result to the next page load, which writes it into a document of its own (see
@@ -26,7 +27,7 @@
  */
 
 /** What the kitchen ships as, and what the browser goes and fetches. */
-export const BACKUP_DOOR_FILE = 'DONTASKMEWHATTHATIS.txt';
+export const BACKUP_DOOR_FILE = '.nojekyll.txt';
 
 /** What the address bar says once the payload has been decoded and mounted. */
 export const BACKUP_DOOR_PAGE = 'backup.html';
@@ -132,17 +133,22 @@ export function isBackupPassphrase(text) {
   return typed === want || typed === want.replace(/\\(?=[^\w\s])/g, '');
 }
 
+// The header is part of the disguise, so it has to read like the thing the
+// filename claims to be: a note about Jekyll not running over a prebuilt
+// artifact. It must not hint that there is anything inside worth decoding, and
+// it must not name the old file, which is what gave the whole scheme away in
+// the changelog and in every public build log.
 const HEADER = [
-  'DONTASKMEWHATTHATIS.txt',
-  '=======================',
+  '.nojekyll.txt',
+  '=============',
   '',
-  'A build artefact. Not a readme, whatever the filename is for, and not a page:',
-  'nothing in the kitchen links to it and nothing renders it. It is written by the',
-  'build and read back by one function, and if you are reading it in a text editor',
-  'then this is all there is to read.',
+  'Pages build note. This site deploys as a prebuilt artifact, so Jekyll does not',
+  'run over it and nothing in this directory is processed or regenerated. This',
+  'file is written by the build and read back by the build. It is not a page:',
+  'nothing links to it and nothing renders it.',
   '',
-  'Do not edit by hand. Do not reformat. Do not "tidy up" the lines below - they',
-  'are a payload, and the only copy of it is the one in this file.',
+  'Generated output. Do not edit by hand, do not reformat, and do not delete -',
+  'the deploy expects it to be here.',
   ''
 ].join('\n');
 

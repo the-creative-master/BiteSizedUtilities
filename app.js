@@ -11,6 +11,7 @@ import { mountVideo } from './tools-video.js';
 import { mountGames } from './games.js';
 import { openWaffleAI, warmupWaffleAI, isWaffleAiLocked, WAFFLE_AI_LOCK_MESSAGE } from './waffle-ai.js';
 import { isBackupBuild } from './build-mode.js';
+import { traceToolMount } from './waffle-telemetry.js';
 import { openChangelog } from './changelog.js';
 import { APP_LANGUAGES, getAppLanguage, setAppLanguage, initAppI18n } from './i18n.js';
 import { gameSlider } from './ui-kit.js';
@@ -739,17 +740,26 @@ function openTool(id) {
 
   try {
     const rootEl = $('#tool-root');
-    const result = (t.cupboard === 'math' || t.cupboard === 'science')
-      ? mountMathScience(id, rootEl)
-      : t.cupboard === 'code'
-        ? mountCode(id, rootEl)
-        : t.cupboard === 'english'
-          ? mountEnglish(id, rootEl)
-          : t.cupboard === 'music'
-            ? mountMusic(id, rootEl)
-            : t.cupboard === 'video'
-              ? mountVideo(id, rootEl)
-              : mountTextArt(id, rootEl);
+    // One hook covers all 105 non-game utilities: every one of them arrives
+    // here and is dispatched by cupboard and nothing else. Games & Fun mounts
+    // through its own path and is deliberately left out — those are rAF
+    // animations, where a console line would cost more than it reports.
+    const result = traceToolMount({
+      id,
+      name: t.name,
+      cupboard: t.cupboard,
+      mount: () => (t.cupboard === 'math' || t.cupboard === 'science')
+        ? mountMathScience(id, rootEl)
+        : t.cupboard === 'code'
+          ? mountCode(id, rootEl)
+          : t.cupboard === 'english'
+            ? mountEnglish(id, rootEl)
+            : t.cupboard === 'music'
+              ? mountMusic(id, rootEl)
+              : t.cupboard === 'video'
+                ? mountVideo(id, rootEl)
+                : mountTextArt(id, rootEl)
+    });
     if (typeof result === 'function') toolCleanup = result;
     if (!result) rootEl.textContent = 'This toy could not be opened.';
   } catch (e) {

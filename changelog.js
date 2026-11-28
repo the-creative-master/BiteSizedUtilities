@@ -39,7 +39,7 @@ export const APP_VERSION = '1.2.12';
  * cycle's release ships — and once 1.3 has, a build made on top of it is a test
  * version *after* a release, so it reads 1.3 TVAR 1 rather than TVBR.
  */
-export const TVBR = 4;
+export const TVBR = 5;
 
 /**
  * The release the open test build comes *before*.
@@ -87,6 +87,49 @@ export function appVersionLabel() {
  * what is known to be rough — that is the whole point of writing them down.
  */
 export const TVBR_LOG = [
+  {
+    version: '1.3 TVBR 5',
+    date: 'November 27, 2026',
+    title: 'A console line in every utility that says what really happened, and a door that stopped announcing itself',
+    tvbr: true,
+    groups: [
+      {
+        label: '\u{1F4DF} Every utility now reports what it actually did',
+        items: [
+          'Open anything in the kitchen and the console says so: which tool, which cupboard, how many milliseconds the mount really took, whether it handed back a cleanup function, and if it threw, the real error rather than a paraphrase. One hook in the dispatcher covers all 105 of them, because every utility is opened through the same function and dispatched by cupboard and nothing else.',
+          'Games & Fun is left out on purpose. Those are animations on a requestAnimationFrame loop, where a console line would arrive per frame and cost more than the thing being measured.',
+          'The rule for every number in these lines is that it has to be true. Durations come from performance.now() around the call that ran, token counts come from the fitter that fitted the prompt, network facts come off the Response object the browser handed back, and storage facts come from navigator.storage.estimate(). Where a value is not available it prints unknown. A content-length is absent on chunked and compressed responses, so a byte count is only reported when something really measured it \u2014 a fabricated figure in a debugging tool is worse than none, because it gets believed.',
+          'A mount that returns no cleanup function is now visible, and that matters more than it looks: it is how a tool opened and closed forty times ends up holding forty sets of listeners.'
+        ]
+      },
+      {
+        label: '\u{1F9CA} A turn-by-turn ledger for Waffle AI, built for one specific bug',
+        items: [
+          'Waffle AI freezes after exactly three or four replies on a machine with plenty of GPU. A freeze at a fixed, small turn count is what a resource that accumulates and is never released looks like, and the obvious candidate is the KV cache inside a context window that the prompt and the reply have to share: on the GPU path that window is 2048 tokens, and every turn re-sends the whole trimmed history.',
+          'So each turn now logs what was asked of the window and what came back \u2014 n_ctx, prompt tokens, reply tokens allowed, whether the slot was reused or freshly loaded, milliseconds to the first token, chunks off the stream, tokens per second, and a running cumulative total with the headroom against the window printed rather than left to be subtracted by hand.',
+          'The requesting line is written *before* the call, not after. A turn that hangs never reaches a completion line, and the hanging turn is the only one worth reading, so the trail has to exist before the thing that might not return. If the headroom goes negative and no second line follows, the context filled up and was never released.',
+          'What is not claimed here: this is a diagnostic, not a fix. The suspicion could not be confirmed by reading the library, because the cache lives in llama.cpp\u2019s C++ inside the wasm module and the JavaScript layer above it is bundled glue with no cache-clearing method exposed. Nothing about the freeze has been reproduced or fixed in this build, and no model has ever been run in the sandbox it was written in.'
+        ]
+      },
+      {
+        label: '\u{1F6AA} The door keeps its name to itself',
+        items: [
+          'The disguised file is renamed to look like GitHub Pages deployment plumbing, which is a better disguise than a filename that shouted about being a secret. The spelling is the real one, deliberately: a near-miss spelling would read as a typo and draw the eye, which is the opposite of the point.',
+          'Its name is gone from the changelog, where a published entry had been spelling it out to anyone who scrolled far enough.',
+          'It is gone from the build log too, and that was the larger leak. The line announcing which file the kitchen shipped as ran on every deploy, into the public Actions log of a public repository, which is the one place a disguise cannot survive.',
+          'The header inside the file was rewritten to match. It used to open by naming the old file and calling itself a payload; it now reads as a note about Jekyll not processing a prebuilt artifact, which is what the filename claims to be.',
+          'The passphrase is unchanged and is still printed nowhere. What this buys is the same as before and no more: a static site has nowhere to keep a secret, so this is obfuscation, not encryption.'
+        ]
+      },
+      {
+        label: '\u{1F50D} Also in this build',
+        items: [
+          'The device report now records the whole WebGPU feature list and the limits that say whether an adapter is real hardware, which is what separates a translated adapter from a genuine one that had a single feature withheld. Those two situations have opposite conclusions and used to print the same sentence.',
+          'Wording that claimed more than was measured now claims less. Nothing said the GPU lacked FP16 any more, because what was measured is what the browser exposed through WebGPU.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.3 TVBR 4',
     date: 'November 25, 2026',
@@ -435,7 +478,7 @@ export const TVBR_LOG = [
         label: '\u{1F6AA} The door',
         items: [
           'The tap gesture is gone. A fast run of taps on Sir Waffle was a door anybody could be told about and anybody could hit by accident while bouncing the waffle wall, and it navigated to an address that sat in the bundle in plain text.',
-          'This build is not on the host under its own name any more. It ships as DONTASKMEWHATTHATIS.txt \u2014 a few kilobytes of what looks like obfuscated build junk \u2014 and the built page inside it is ciphertext. The address that used to open it returns a 404.',
+          'This build is not on the host under its own name any more. It ships as a dotfile named after the GitHub Pages Jekyll bypass, so it reads as deployment plumbing that nobody opens, and the built page inside it is ciphertext. The address that used to open it returns a 404.',
           'The way in is a string typed at Waffle AI. That string is also the key the file was encoded with, so the file is useless without it and the string appears nowhere in the source or the bundle as text.',
           'Be clear about what that buys. A static site has nowhere to keep a secret: the key ships next to the ciphertext, so this is obfuscation and not encryption, and somebody determined can recover the string by running the bundle\u2019s own decoder. What it does stop is grepping, viewing source, guessing the address, and stumbling in.'
         ]

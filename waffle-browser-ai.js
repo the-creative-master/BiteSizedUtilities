@@ -1,5 +1,8 @@
 import { isBackupBuild } from './build-mode.js';
 import { stripModelScaffolding } from './waffle-persona.js';
+import {
+  telNow, elapsedMs, telLog, logAiTurn, logAiDeviceFacts, resetAiTurnLedger, aiTurnLedger
+} from './waffle-telemetry.js';
 
 // Rough GGUF size per model at the quant that entry asks for first, in MB.
 // Used only to warn / budget *before* a download starts — the real byte size
@@ -3381,6 +3384,11 @@ export async function streamWllamaChat({
       inst.setCompat('default', 'firefox_safari');
     }
     wllamaInstance = inst;
+    // A fresh instance means a fresh context, so the turn ledger starts again.
+    // Counting turns across instances would compare numbers that share no KV
+    // cache and prove nothing.
+    resetAiTurnLedger(targetKey);
+    logAiDeviceFacts(diag);
     return inst;
   };
 
@@ -3530,9 +3538,13 @@ export async function streamWllamaChat({
       : 'No HuggingFace GGUF repo is configured for this model and this host serves no local GGUF.');
   };
 
+  const wasDirty = wllamaDirty === true;
+  const tLoad = telNow();
   let loadedHere = false;
+  let reusedExisting = false;
   if (wllamaInstance && !wllamaDirty && wllamaLoadedFile === `${targetKey}:${useGpu}` && wllamaInstance.isModelLoaded?.()) {
     loadedHere = true;
+    reusedExisting = true;
   } else if (wllamaInstance && wllamaDirty) {
     // The last request on it never finished, so its slot may still be held.
     // Starting from it is how a second prompt ends up waiting forever.
@@ -3562,6 +3574,10 @@ export async function streamWllamaChat({
     }
   }
   if (!loadedHere) throw lastErr || new Error('WLlama could not load the model.');
+  // ~0 ms here means the model was already resident and the slot was reused;
+  // a real number means it was loaded on this turn. Both are worth knowing,
+  // because a reused slot is the one that can still be holding last turn's state.
+  const loadMs = elapsedMs(tLoad);
 
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   onStatus?.({
@@ -3577,6 +3593,68 @@ export async function streamWllamaChat({
   }
 
   let acc = '';
+  let chunks = 0;
+  let firstTokenAt = null;
+  const tGen = telNow();
+  const nCtx = useGpu ? WLAMA_CTX_GPU : WLAMA_CTX_CPU;
+
+  /**
+   * One builder for the turn's facts, so the success line and every failure
+   * line report the same numbers measured the same way. Nothing here is
+   * invented: token counts come from the fitter that fitted this prompt, the
+   * window is the `n_ctx` actually passed to the loader, the timings are
+   * `performance.now()` deltas around the calls that ran, and `chunks` is
+   * counted off the stream. `replyTokensSeen` is our own conservative
+   * estimator applied to the text that actually arrived — an estimate, and
+   * named as one, but consistent with the number the prompt was fitted by.
+   */
+  const turnFacts = (outcome, err = null) => ({
+    model: targetKey.split(':')[0].split('/').pop(),
+    quant: preset.id,
+    useGpu,
+    nCtx,
+    promptTokens: fitted.promptTokens,
+    systemTokens: fitted.systemTokens,
+    maxTokensRequested: maxTokens,
+    effectiveMaxTokens,
+    historyKept: fitted.messages.length,
+    historyDropped: fitted.dropped,
+    slotReused: reusedExisting,
+    instanceWasDirty: wasDirty,
+    loadMs,
+    msToFirstToken: firstTokenAt === null ? null : Math.round((firstTokenAt - tGen) * 10) / 10,
+    // Time from the first token to now: generation alone, without the prompt
+    // pass. That is the number a tokens/sec figure should be divided by.
+    genMs: firstTokenAt === null ? null : elapsedMs(firstTokenAt),
+    totalMs: elapsedMs(tGen),
+    chunks,
+    replyChars: acc.length,
+    replyTokensSeen: estimateTokens(acc),
+    outcome,
+    ...(err ? { error: err?.name || 'Error', message: String(err?.message || err).slice(0, 300) } : {})
+  });
+
+  // Logged *before* the request, not after. A turn that hangs leaves no
+  // completion line at all, and the hanging turn is the only one worth
+  // reading — so the trail has to exist before the thing that might not
+  // return. `windowHeadroomTokens` compares what this prompt costs against
+  // what every previous turn on this same loaded model has already put
+  // through the window: if it goes negative and the next line never arrives,
+  // the context filled up and was never released.
+  const ledger = aiTurnLedger();
+  telLog('ai', `chat turn ${ledger.turnNo + 1} requesting`, {
+    model: targetKey.split(':')[0].split('/').pop(),
+    runtime: useGpu ? 'WebGPU' : 'CPU WASM',
+    nCtx,
+    promptTokens: fitted.promptTokens,
+    replyTokensAllowed: effectiveMaxTokens,
+    slotReused: reusedExisting,
+    loadMs,
+    turnsSoFarOnThisInstance: ledger.turnNo,
+    cumulativePromptTokens: ledger.cumulativePromptTokens,
+    windowHeadroomTokens: nCtx - ledger.cumulativePromptTokens - fitted.promptTokens
+  });
+
   let stream;
   try {
     stream = await wllamaInstance.createChatCompletion({
@@ -3599,9 +3677,11 @@ export async function streamWllamaChat({
   try {
     for await (const chunk of stream) {
       markInferenceToken();
+      chunks++;
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       const piece = chunk?.choices?.[0]?.delta?.content || '';
       if (piece) {
+        if (firstTokenAt === null) firstTokenAt = telNow();
         acc += piece;
         const cleaned = stripModelScaffolding(acc, { streaming: true });
         onToken?.(piece, cleaned);
@@ -3611,12 +3691,14 @@ export async function streamWllamaChat({
     // Walking away from a stream leaves Wllama's slot occupied, so this
     // instance is not reusable — the next prompt gets a fresh one.
     wllamaDirty = true;
+    logAiTurn(turnFacts(signal?.aborted || err?.name === 'AbortError' ? 'aborted' : (acc ? 'interrupted' : 'failed'), err));
     if (err?.name === 'AbortError' || signal?.aborted) throw err;
     if (!acc) throw wllamaFailure('WLlama generation', err);
     // Keep whatever already streamed instead of throwing the answer away.
     pushNativeLog('warn', [`generation interrupted: ${err?.message || err}`]);
   }
   wllamaDirty = false;
+  logAiTurn(turnFacts('ok'));
   return stripModelScaffolding(acc, { dropUnclosedThink: true }).trim();
 }
 

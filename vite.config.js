@@ -480,7 +480,12 @@ export default defineConfig({
         const payload = encodePayload(fs.readFileSync(backupPage, 'utf8'));
         fs.writeFileSync(path.resolve('dist', BACKUP_DOOR_FILE), payload);
         fs.rmSync(backupPage);
-        console.log(`[waffle] backup kitchen → ${BACKUP_DOOR_FILE} (${(payload.length / 1024).toFixed(1)} KB, key held nowhere in plain text); dist/backup.html removed`);
+        // The name is deliberately not printed. This line lands in the public Actions
+        // log of every deploy, and a build log that announces which file the
+        // disguised kitchen shipped as defeats the disguise completely — the name
+        // was sitting in those logs the whole time. Size and outcome are enough
+        // for whoever is watching a build, and only they need more than that.
+        console.log(`[waffle] backup kitchen disguised and written (${(payload.length / 1024).toFixed(1)} KB, key held nowhere in plain text); dist/backup.html removed`);
       } else {
         console.warn('[waffle] dist/backup.html was not built, so there is no backup kitchen to disguise');
       }

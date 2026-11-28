@@ -1023,3 +1023,31 @@ export function explainFailure(err, { mode, side }) {
   }
   return wrap(`Image generation stopped: ${text}`, 'engine');
 }
+
+
+/* ------------------------------------------------------------------ *
+ * The pause
+ * ------------------------------------------------------------------ */
+
+/**
+ * Image generation is paused as of 1.3, and this is the one place that says so.
+ *
+ * It lives here rather than in the panel for the same reason the Waffle AI pause
+ * lives in waffle-ai.js: every surface that offers an image or starts one reads
+ * this function, so bringing the feature back is a one-line change instead of a
+ * hunt through two files for the places that were gated. Both the Settings
+ * picker and the run itself check it, which is what keeps a paused feature from
+ * offering a button that cannot work.
+ *
+ * The honest reason is in the 1.3 notes. The short version is that the engine
+ * needs WebGPU and has no fallback for a browser that does not expose it, and a
+ * real device log showed a browser that had stopped exposing it at all — at
+ * which point the picker was offering a run that could not happen.
+ */
+export function isImageGenPaused() {
+  return true;
+}
+
+/** The one notice every paused image surface shows. */
+export const IMAGE_GEN_PAUSE_MESSAGE =
+  'Image generation is paused. The engine behind it needs WebGPU and has no fallback for a browser that does not expose it, so rather than offer a run that cannot finish, it is off until there is a path that works. It will be back in a later update.';

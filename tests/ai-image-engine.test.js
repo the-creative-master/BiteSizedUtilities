@@ -461,7 +461,7 @@ test('the chat and Settings surfaces describe the engine that is actually there'
 });
 
 test('the module still exposes what the rest of the kitchen imports from it', () => {
-  for (const name of ['IMAGE_MODELS', 'detectImageCapabilities', 'generateWaffleImage']) {
+  for (const name of ['IMAGE_MODELS', 'detectImageCapabilities', 'generateWaffleImage', 'isImageGenPaused', 'IMAGE_GEN_PAUSE_MESSAGE']) {
     assert.match(engineSrc, new RegExp(`export (async )?function ${name}|export const ${name}`), `${name} is still exported`);
   }
   assert.equal(typeof detectImageCapabilities, 'function');
@@ -471,9 +471,9 @@ test('the module still exposes what the rest of the kitchen imports from it', ()
       `${arg} is still accepted`);
   }
   assert.match(engineSrc, /dataUrl: canvas\.toDataURL\('image\/png'\)/, 'and still returns a PNG data URL');
-  assert.match(aiSrc, /import \{\n  IMAGE_MODELS,\n  resolveImageModel,\n  isRetiredImageModel,\n  detectImageCapabilities,\n  generateWaffleImage,\n  imageCacheInfo,\n  clearImageModelCache,\n  humanDuration,\n  screenLockState\n\} from '\.\/waffle-image-gen\.js';/,
-    'which is what the AI panel imports — humanDuration included, so the bubble and the header badge word the same wait the same way, and screenLockState so the device facts can say whether a run can be protected at all');
-  assert.match(appSrc, /IMAGE_MODELS,\n  detectImageCapabilities,\n  imageCacheInfo,\n  clearImageModelCache,\n  screenLockState\n\} from '\.\/waffle-image-gen\.js';/,
+  assert.match(aiSrc, /import \{\n  IMAGE_MODELS,\n  resolveImageModel,\n  isRetiredImageModel,\n  detectImageCapabilities,\n  generateWaffleImage,\n  imageCacheInfo,\n  clearImageModelCache,\n  humanDuration,\n  screenLockState,\n  isImageGenPaused,\n  IMAGE_GEN_PAUSE_MESSAGE\n\} from '\.\/waffle-image-gen\.js';/,
+    'which is what the AI panel imports — humanDuration included, so the bubble and the header badge word the same wait the same way, screenLockState so the device facts can say whether a run can be protected at all, and the pause so the run can refuse before it creates a progress bubble it cannot fill');
+  assert.match(appSrc, /IMAGE_MODELS,\n  detectImageCapabilities,\n  imageCacheInfo,\n  clearImageModelCache,\n  screenLockState,\n  isImageGenPaused,\n  IMAGE_GEN_PAUSE_MESSAGE\n\} from '\.\/waffle-image-gen\.js';/,
     'and what Settings does');
   for (const name of ['screenLockSupported', 'screenLockState', 'holdScreenForRun', 'releaseScreenLock', 'gpuLostState', 'clearGpuLost']) {
     assert.match(engineSrc, new RegExp(`export (async )?function ${name}`), `${name} is exported so the panel and the tests can ask`);

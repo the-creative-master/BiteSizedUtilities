@@ -46,7 +46,9 @@ import {
   imageCacheInfo,
   clearImageModelCache,
   humanDuration,
-  screenLockState
+  screenLockState,
+  isImageGenPaused,
+  IMAGE_GEN_PAUSE_MESSAGE
 } from './waffle-image-gen.js';
 
 const STARTER_PROMPTS = [
@@ -1504,6 +1506,22 @@ function offerCutOffRun() {
 
 async function runImageGeneration(promptText, displayPrompt = promptText, allowEnhance = getSmartPromptEnabled()) {
   if (isGenerating) return;
+  // Checked before anything is pushed. A paused run must not create the
+  // progress bubble it can never fill: a bar that announces "Preparing…" and
+  // then explains itself is worse than a notice that says so up front. The
+  // visitor's prompt is still echoed, so the chat reads as a question that was
+  // answered honestly rather than one that was dropped.
+  if (isImageGenPaused()) {
+    messages.push({
+      role: 'user',
+      displayContent: `\u{1F3A8} Generate: ${displayPrompt}`,
+      content: displayPrompt
+    });
+    messages.push({ role: 'assistant', authorLabel: 'Sir Waffle', content: IMAGE_GEN_PAUSE_MESSAGE });
+    renderMessages();
+    syncComposerState();
+    return;
+  }
   const imgCfg = activeImageCfg();
   playPop(600);
 

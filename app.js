@@ -56,7 +56,9 @@ import {
   detectImageCapabilities,
   imageCacheInfo,
   clearImageModelCache,
-  screenLockState
+  screenLockState,
+  isImageGenPaused,
+  IMAGE_GEN_PAUSE_MESSAGE
 } from './waffle-image-gen.js';
 
 const $ = s => document.querySelector(s);
@@ -1070,7 +1072,12 @@ function renderSettingsModal() {
   }
 
   const imgList = $('#settings-ai-image-list');
-  if (imgList) {
+  if (imgList && isImageGenPaused()) {
+    // Not a disabled row of pills. A picker full of greyed-out models says
+    // "your device cannot", which is a different claim from "this is off", and
+    // the second one is the true one here.
+    imgList.innerHTML = `<p class="waffle-device-detail" style="display:block">\u{1F512} ${esc(IMAGE_GEN_PAUSE_MESSAGE)}</p>`;
+  } else if (imgList) {
     const curImg = getSelectedImageModel();
     const smartOn = getSmartPromptEnabled();
     imgList.innerHTML = `

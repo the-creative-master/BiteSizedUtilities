@@ -307,8 +307,8 @@ test('the cupboard is fifteen deep, and the five are in it and in the catalogue'
 test('the public notes describe the five tools and nothing they do not do', () => {
   // 1.2.12 landed above this entry; the note is history now, so it is found by
   // position one down and still checked against the present.
-  assert.equal(CHANGELOG[1].version, '1.2.11');
-  const text = CHANGELOG[1].groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
+  assert.equal(CHANGELOG[2].version, '1.2.11');
+  const text = CHANGELOG[2].groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');
 
   for (const name of ['Equation Solver', 'Statistics Lab', 'Matrix Calculator', 'Geometry Calculator', 'Factors, GCD & LCM']) {
     assert.ok(text.includes(name), `${name} is named in the release notes`);

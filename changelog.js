@@ -32,14 +32,17 @@ import { isBackupBuild } from './build-mode.js';
  * visitors on GitHub Pages never see repo files, and the release notes belong
  * where the kitchen is.
  */
-export const APP_VERSION = '1.2.12';
+export const APP_VERSION = '1.3';
 
 /**
  * How many test builds of the open cycle there have been. Reset to 0 when that
  * cycle's release ships — and once 1.3 has, a build made on top of it is a test
  * version *after* a release, so it reads 1.3 TVAR 1 rather than TVBR.
  */
-export const TVBR = 6;
+// 0 means no test version is open, which is the state right after a release:
+// appVersionLabel() reads it and both kitchens report the release itself. The
+// next test build sets this to 1 and moves TVBR_CYCLE on.
+export const TVBR = 0;
 
 /**
  * The release the open test build comes *before*.
@@ -692,6 +695,50 @@ export const TVBR_LOG = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: '1.3',
+    date: 'November 28, 2026',
+    title: 'Image generation is paused, and the kitchen started reporting what it actually does instead of what it assumes',
+    groups: [
+      {
+        label: '\u{1F3A8} The honest update: image generation is paused',
+        items: [
+          'It is off, and this entry is not going to dress that up as anything else. The engine behind it needs WebGPU and has no fallback for a browser that does not expose it, so on those devices the picker was offering a run that could not finish.',
+          'That stopped being theoretical. A real device reported no WebGPU adapter at all \u2014 not an adapter missing a feature, but no adapter, `hasWebGPU=no` \u2014 after previously reporting one. When the browser stops exposing the API, there is nothing for the image engine to run on and no CPU path to fall back to.',
+          'Asking for an image now gets a plain sentence saying it is paused and why, instead of a progress bar that announces "Preparing\u2026" and then has nothing to prepare. The question is still echoed into the chat, so the thread reads as answered rather than dropped.',
+          'The pause is one function that every image surface reads, in the image module rather than scattered through the panel. Bringing it back is a one-line change, which is the only reason pausing it is a reasonable thing to do rather than deleting it.',
+          'The Settings picker no longer shows a row of greyed-out models either. A disabled picker says "your device cannot"; the truth here is "this is off", and those are different claims.'
+        ]
+      },
+      {
+        label: '\u{1F4DF} Every utility now says what it actually did',
+        items: [
+          'Open any of the 105 utilities outside Games & Fun and the browser console reports it: the tool, the cupboard, how many milliseconds the mount really took, whether it handed back a cleanup function, and on failure the real error name rather than a paraphrase. Games & Fun is excluded because those are animation loops, where a line per frame would cost more than it reports.',
+          'Because a tablet has no console at all \u2014 Android and HarmonyOS Chrome ship no DevTools \u2014 the same lines are kept in a bounded buffer of the last 80 and rendered on screen under the device report, with a copy button that puts them on the clipboard with a header naming the build. A diagnostic that only works where there is a keyboard is not a diagnostic for the devices that need it.',
+          'Every value in those lines comes from somewhere real: performance.now() around the call that ran, the token fitter that fitted the prompt, the Response object the browser handed back, navigator.storage.estimate(). Where a value is not available it prints unknown. A content-length is absent on chunked and compressed responses, so a byte count is only reported when something measured it, and the line says which of the two it was.',
+          'A fabricated number in a debugging tool is worse than no number, because it gets believed. That rule is the reason the log reads the way it does.'
+        ]
+      },
+      {
+        label: '\u{1F50D} The device report stopped guessing about the GPU',
+        items: [
+          'It now records the whole WebGPU feature list and the limits that say whether an adapter is real hardware, rather than reading one feature and one description string. That separates two situations with opposite conclusions: a translated or software adapter, which no setting will fix, and a genuine adapter with one feature withheld, which is a browser decision.',
+          'Wording that claimed more than was measured now claims less. Nothing says the GPU lacks FP16 any more, because what a web page can measure is what the browser exposes through WebGPU \u2014 and a driver can support FP16 while the browser still does not surface it.',
+          'Each AI turn is logged too, with the context window it was given, what the prompt cost, whether the runtime slot was reused or freshly loaded, and how much window was left. Those lines are written before the request as well as after, because a turn that hangs never reaches an after.'
+        ]
+      },
+      {
+        label: '\u26A0\uFE0F Known rough edges',
+        items: [
+          'Qwen3 0.6B is a reasoning model and this kitchen does not yet read its reasoning. It thinks first, the thinking arrives in a field the stream reader does not look at, and the visible reply can come out nearly empty \u2014 one real run took 33 seconds to a first visible token and returned 28 characters. The runtime exposes three parameters for exactly this and none of them are being passed yet. Qwen 2.5 0.5B is unaffected and is the better choice on a slow device until this is fixed.',
+          'Two of the telemetry numbers understate a reasoning model for the same reason: time to first token is really time to first visible token, and tokens per second counts only visible tokens.',
+          'Waffle AI has been reported freezing after three or four replies on a machine with a capable GPU. It is instrumented and not fixed, and the cause is not confirmed \u2014 the obvious suspect could not be checked by reading the runtime, because the state in question lives inside the wasm module.',
+          'A device without cross-origin isolation runs single-threaded, because a static host sends no COOP/COEP headers. That is roughly one core of however many the device has, and it is a deliberate trade rather than an oversight.',
+          'Nothing in this release was exercised in a browser by the person writing it. The on-screen panel is proven by tests that read the source and by its module running outside a browser, and not yet by a visitor tapping it.'
+        ]
+      }
+    ]
+  },
   {
     version: '1.2.12',
     date: 'November 27, 2026',

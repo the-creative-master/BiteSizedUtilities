@@ -24,8 +24,8 @@ function pageWith(dataset) {
 
 test('the public kitchen reports a plain release version and knows nothing about TVBR', () => {
   pageWith({});
-  assert.equal(APP_VERSION, '1.2.12');
-  assert.equal(appVersionLabel(), '1.2.12', 'index.html says 1.2.12 and nothing else');
+  assert.equal(APP_VERSION, '1.3');
+  assert.equal(appVersionLabel(), '1.3', 'index.html says 1.3 and nothing else');
   assert.equal(isBackupBuild(), false);
   assert.equal(isPublicBuild(), true);
   // Both spellings: the label is TVBR now, but six shipped builds read TVAR, and
@@ -63,10 +63,13 @@ test('the backup kitchen reports the test build it is, not the release beside it
   // All three moved the public version while the cycle this build is named for
   // did not. Resetting here would have announced that 1.3 had shipped, which it
   // has not.
-  assert.equal(TVBR, 6, 'the counter sits at the build this kitchen reports');
-  assert.equal(TVBR_CYCLE, '1.3', 'on the 1.3 cycle');
-  assert.equal(APP_VERSION, '1.2.12', 'while the release has moved on without it');
-  assert.equal(appVersionLabel(), '1.3 TVBR 6', 'backup.html reports the build it is');
+  // 1.3 has now shipped, so the cycle it was testing toward is closed and no
+  // test version is open. TVBR 0 is the state the constant documents for exactly
+  // this moment, and its consequence is that both kitchens report the release:
+  // there is nothing newer to be a test version of yet.
+  assert.equal(TVBR, 0, 'no test version is open, because the release just shipped');
+  assert.equal(APP_VERSION, '1.3', 'and that release is 1.3');
+  assert.equal(appVersionLabel(), '1.3', 'so backup.html reports the release too, not a stale TVBR label');
   assert.equal(isBackupBuild(), true);
   assert.equal(isPublicBuild(), false);
 
@@ -85,8 +88,12 @@ test('the backup kitchen reports the test build it is, not the release beside it
     assert.ok(!body.includes('DONTASKMEWHATTHATIS'), `${e.version} does not name the retired door file`);
     assert.ok(!body.includes('.nojekyll.txt'), `${e.version} does not name the door file in use either`);
   }
-  assert.equal(TVBR_LOG[0].version, APP_VERSION_EXTENDED,
-    'the newest entry spells out the label this build reports, so it cannot be renumbered behind its own back');
+  // Only true while a cycle is open. With TVBR at 0 the extended label is
+  // '1.3 TVBR 0', which no build ever was, so the newest entry is history: the
+  // last test build of the cycle that just shipped. It keeps its own number.
+  assert.equal(TVBR_LOG[0].version, '1.3 TVBR 6',
+    'the last test build of the closed cycle, still documented as itself');
+  assert.equal(TVBR, 0, 'and the counter says nothing is open, so the two cannot be confused');
 
   for (const tvbr of TVBR_LOG) {
     assert.equal(tvbr.tvbr, true, `${tvbr.version} is marked so the renderer can style it apart`);
@@ -217,7 +224,7 @@ test('TVBR entries reset with each release and are rendered only in the backup b
   assert.match(src, /export const APP_VERSION_EXTENDED = `\$\{TVBR_CYCLE\} TVBR \$\{TVBR\}`;/,
     'the extended label is derived, so bumping TVBR is a one-character change');
   assert.match(src, /export const TVBR_CYCLE = '1\.3';/,
-    'from the cycle it belongs to, which is a literal: APP_VERSION has moved on to 1.2.12 and deriving from it would announce a build that has never existed');
+    'from the cycle it belongs to, which is a literal: APP_VERSION has moved on to 1.3 and deriving from it would announce a build that has never existed');
   assert.match(src, /A public release that ships \*part\* of an open cycle does not close it/,
     'and the rule for a partial release is written down where the constants live, because 1.2.10 was the first one, 1.2.11 the second and 1.2.12 the third');
   assert.match(src, /Reset to 0 when that/, 'the reset rule is written down where the counter lives');
@@ -230,7 +237,13 @@ test('TVBR entries reset with each release and are rendered only in the backup b
   // that release in the combined list, which is what makes "newest first" true.
   // The counter resets on release, so what is left is history: these are 1.1's
   // test builds, not 1.1.1's, and they say so.
-  assert.equal(TVBR, Number(TVBR_LOG[0].version.split(' TVBR ')[1]), 'the counter and the newest entry agree');
+  // While a cycle is open the counter and the newest entry have to agree. Once
+  // it ships, the counter resets to 0 and the newest entry stays as history, so
+  // the rule becomes: either they agree, or the counter is 0 and the entry is
+  // the closed cycle's last build. Anything else is a renumbering.
+  const newest = Number(TVBR_LOG[0].version.split(' TVBR ')[1]);
+  assert.ok(TVBR === newest || TVBR === 0,
+    `the counter (${TVBR}) and the newest entry (${newest}) agree, or the cycle is closed`);
   for (const entry of TVBR_LOG) {
     assert.match(entry.version, /^\d+\.\d+(\.\d+)? TV(?:AR|BR) \d+$/, `${entry.version} names its cycle and its counter`);
     assert.ok(/^1\.3 TVBR /.test(entry.version) || /^1\.[12] TVAR /.test(entry.version),
@@ -426,7 +439,9 @@ test('the paused-AI notice quotes the current cabinet and keeps its promise', ()
 
 test('1.3 TVBR 6 says why a console log needed a screen, and admits what is still untested', () => {
   const entry = TVBR_LOG[0];
-  assert.equal(entry.version, APP_VERSION_EXTENDED, 'the newest entry is the build this kitchen reports');
+  // No longer APP_VERSION_EXTENDED: 1.3 shipped, the cycle closed, and this
+  // entry is the record of the last test build that got it there.
+  assert.equal(entry.version, '1.3 TVBR 6');
   assert.equal(entry.date, 'November 28, 2026');
   assert.equal(entry.tvbr, true, 'and it is marked so the renderer can style it apart');
   const text = entry.groups.map(g => `${g.label} ${g.items.join(' ')}`).join(' ');

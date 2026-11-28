@@ -2288,7 +2288,7 @@ function setRailOpen(open) {
 function buildOverlay() {
   /**
    * The overhauled layout and the chats it keeps belong to both kitchens now.
-   * They were the test kitchen's alone while the rail was being tried, and 1.3.1
+   * They were the test kitchen's alone while the rail was being tried, and 1.3
    * is where trying it stopped being the point.
    *
    * The four models above 1.7B are a *different* decision that happens to read

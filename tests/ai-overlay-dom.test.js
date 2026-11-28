@@ -121,7 +121,7 @@ test('the public kitchen gets the overhauled layout too — rail, thread list an
   // This file's document carries no data-backup, so everything asserted here is
   // what a visitor to the site gets. This test used to assert the opposite: that
   // the public kitchen kept a single pane and one unsaved conversation, because
-  // the overhauled layout was the test kitchen's alone. 1.3.1 gives it to
+  // the overhauled layout was the test kitchen's alone. 1.3 gives it to
   // everybody. That is a fact about the markup, so it is checked in the markup;
   // tests/ai-chat-rail.test.js drives the behaviour behind it.
   assert.equal(document.documentElement.dataset.backup, undefined, 'and this really is the public page');

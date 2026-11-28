@@ -117,26 +117,36 @@ test('the pill in the header is the way back, and looks like one', () => {
   // status update that follows it, which is only a real test if it is still open.
 });
 
-test('the public kitchen keeps the single pane it has always had', async () => {
+test('the public kitchen gets the overhauled layout too — rail, thread list and all', async () => {
   // This file's document carries no data-backup, so everything asserted here is
-  // what a visitor to the site gets. The overhauled layout and the chats it
-  // saves are this test version's subject, which makes them the backup
-  // kitchen's alone — and that is a fact about the markup, not an intention, so
-  // it is checked in the markup. tests/ai-chat-rail.test.js drives the other one.
+  // what a visitor to the site gets. This test used to assert the opposite: that
+  // the public kitchen kept a single pane and one unsaved conversation, because
+  // the overhauled layout was the test kitchen's alone. 1.3.1 gives it to
+  // everybody. That is a fact about the markup, so it is checked in the markup;
+  // tests/ai-chat-rail.test.js drives the behaviour behind it.
   assert.equal(document.documentElement.dataset.backup, undefined, 'and this really is the public page');
   openWaffleAI();
   await new Promise(r => setTimeout(r, 25));
 
-  assert.equal($('.waffle-ai-rail'), null, 'no rail of saved chats');
-  assert.equal($('#waffle-ai-thread-list'), null, 'no thread list behind one');
-  assert.equal($('#waffle-ai-saving'), null, 'and no pill claiming a conversation is being kept');
-  assert.equal($('#waffle-ai-rail-toggle'), null, 'nor a button that would open a drawer to nowhere');
+  assert.ok($('.waffle-ai-rail'), 'the rail of saved chats is here');
+  assert.ok($('#waffle-ai-thread-list'), 'with the thread list behind it');
+  assert.ok($('#waffle-ai-saving'), 'and the pill that names the store it actually got');
+  assert.ok($('#waffle-ai-rail-toggle'), 'and the button that opens the drawer');
   for (const id of ['#waffle-ai-export', '#waffle-ai-import', '#waffle-ai-import-in', '#waffle-ai-clear-all',
     '#waffle-ai-new-chat', '#waffle-ai-rail-close', '#waffle-ai-rail-empty', '#waffle-ai-rail-count']) {
-    assert.equal($(id), null, `${id} belongs to the backup kitchen`);
+    assert.ok($(id), `${id} is in the public kitchen now`);
   }
-  assert.ok(!$('.waffle-ai-dialog').classList.contains('waffle-ai-chat-dialog'),
-    'the dialog keeps the width it has always had, not the widened one');
+  assert.ok($('.waffle-ai-dialog').classList.contains('waffle-ai-chat-dialog'),
+    'and the dialog takes the widened two-pane width that goes with a rail');
+
+  // The rail came over; the four models above 1.7B did not. They read the same
+  // build flag through a different function, and their repository paths have not
+  // been checked from anywhere that could reach Hugging Face — so bringing the
+  // layout to everybody must not bring them with it.
+  const pills = [...document.querySelectorAll('[data-set-model]')].map(b => b.dataset.setModel);
+  for (const heldBack of ['minicpm-2b', 'llama3.2-3b', 'qwen2.5-3b', 'gemma2-2b']) {
+    assert.ok(!pills.includes(heldBack), `${heldBack} stays in the test kitchen`);
+  }
 
   // And everything a visitor already had is still there, in the same places,
   // with the pane wrapper the rail would share sitting inertly around it.
@@ -151,14 +161,21 @@ test('the public kitchen keeps the single pane it has always had', async () => {
   assert.ok($('.waffle-ai-header #waffle-ai-models-btn'), 'and the header still holds its own buttons');
 });
 
-test('the public kitchen writes no conversation to storage, because it keeps none', async () => {
+test('the public kitchen opens the chat store, and says which backend it got', async () => {
   closeWaffleAI();
   await new Promise(r => setTimeout(r, 25));
+  openWaffleAI();
+  await new Promise(r => setTimeout(r, 40));
+
   const keys = [];
   for (let i = 0; i < window.localStorage.length; i += 1) keys.push(window.localStorage.key(i));
   assert.ok(keys.includes('waffle-ai-os-asked'), 'the device answer is still stored, exactly as it was');
-  assert.deepEqual(keys.filter(k => /chat|thread|waffle-ai-chats/.test(k)), [],
-    'and not one conversation is written down, so nothing here suggests a chat outlives the tab');
+  // Which storage keys appear depends on the backend the browser allowed, and
+  // jsdom has no IndexedDB, so the honest assertion here is that the store was
+  // consulted and the pill reported the outcome — not that a particular key
+  // exists. ai-chat-rail.test.js drives the real saving.
+  assert.ok($('#waffle-ai-saving'), 'the pill that names the store is rendered');
+  assert.ok($('#waffle-ai-saving').textContent.trim().length > 0, 'and it is not left blank');
 });
 
 test('a reopened window survives the next status update', () => {
